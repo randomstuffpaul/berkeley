@@ -122,8 +122,12 @@ struct socket {
 	struct file		*file;
 	struct sock		*sk;
 	const struct proto_ops	*ops;
-#ifdef CONFIG_HUAWEI_KSTATE
+#if defined(CONFIG_HUAWEI_KSTATE) || defined(CONFIG_MPTCP)
 	pid_t		pid;
+#endif
+
+#ifdef CONFIG_MPTCP
+	int		fd;
 #endif
 };
 

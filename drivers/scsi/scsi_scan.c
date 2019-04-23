@@ -281,6 +281,13 @@ static struct scsi_device *scsi_alloc_sdev(struct scsi_target *starget,
 		blk_queue_init_tags(sdev->request_queue,
 				    sdev->host->cmd_per_lun, shost->bqt,
 				    shost->hostt->tag_alloc_policy);
+#ifdef CONFIG_HISI_BLK
+		/* for USB stick */
+		if (shost->queue_quirk_flag & SHOST_QUIRK(SHOST_QUIRK_IO_LATENCY_WARNING)) {
+			blk_queue_latency_warning_set(sdev->request_queue, 5000);
+			blk_queue_dump_register(sdev->request_queue, NULL);
+		}
+#endif
 	}
 	scsi_change_queue_depth(sdev, sdev->host->cmd_per_lun ?
 					sdev->host->cmd_per_lun : 1);

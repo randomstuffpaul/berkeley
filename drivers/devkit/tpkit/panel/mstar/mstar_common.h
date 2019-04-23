@@ -100,7 +100,7 @@ extern struct dsm_client *ts_dclient;
 /* TOUCH DEVICE DRIVER RELEASE VERSION                                      */
 /*--------------------------------------------------------------------------*/
 
-#define DEVICE_DRIVER_RELEASE_VERSION   ("8.0.1.3")
+#define DEVICE_DRIVER_RELEASE_VERSION   ("8.0.3.2")
 #define DEVICE_FIRMWARE_VERSION         "00008.00009"
 
 /*--------------------------------------------------------------------------*/
@@ -117,6 +117,12 @@ extern struct dsm_client *ts_dclient;
 
 #define MSTAR_ROI_ENABLE 1
 
+#define LENS_AUO_SWID  0x4007
+#define LENS_EBBG_SWID  0x8007
+#define EELY_AUO_SWID  0x400a
+#define EELY_EBBG_SWID  0x800a
+
+#define GESTURE_PACKET_HEADER  0x5A
 /*
  * Note.
  * One or more than one the below compile option can be enabled based on the touch ic that customer project are used.
@@ -857,6 +863,7 @@ struct mstar_core_data{
        struct firmware_update_data fw_update_data;
 
 	bool ges_self_debug;
+	bool reset_touch_flag;
 };
 
 extern struct mstar_core_data *tskit_mstar_data;

@@ -48,6 +48,13 @@
 #define DOWNLOAD_RETRY_COUNT 10
 #define READ_OUT_IDENTIFY_MS 20
 #define ZEROFLASH_DOWNLOAD_DELAYUS 2000
+extern struct ts_kit_platform_data g_ts_kit_platform_data;
+
+enum SPI_COM_MODE {
+	INTERRUPT_MODE = 0,
+	POLLING_MODE,
+	DMA_MODE,
+};
 
 enum f35_error_code {
 	SUCCESS = 0,
@@ -874,11 +881,15 @@ static int zeroflash_download_config(void)
 	return retval;
 }
 
-int zeroflash_download(char *file_name)
+zeroflash_download(char *file_name,struct syna_tcm_hcd *tcm_hcd)
 {
 	int retval = NO_ERR;
 	char retry = 5;
 
+	if(tcm_hcd->use_dma_download_firmware) {
+		g_ts_kit_platform_data.spidev0_chip_info.com_mode = DMA_MODE;
+		tcm_hcd->spi_comnunicate_frequency = tcm_hcd->downmload_firmware_frequency;
+	}
 	retval = zeroflash_download_app_firmware(file_name);
 	if (retval < 0)
 		goto exit;
@@ -908,6 +919,10 @@ int zeroflash_download(char *file_name)
 	udelay(ZEROFLASH_DOWNLOAD_DELAYUS);
 
 exit:
+	if(tcm_hcd->use_dma_download_firmware) {
+		tcm_hcd->spi_comnunicate_frequency = SPI_DEFLAUT_SPEED;
+		g_ts_kit_platform_data.spidev0_chip_info.com_mode = POLLING_MODE;
+	}
 	return retval;
 }
 

@@ -864,6 +864,30 @@ out:
 	return error;
 }
 
+#ifdef CONFIG_HUAWEI_DSM
+static void ts_get_projectid_for_dsm(struct ts_chip_info_param *info)
+{
+	char *tmp = NULL;
+	if(NULL != info->ic_vendor)
+	{
+		tmp =  info->ic_vendor;
+		while(strchr(tmp,'-') != NULL)
+		{
+			tmp = strrchr(tmp,'-')+1;
+		}
+
+		if (tmp && DSM_MAX_MODULE_NAME_LEN > strlen(tmp)) {
+			dsm_tp.module_name = tmp;
+			if (dsm_update_client_vendor_info(&dsm_tp)) {
+				TS_LOG_ERR("dsm update client_vendor_info is failed\n");
+			}
+		}else {
+			TS_LOG_ERR("project id is invalid\n");
+		}
+	}
+}
+#endif
+
 ssize_t ts_chip_info_show(struct device *dev, struct device_attribute *attr,
 			  char *buf)
 {
@@ -902,6 +926,7 @@ ssize_t ts_chip_info_show(struct device *dev, struct device_attribute *attr,
 		goto out;
 	}
 
+
 	if (info->status != TS_ACTION_SUCCESS) {
 		TS_LOG_ERR("read action failed\n");
 		error = -EIO;
@@ -917,6 +942,10 @@ ssize_t ts_chip_info_show(struct device *dev, struct device_attribute *attr,
 			     "%s-%s-%s\n", info->ic_vendor, info->mod_vendor,
 			     info->fw_vendor);
 	}
+
+#ifdef CONFIG_HUAWEI_DSM
+        ts_get_projectid_for_dsm(info);
+#endif
 out:
 	if (cmd){
 		kfree(cmd);
@@ -3445,7 +3474,7 @@ static DEVICE_ATTR(touch_chip_info, (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH),
 		   ts_chip_info_show, ts_chip_info_store);
 static DEVICE_ATTR(calibration_info, (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH),
 		ts_calibration_info_show, NULL);
-static DEVICE_ATTR(calibrate, S_IRUSR, ts_calibrate_show, NULL);
+static DEVICE_ATTR(calibrate, (S_IRUSR|S_IRGRP), ts_calibrate_show, NULL);
 static DEVICE_ATTR(calibrate_wakeup_gesture, S_IRUSR,
 		   ts_calibrate_wakeup_gesture_show, NULL);
 static DEVICE_ATTR(touch_glove, (S_IRUSR | S_IWUSR), ts_glove_mode_show,
@@ -3455,7 +3484,7 @@ static DEVICE_ATTR(touch_sensitivity, (S_IRUSR | S_IWUSR), ts_sensitivity_show,
 static DEVICE_ATTR(hand_detect, S_IRUSR, ts_hand_detect_show, NULL);
 static DEVICE_ATTR(loglevel, (S_IRUSR | S_IWUSR), ts_loglevel_show,
 		   ts_loglevel_store);
-static DEVICE_ATTR(supported_func_indicater, (S_IRUSR),
+static DEVICE_ATTR(supported_func_indicater, (S_IRUSR|S_IRGRP),
 		   ts_supported_func_indicater_show, NULL);
 static DEVICE_ATTR(touch_window, (S_IRUSR | S_IWUSR), ts_touch_window_show,
 		   ts_touch_window_store);
@@ -6568,6 +6597,18 @@ static int ts_chip_init(void)
 	if (error) {
 		TS_LOG_ERR("chip init failed\n");
 	}
+#ifdef CONFIG_HUAWEI_DSM
+	else {
+		if (dev->chip_name && DSM_MAX_IC_NAME_LEN > strlen(dev->chip_name)) {
+			dsm_tp.ic_name = dev->chip_name;
+			if (dsm_update_client_vendor_info(&dsm_tp)) {
+				TS_LOG_ERR("dsm update client_vendor_info is failed\n");
+			}
+		} else {
+			TS_LOG_ERR("ic_name, module_name is invalid\n");
+		}
+}
+#endif
 
 	return error;
 }

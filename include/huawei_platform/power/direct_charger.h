@@ -27,7 +27,6 @@
 #include <linux/power/hisi/hisi_bci_battery.h>
 #endif
 #include <huawei_platform/power/huawei_charger.h>
-#include <huawei_platform/power/vbat_ovp.h>
 #ifdef CONFIG_TCPC_CLASS
 #include <huawei_platform/usb/hw_pd_dev.h>
 #endif
@@ -40,9 +39,9 @@
 #ifdef CONFIG_WIRELESS_CHARGER
 #include <huawei_platform/power/wireless_charger.h>
 #endif
-
+#ifdef CONFIG_DP_AUX_SWITCH
 #include "huawei_platform/dp_aux_switch/dp_aux_switch.h"
-
+#endif
 #define CHARGE_DMDLOG_SIZE      (2048)
 #define REVERSE_OCP_CNT          3
 #define OTP_CNT                  3
@@ -376,12 +375,14 @@ enum loadswitch_id {
 	LOADSWITCH_FAIRCHILD,
 	LOADSWITCH_NXP,
 	LOADSWITCH_SCHARGERV600,
+	LOADSWITCH_FPF2283,
 	LOADSWITCH_TOTAL,
 };
 
 enum switchcap_id {
 	SWITCHCAP_TI_BQ25970,
 	SWITCHCAP_SCHARGERV600,
+	SWITCHCAP_LTC7820,
 	SWITCHCAP_TOTAL,
 };
 
@@ -402,6 +403,8 @@ enum direct_charge_fault_type {
 	DIRECT_CHARGE_FAULT_IBUS_OCP,
 	DIRECT_CHARGE_FAULT_CONV_OCP,
 
+	DIRECT_CHARGE_FAULT_LTC7820,
+
 	DIRECT_CHARGE_FAULT_TOTAL,
 };
 
@@ -419,13 +422,17 @@ static const char *const loadswitch_name[] = {
 	[2] = "FAN54161",
 	[3] = "PCA9498",
 	[4] = "HI6526",
-	[5] = "ERROR",
+	[5] = "FPF2283",
+	[6] = "ERROR",
 };
+
 static const char *const switchcap_name[] = {
-	[0] = "SWITCHCAP_BQ25970",
+	[0] = "BQ25970",
 	[1] = "HI6526",
-	[2] = "ERROR",
+	[2] = "LTC7820",
+	[3] = "ERROR",
 };
+
 static const char *const scp_check_stage[] = {
 	[0] = "SCP_STAGE_DEFAULT",
 	[1] = "SCP_STAGE_SUPPORT_DETECT",
@@ -554,7 +561,6 @@ struct direct_charge_device {
 	unsigned int use_8A;
 	int sysfs_enable_charger;
 	int sysfs_disable_charger[__MAX_DISABLE_DIRECT_CHAGER];
-	int vbat_ovp_enable_charger;
 	int sysfs_iin_thermal;
 	int threshold_caculation_interval;
 	int charge_control_interval;
@@ -731,8 +737,6 @@ int scp_adaptor_set_output_enable(int enable);
 int direct_charge_get_cutoff_normal_flag(void);
 int get_quick_charge_flag(void);
 int get_super_charge_flag(void);
-void vbat_ovp_exit_direct_charge(int enable_charge);
-int vbat_ovp_scp_handle(void);
 int is_direct_charge_failed(void);
 int is_in_scp_charging_stage(void);
 void direct_charge_send_quick_charge_uevent(void);

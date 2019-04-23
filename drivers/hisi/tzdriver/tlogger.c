@@ -107,7 +107,7 @@ uint32_t g_lastread_offset = 0;
 
 #define __TEELOGGERIO	0xBE	/* for ioctl */
 /* get tee verison */
-#define TEELOGGER_GET_VERSION		_IOR(__TEELOGGERIO, 5, char *)
+#define TEELOGGER_GET_VERSION		_IOR(__TEELOGGERIO, 5, char[256])
 
 /* set the log reader pos to current pos */
 #define TEELOGGER_SET_READERPOS_CUR		_IO(__TEELOGGERIO, 6)
@@ -730,7 +730,7 @@ static long tlogger_ioctl(struct file *file, unsigned int cmd,
 
 	case TEELOGGER_GET_VERSION:
 		if (_IOC_DIR(cmd) & _IOC_READ) {
-			ret = !access_ok(VERIFY_WRITE, (void __user *)arg, _IOC_SIZE(cmd));
+			ret = !access_ok(VERIFY_WRITE, (void __user *)arg, sizeof(m_logbuffer->flag.version_info));
 			if (!ret) {
 				ret = copy_to_user((void __user *)arg, (void *)m_logbuffer->flag.version_info, sizeof(m_logbuffer->flag.version_info));
 				if (ret != 0) {

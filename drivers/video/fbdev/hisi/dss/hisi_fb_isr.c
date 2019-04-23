@@ -69,9 +69,7 @@ static void dss_pdp_isr_vactive0_end_handle(struct hisi_fb_data_type *hisifd, ui
 	hisifb_display_effect_flags_config(hisifd);
 
 	if (PARA_UPDT_DOING == hisifd->pipe_clk_ctrl.pipe_clk_updt_state) {
-		if (hisifd->pipe_clk_updt_isr_handler) {
-			hisifd->pipe_clk_updt_isr_handler(hisifd);
-		}
+		;
 	} else if (need_panel_mode_swtich(hisifd, isr_s2)) {
 		if ((inp32(hisifd->dss_base + DSS_LDI0_OFFSET + LDI_CTRL) & 0x1) == 0) {
 			hisifd->panel_mode_switch_isr_handler(hisifd, hisifd->panel_info.mode_switch_to);
@@ -119,6 +117,10 @@ static void dss_pdp_isr_vactive0_start_handle(struct hisi_fb_data_type *hisifd, 
 		|| (PARA_UPDT_DOING == hisifd->pipe_clk_ctrl.pipe_clk_updt_state)) {
 		disable_ldi(hisifd);
 		hisifd->pipe_clk_ctrl.pipe_clk_updt_state = PARA_UPDT_DOING;
+
+		if (hisifd->pipe_clk_updt_isr_handler) {
+			hisifd->pipe_clk_updt_isr_handler(hisifd);
+		}
 	}
 	if (need_panel_mode_swtich(hisifd, isr_s2)) {
 		disable_ldi(hisifd);

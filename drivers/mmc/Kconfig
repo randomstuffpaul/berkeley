@@ -26,6 +26,13 @@ config SD_SDIO_CRC_RETUNING
 	help
 	   config HISI sd driver
 
+config SD_TIMEOUT_RESET
+	bool "SD STIMEOUT RESET"
+	depends on MMC
+	default n
+	help
+	   config HISI sd driver
+
 config MMC_DEBUG
 	bool "MMC debugging"
 	depends on MMC != n

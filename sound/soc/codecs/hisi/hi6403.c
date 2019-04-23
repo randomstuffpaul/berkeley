@@ -148,6 +148,7 @@ struct hi6403_board_cfg {
 #ifdef CONFIG_RCV_TDD_SUPPORT
 	int rcv_tdd_gpio;
 #endif
+	bool wakeup_hisi_algo_support;
 };
 
 /* codec private data */
@@ -186,6 +187,8 @@ struct hi6403_platform_data {
 	int mainmicbias_val;
 #endif
 };
+
+static struct hi64xx_hs_cfg hi6403_hs_cfg = {0};
 
 struct snd_soc_codec *g_hi6403_codec = NULL;
 #define HI6403_IRQ_NUM (48)
@@ -5581,6 +5584,40 @@ int hi6403_disable_ibias_bandgap(struct snd_soc_codec *codec)
 	return 0;
 }
 
+void hi6403_hs_mbhc_on (struct snd_soc_codec *codec)
+{
+	struct hi6403_platform_data *priv = snd_soc_codec_get_drvdata(codec);
+
+	BUG_ON(NULL == priv);
+
+	/* mask btn irqs */
+	hi64xx_irq_mask_btn_irqs(priv->mbhc);
+
+	/* saradc cfg */
+	snd_soc_write(codec,  HI6403_SAR_CONFIG_REG, 0x7C);
+	/* mbhc on */
+	hi64xx_update_bits(codec, HI6403_ANALOG_REG089, 1 << HI64xx_MBHC_ON_BIT, 0);
+
+	msleep(30);
+	/* unmask btn irqs */
+	hi64xx_irq_unmask_btn_irqs(priv->mbhc);
+
+	msleep(120);
+	return;
+}
+
+void hi6403_hs_mbhc_off (struct snd_soc_codec *codec)
+{
+	/* eco off */
+	hi64xx_update_bits(codec, HI6403_ANALOG_REG093,  1 << HI64xx_MICBIAS_ECO_ON_BIT, 0);
+	pr_info("%s : eco disable \n", __FUNCTION__);
+
+	/* mbhc cmp off */
+	hi64xx_update_bits(codec, HI6403_ANALOG_REG089, 1 << HI64xx_MBHC_ON_BIT, 1 << HI64xx_MBHC_ON_BIT);
+
+	return;
+}
+
 void hi6403_headphone_resdet_config(struct snd_soc_codec *codec)
 {
 	/* ib05_hp 5uA */
@@ -5844,32 +5881,26 @@ void hi6403_headphone_resdet_enable(struct snd_soc_codec *codec, bool enable)
 	}
 }
 
-bool hi6403_check_sarready(struct snd_soc_codec *codec)
+void hi6403_hs_enable_hsdet(struct snd_soc_codec *codec, struct hi64xx_mbhc_config mbhc_config)
 {
-	/* read codec status */
-	unsigned int value = snd_soc_read(codec, HI64xx_REG_IRQ_2) & (0x1<<HI64xx_SARADC_RD_BIT);
-
-	/*clr irq*/
-	snd_soc_write(codec, HI64xx_REG_IRQ_2, 0x1<<HI64xx_SARADC_RD_BIT);
-
-	if (0 == value)
-		return false;
-	return true;
+	snd_soc_write(codec, HI6403_HP_DET_CFG_REG, mbhc_config.hs_ctrl);
 }
 
-unsigned int hi6403_get_voltagevlaue(struct snd_soc_codec *codec)
+unsigned int hi6403_get_voltage_value(struct snd_soc_codec *codec, unsigned int voltage_coefficient)
 {
 	int retry = 3;
 	unsigned int sar_value = 0;
 	unsigned int voltage_value = 0;
 
+	/* saradc on */
+	hi64xx_update_bits(codec, HI6403_ANALOG_REG089, 0x1 << HI6403_MBHD_SAR_PD_BIT, 0);
 	/* start saradc */
 	hi64xx_update_bits(codec, HI6403_ANALOG_REG089,
 			0x1<<HI6403_SARADC_START_BIT, 0x1<<HI6403_SARADC_START_BIT);
 
 	while(retry--) {
 		usleep_range(1000, 1100);
-		if (hi6403_check_sarready(codec)) {
+		if (hi64xx_check_saradc_ready_detect(codec)) {
 			sar_value = snd_soc_read(codec, HI6403_SAR_VALUE_REG);
 			pr_info("%s : saradc value for imp is %#x\n", __FUNCTION__, sar_value);
 
@@ -5882,14 +5913,27 @@ unsigned int hi6403_get_voltagevlaue(struct snd_soc_codec *codec)
 	/* end saradc */
 	hi64xx_update_bits(codec, HI6403_ANALOG_REG089,
 			0x1<<HI6403_SARADC_START_BIT, 0x0<<HI6403_SARADC_START_BIT);
+	/* saradc pd */
+	hi64xx_update_bits(codec, HI6403_ANALOG_REG089,
+			0x1 << HI6403_MBHD_SAR_PD_BIT, 0x1 << HI6403_MBHD_SAR_PD_BIT);
 
-	voltage_value = sar_value * (1800 / 0xFF);
-	if (voltage_value < 100 || voltage_value > 300) {
-		pr_info("%s : voltage value is %d, invalid value, res selected is %#x\n", __FUNCTION__, voltage_value, snd_soc_read(codec, HI6403_ANALOG_REG50));
-		voltage_value = 0;
-	}
+	voltage_value = sar_value * voltage_coefficient / 0xFF;
 
 	return voltage_value;
+}
+
+unsigned int hi6403_get_volume_vlaue(struct snd_soc_codec *codec)
+{
+	unsigned int volume_value = 0;
+
+	volume_value = hi6403_get_voltage_value(codec, 1800);
+	if (volume_value < 100 || volume_value > 300) {
+		pr_info("%s : voltage value is %d, invalid value, res selected is %#x\n", __FUNCTION__,
+				volume_value, snd_soc_read(codec, HI6403_ANALOG_REG50));
+		volume_value = 0;
+	}
+
+	return volume_value;
 }
 
 unsigned int hi6403_calc_res(struct snd_soc_codec *codec, unsigned int voltage_value, int num)
@@ -5936,7 +5980,7 @@ unsigned int hi6403_get_resvalue(struct snd_soc_codec *codec)
 				0x1<<HI6403_DETRES_RST_BIT, 0x0<<HI6403_DETRES_RST_BIT);
 		usleep_range(100,120);
 
-		volume_value[i] = hi6403_get_voltagevlaue(codec);
+		volume_value[i] = hi6403_get_volume_vlaue(codec);
 
 		/* get sum of valid res value */
 		if (0 != volume_value[i]) {
@@ -5980,7 +6024,7 @@ void hi6403_hs_res_detect(struct snd_soc_codec *codec)
 	}
 }
 
-static void hi6403_mad_set_param(struct snd_soc_codec *codec)
+static void hi6403_mad_set_param(struct snd_soc_codec *codec, struct hi6403_board_cfg *board_cfg)
 {
 	/* auto active time */
 	snd_soc_write(codec, HI6403_MAD_AUTO_ACT_TIME_L, 0x0);
@@ -6007,7 +6051,11 @@ static void hi6403_mad_set_param(struct snd_soc_codec *codec)
 	snd_soc_write(codec, HI6403_MAD_SLEEP_TIME_L, 0x0);
 
 	/* mad_buffer_fifo_thre */
-	snd_soc_write(codec, HI6403_MAD_BUFFER_CTRL0, 0x7f);
+	if (board_cfg->wakeup_hisi_algo_support) {
+		snd_soc_write(codec, HI6403_MAD_BUFFER_CTRL0, 0x3f);
+	} else {
+		snd_soc_write(codec, HI6403_MAD_BUFFER_CTRL0, 0x7f);
+	}
 	hi64xx_update_bits(codec, HI6403_MAD_BUFFER_CTRL1, 0x1f, 0x1f);
 
 	/* mad_cnt_thre,vad delay cnt */
@@ -6058,7 +6106,7 @@ enum hi64xx_pll_type hi6403_pll_for_reg_access(struct snd_soc_codec *codec, unsi
 static int hi6403_resmgr_init(struct hi6403_platform_data *pd)
 {
 	int ret = 0;
-	struct resmgr_config cfg;
+	struct resmgr_config cfg = {0};
 
 	cfg.pll_num = 3;
 	cfg.pll_sw_mode = MODE_MULTIPLE;
@@ -6614,20 +6662,21 @@ static int hi6403_utils_init(struct hi6403_platform_data *pd)
 	struct utils_config cfg;
 
 	cfg.hi64xx_dump_reg = NULL;
-	ret = hi64xx_utils_init(pd->codec, pd->cdc_ctrl, &cfg, pd->resmgr);
+	ret = hi64xx_utils_init(pd->codec, pd->cdc_ctrl, &cfg, pd->resmgr, HI64XX_CODEC_TYPE_6403);
 
 	return ret;
 }
 
-static struct mbhc_reg hi6403_mbhc_reg = {
+static struct hs_mbhc_reg hi6403_hs_mbhc_reg = {
 	.irq_source_reg = 0x2000701c,
 	.irq_mbhc_2_reg = 0x20007016,
-	.ana_60_reg = 0x20007159,
-	.saradc_value_reg = 0x200071cd,
-	.mbhc_vref_reg = 0,
-	.sar_cfg_reg = 0x2000715b,
-	.micbias_eco_reg = 0x2000715d,
-	.hsdet_ctrl_reg = 0x2000715a,
+};
+
+static struct hs_mbhc_func hi6403_hs_mbhc_func = {
+	.hs_mbhc_on = hi6403_hs_mbhc_on,
+	.hs_get_voltage = hi6403_get_voltage_value,
+	.hs_enable_hsdet = hi6403_hs_enable_hsdet,
+	.hs_mbhc_off = hi6403_hs_mbhc_off,
 };
 
 static struct hs_res_detect_func hi6403_hs_res_detect_func = {
@@ -6764,21 +6813,23 @@ static int hi6403_codec_probe(struct snd_soc_codec *codec)
 	pr_err("version register is %x\n", snd_soc_read(codec, HI64xx_VERSION));
 
 	hi6403_init_chip(codec);
+	hi6403_hs_cfg.mbhc_reg = &hi6403_hs_mbhc_reg;
+	hi6403_hs_cfg.mbhc_func = &hi6403_hs_mbhc_func;
 
 	if (priv->board_config.hp_res_detect_enable) {
-		ret = hi64xx_mbhc_init(codec, priv->node, &hi6403_mbhc_reg, &hi6403_hs_res_detect_func,
-			priv->resmgr, priv->irqmgr, &priv->mbhc);
+		hi6403_hs_cfg.res_detect_func = &hi6403_hs_res_detect_func;
 	} else {
-		ret = hi64xx_mbhc_init(codec, priv->node, &hi6403_mbhc_reg, &hi6403_hs_res_detect_func_null,
-			priv->resmgr, priv->irqmgr, &priv->mbhc);
+		hi6403_hs_cfg.res_detect_func = &hi6403_hs_res_detect_func_null;
 	}
+
+	ret = hi64xx_mbhc_init(codec, priv->node, &hi6403_hs_cfg, priv->resmgr, priv->irqmgr, &priv->mbhc);
 
 	if (0 != ret) {
 		dev_err(codec->dev, "%s: hi6403_mbhc_init fail. err code is %x .\n", __FUNCTION__, ret);
 		goto mbhc_init_err_exit;
 	}
 
-	hi6403_mad_set_param(codec);
+	hi6403_mad_set_param(codec, &priv->board_config);
 	ret = hi6403_hifi_config_init(codec, priv->resmgr, priv->irqmgr, priv->cdc_ctrl->bus_sel);
 	if (0 != ret) {
 		dev_err(codec->dev, "%s: hi6403_hifi_config_init fail. err code is %x .\n", __FUNCTION__, ret);
@@ -7137,6 +7188,23 @@ static void hi6403_get_board_hp_res_detect(struct device_node *node, struct hi64
 	}
 }
 
+static void hi6403_get_board_wakeup_hisi_algo_support(struct device_node *node, struct hi6403_board_cfg *board_cfg)
+{
+	unsigned int val = 0;
+
+	if (NULL == node || NULL == board_cfg) {
+		pr_err("%s: input null pointer! \n", __FUNCTION__);
+		return;
+	}
+
+	board_cfg->wakeup_hisi_algo_support = false;
+	if (!of_property_read_u32(node, "hisilicon,wakeup_hisi_algo_support", &val)) {
+		if (val) {
+			board_cfg->wakeup_hisi_algo_support = true;
+		}
+	}
+}
+
 static void hi6403_get_extern_hs_hifi_ak4376_I2S3(struct device_node *node, struct hi6403_board_cfg *board_cfg)
 {
 	unsigned int val = 0;
@@ -7341,6 +7409,7 @@ static void hi6403_get_board_cfg(struct device_node *node, struct hi6403_board_c
 #ifdef CONFIG_RCV_TDD_SUPPORT
 	hi6403_get_board_rcv_tdd(node, board_cfg);
 #endif
+	hi6403_get_board_wakeup_hisi_algo_support(node, board_cfg);
 }
 
 static int hi6403_irq_init(struct hi64xx_irq *irq_data)
@@ -7417,7 +7486,11 @@ static int hi6403_platform_probe(struct platform_device *pdev)
 	} else {
 		hi6403_get_board_cfg(priv->node, &priv->board_config);
 
-		dev_info(dev, "%s : mic_num %d , use_stereo_smartpa %d, classh_rcv_hp_switch %d, hp_high_low_change_enable %d, hp_res_detect_enable %d, extern_hs_hifi_ak4376_I2S3 %d, gpio_pd_enable %d, ir_gpio_id %u ear_ir_gpio_id %u hsd_cfg_enable %d bt_tri_gpio %d fm_enable %d, micbias_modify %d\n",
+		dev_info(dev, "%s : mic_num %d , use_stereo_smartpa %d, classh_rcv_hp_switch %d,"
+			" hp_high_low_change_enable %d, hp_res_detect_enable %d,"
+			" extern_hs_hifi_ak4376_I2S3 %d, gpio_pd_enable %d, ir_gpio_id %u,"
+			" ear_ir_gpio_id %u, hsd_cfg_enable %d, bt_tri_gpio %d, fm_enable %d,"
+			" micbias_modify %d, wakeup_hisi_algo_support %d\n",
 			__FUNCTION__, priv->board_config.mic_num,
 			priv->board_config.use_stereo_smartpa,
 			priv->board_config.classh_rcv_hp_switch,
@@ -7430,7 +7503,8 @@ static int hi6403_platform_probe(struct platform_device *pdev)
 			priv->board_config.hsd_cfg_enable,
 			priv->board_config.bt_tri_gpio,
 			priv->board_config.fm_enable,
-			priv->board_config.micbias_modify);
+			priv->board_config.micbias_modify,
+			priv->board_config.wakeup_hisi_algo_support);
 #ifdef CONFIG_HAC_SUPPORT
 		dev_info(dev, "%s : hac_gpio %d\n", __FUNCTION__, priv->board_config.hac_gpio);
 #endif

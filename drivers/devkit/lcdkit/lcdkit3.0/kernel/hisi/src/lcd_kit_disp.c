@@ -110,58 +110,6 @@ int lcd_kit_get_power_status(void)
 	return uc_panel_is_power_on;
 }
 
-static int lcd_kit_update_gamma_from_tpic(struct hisi_fb_data_type* hisifd)
-{
-	#define GAMMA_HEAD_LEN	2
-	#define GAMMA_HEAD	0x47
-	#define GAMMA_LEN	0x0a
-	int ret = 0;
-
-	if (disp_info->otp_gamma.support) {
-		static bool has_read = false;
-		struct ts_kit_ops *ts_ops = NULL;
-		int i = 0;
-
-		ts_ops = ts_kit_get_ops();
-		if (!ts_ops) {
-			LCD_KIT_ERR("ts_ops is null\n");
-			return LCD_KIT_FAIL;
-		}
-		/*read gamma from tpic*/
-		if (!has_read) {
-			if (ts_ops->read_otp_gamma) {
-				/*ret:0--invalide gamma, 1--valide gamma*/
-				ret = ts_ops->read_otp_gamma(disp_info->otp_gamma.gamma, GAMMA_MAX);
-			}
-			has_read = true;
-		}
-		/*print gamma head and len*/
-		LCD_KIT_INFO("HEAD:0x%x, LEN:0x%x\n", disp_info->otp_gamma.gamma[0], disp_info->otp_gamma.gamma[1]);
-		/*verify gamma*/
-		if ((disp_info->otp_gamma.gamma[0] != GAMMA_HEAD) || (disp_info->otp_gamma.gamma[1] != GAMMA_LEN)) {
-			LCD_KIT_INFO("not otp gamma\n");
-			return 0;
-		}
-		/*set up gamma cmds*/
-		for (i = 0; i < (GAMMA_MAX - GAMMA_HEAD_LEN); i++) {
-			disp_info->otp_gamma.gamma_cmds.cmds->payload[i+1] = disp_info->otp_gamma.gamma[i + GAMMA_HEAD_LEN];
-		}
-		/*adjust elvss*/
-		ret = lcd_kit_dsi_cmds_tx(hisifd, &disp_info->otp_gamma.elvss_cmds);
-		if (ret) {
-			LCD_KIT_ERR("send adjust elvss cmd error\n");
-			return ret;
-		}
-		/*send otp gamma*/
-		ret = lcd_kit_dsi_cmds_tx(hisifd, &disp_info->otp_gamma.gamma_cmds);
-		if (ret) {
-			LCD_KIT_ERR("send otp gamma cmd error\n");
-			return ret;
-		}
-	}
-	return ret;
-}
-
 static int lcd_kit_on(struct platform_device* pdev)
 {
 	struct hisi_fb_data_type* hisifd = NULL;
@@ -213,10 +161,6 @@ static int lcd_kit_on(struct platform_device* pdev)
 			if (common_ops->panel_on_lp) {
 				ret = common_ops->panel_on_lp((void*)hisifd);
 			}
-			/*update gamma*/
-			lcd_kit_update_gamma_from_tpic(hisifd);
-			/*read power status*/
-			lcd_kit_read_power_status(hisifd);
 			pinfo->lcd_init_step = LCD_INIT_MIPI_HS_SEND_SEQUENCE;
 			break;
 		case LCD_INIT_MIPI_HS_SEND_SEQUENCE:
@@ -269,6 +213,7 @@ static int lcd_kit_off(struct platform_device* pdev)
 	struct hisi_fb_data_type* hisifd = NULL;
 	struct hisi_panel_info* pinfo = NULL;
 	struct lcd_kit_ops *lcd_ops = NULL;
+	char *panel_name = common_info->panel_model != NULL ? common_info->panel_model : disp_info->compatible;
 
 	if (NULL == pdev) {
 		LCD_KIT_ERR("NULL Pointer\n");
@@ -301,6 +246,8 @@ static int lcd_kit_off(struct platform_device* pdev)
 	}
 	switch (pinfo->lcd_uninit_step) {
 		case LCD_UNINIT_MIPI_HS_SEND_SEQUENCE:
+			// check mipi errors
+			common_ops->mipi_check(hisifd, panel_name, disp_info->quickly_sleep_out.panel_on_record_tv.tv_sec);
 			// backlight off
 			hisi_lcd_backlight_off(pdev);
 			if (common_ops->panel_off_hs) {
@@ -692,8 +639,6 @@ static int lcd_kit_set_fastboot(struct platform_device* pdev)
 	if (common_info->check_thread.check_bl_support) {
 		fastboot_bl_short_check();
 	}
-	/*update gamma*/
-	lcd_kit_update_gamma_from_tpic(hisifd);
 	return LCD_KIT_OK;
 }
 
@@ -936,7 +881,9 @@ static int lcd_kit_probe(struct platform_device* pdev)
 	/*7.init panel ops*/
 	lcd_kit_panel_init();
 	/*8.init debug*/
+#ifdef LCD_KIT_DEBUG_ENABLE
 	lcd_kit_dbg_init();
+#endif
 	/*9.probe driver*/
 	if (hisi_fb_device_probe_defer(pinfo->type, pinfo->bl_set_type)) {
 		goto err_probe_defer;
@@ -1006,10 +953,6 @@ static int __init lcd_kit_init(void)
 		ret = -1;
 		return ret;
 	}
-	if(of_property_read_u32(np, "board_version", &disp_info->board_version)){
-		disp_info->board_version = 0;
-	}
-	LCD_KIT_INFO("disp_info->board_version = 0x%x\n", disp_info->board_version);
 	OF_PROPERTY_READ_U32_RETURN(np, "product_id", &disp_info->product_id);
 	LCD_KIT_INFO("disp_info->product_id = %d", disp_info->product_id);
 	disp_info->compatible = (char*)of_get_property(np, "lcd_panel_type", NULL);

@@ -40,6 +40,9 @@
 #define CMD_HOVER               0x91
 #define CMD_FORCE               0x92
 #define CMD_SLEEP               0x96
+#define CMD_PT_MODE		0x05
+
+#define PT_MODE         0
 
 #define FEATURE_ENABLE          1
 #define FEATURE_DISABLE         0
@@ -64,20 +67,29 @@ struct goodix_module_info {
 #pragma pack()
 
 struct goodix_module_info module_info;
-static int goodix_frame_addr;
-static int goodix_frame_len;
-static int goodix_cmd_addr;
+static int goodix_frame_addr = 0;
+static int goodix_frame_len = 0;
+static int goodix_cmd_addr = 0;
+static unsigned int gs_thp_udfp_stauts = 0;
 
 static int thp_goodix_spi_read(struct thp_device *tdev, unsigned int addr,
 			   u8 *data, unsigned int len)
 {
-	struct spi_device *spi = tdev->thp_core->sdev;
-	u8 *rx_buf = tdev->rx_buff;
-	u8 *tx_buf = tdev->tx_buff;
+	struct spi_device *spi = NULL;
+	u8 *rx_buf = NULL;
+	u8 *tx_buf = NULL;
 	u8 start_cmd_buf[3];
 	struct spi_transfer xfers[2];
 	struct spi_message spi_msg;
 	int ret = 0;
+
+	if (!tdev || !data || !tdev->tx_buff || !tdev->rx_buff || !tdev->thp_core || !tdev->thp_core->sdev) {
+		THP_LOG_ERR("%s: tdev null\n", __func__);
+		return -EINVAL;
+	}
+	spi = tdev->thp_core->sdev;
+	rx_buf = tdev->rx_buff;
+	tx_buf = tdev->tx_buff;
 
 	spi_message_init(&spi_msg);
 	memset(xfers, 0, sizeof(xfers));
@@ -112,11 +124,18 @@ static int thp_goodix_spi_read(struct thp_device *tdev, unsigned int addr,
 static int thp_goodix_spi_write(struct thp_device *tdev,
 		unsigned int addr, u8 *data, unsigned int len)
 {
-	struct spi_device *spi = tdev->thp_core->sdev;
-	u8 *tx_buf = tdev->tx_buff;
+	struct spi_device *spi = NULL;
+	u8 *tx_buf = NULL;
 	struct spi_transfer xfers;
 	struct spi_message spi_msg;
 	int ret = 0;
+
+	if (!tdev || !data || !tdev->tx_buff || !tdev->thp_core || !tdev->thp_core->sdev) {
+		THP_LOG_ERR("%s: tdev null\n", __func__);
+		return -EINVAL;
+	}
+	spi = tdev->thp_core->sdev;
+	tx_buf = tdev->tx_buff;
 
 	spi_message_init(&spi_msg);
 	memset(&xfers, 0, sizeof(xfers));
@@ -144,6 +163,10 @@ static int thp_goodix_switch_cmd(struct thp_device *tdev, u8 cmd, u8 status)
 	int ret;
 	u8 cmd_buf[4] = {0};
 	u8 cmd_ack = 0;
+	if (!tdev) {
+		THP_LOG_ERR("%s: tdev null\n", __func__);
+		return -EINVAL;
+	}
 
 	cmd_buf[0] = cmd;
 	cmd_buf[1] = status;
@@ -172,9 +195,15 @@ static int thp_goodix_switch_cmd(struct thp_device *tdev, u8 cmd, u8 status)
 
 static int thp_goodix_init(struct thp_device *tdev)
 {
-	int rc;
-	struct thp_core_data *cd = tdev->thp_core;
-	struct device_node *goodix_node = of_get_child_by_name(cd->thp_node,
+	int rc = 0;
+	struct thp_core_data *cd = NULL;
+	struct device_node *goodix_node = NULL;
+	if (!tdev) {
+		THP_LOG_ERR("%s: tdev null\n", __func__);
+		return -EINVAL;
+	}
+	cd = tdev->thp_core;
+	goodix_node = of_get_child_by_name(cd->thp_node,
 						THP_GOODIX_DEV_NODE_NAME);
 
 	THP_LOG_INFO("%s: called\n", __func__);
@@ -220,6 +249,10 @@ static int thp_goodix_communication_check(struct thp_device *tdev)
 	int retry;
 	u8 temp_buf[GOODIX_MASK_ID_LEN + 1] = {0};
 	u8 checksum = 0;
+	if (!tdev) {
+		THP_LOG_ERR("%s: tdev null\n", __func__);
+		return -EINVAL;
+	}
 
 	len = sizeof(module_info);
 	memset(&module_info, 0, len);
@@ -277,12 +310,16 @@ static void goodix_power_release(void)
 {
 	thp_power_supply_put(THP_VCC);
 	thp_power_supply_put(THP_IOVDD);
+	return;
 }
 
 static int goodix_power_on(struct thp_device *tdev)
 {
 	int ret;
-
+	if (!tdev) {
+		THP_LOG_ERR("%s: tdev null\n", __func__);
+		return -EINVAL;
+	}
 	THP_LOG_INFO("%s:called\n", __func__);
 	gpio_set_value(tdev->gpios->cs_gpio, GPIO_HIGH);
 
@@ -298,6 +335,10 @@ static int goodix_power_on(struct thp_device *tdev)
 static int goodix_power_off(struct thp_device *tdev)
 {
 	int ret;
+	if (!tdev) {
+		THP_LOG_ERR("%s: tdev null\n", __func__);
+		return -EINVAL;
+	}
 
 	gpio_set_value(tdev->gpios->rst_gpio, GPIO_LOW);
 	thp_do_time_delay(tdev->timing_config.suspend_reset_after_delay_ms);//1ms
@@ -312,6 +353,16 @@ static int goodix_power_off(struct thp_device *tdev)
 	return ret;
 }
 
+static void thp_goodix_timing_work(struct thp_device *tdev)
+{
+	if (!tdev) {
+		THP_LOG_ERR("%s: tdev null\n", __func__);
+		return -EINVAL;
+	}
+	THP_LOG_INFO("%s:called,do hard reset\n", __func__);
+	gpio_direction_output(tdev->gpios->rst_gpio, THP_RESET_HIGH);
+	thp_do_time_delay(tdev->timing_config.boot_reset_after_delay_ms);
+}
 
 static int checksum_16(u8 *data, int size)
 {
@@ -338,7 +389,10 @@ static int thp_goodix_get_afe_info(struct thp_device *tdev)
 	u8 buf[2] = {0};
 	u8 afe_data_buf[GOODIX_MAX_AFE_LEN] = {0};
 	u8 debug_buf[108] = {0};
-
+	if (!tdev) {
+		THP_LOG_ERR("%s: tdev null\n", __func__);
+		return -EINVAL;
+	}
 	ret = thp_goodix_spi_read(tdev, GOODIX_AFE_INFO_ADDR,
 			buf, sizeof(buf));
 	if (ret) {
@@ -408,6 +462,8 @@ int thp_goodix_chip_detect(struct thp_device *tdev)
 		THP_LOG_ERR("%s: power on failed\n", __func__);
 	}
 
+	thp_goodix_timing_work(tdev);
+
 	if (thp_goodix_communication_check(tdev)) {
 		THP_LOG_ERR("%s:communication check fail\n", __func__);
 		goodix_power_off(tdev);
@@ -423,7 +479,7 @@ int thp_goodix_chip_detect(struct thp_device *tdev)
 static int thp_goodix_get_frame(struct thp_device *tdev,
 			char *buf, unsigned int len)
 {
-	if (!tdev) {
+	if (!tdev || !buf) {
 		THP_LOG_INFO("%s: input dev null\n", __func__);
 		return -ENOMEM;
 	}
@@ -440,13 +496,20 @@ static int thp_goodix_resume(struct thp_device *tdev)
 {
 	int ret = 0;
 	THP_LOG_INFO("%s: called\n", __func__);
-
-	if (thp_get_status(THP_STAUTS_UDFP)) {
+	if (!tdev) {
+		THP_LOG_ERR("%s: tdev null\n", __func__);
+		return -EINVAL;
+	}
+	if (gs_thp_udfp_stauts) {
 		THP_LOG_INFO("enable frame data report\n");
 		ret =  thp_goodix_switch_cmd(tdev, CMD_FRAME_DATA, FEATURE_ENABLE);
 		if (ret)
 			THP_LOG_ERR("failed enable frame data report\n");
-	} else {
+	} else if(is_pt_test_mode(tdev)){
+		gpio_set_value(tdev->gpios->rst_gpio, GPIO_LOW);
+		thp_do_time_delay(tdev->timing_config.resume_reset_after_delay_ms);//1ms
+		gpio_set_value(tdev->gpios->rst_gpio, GPIO_HIGH);
+	}else{
 		goodix_power_on(tdev);
 	}
 
@@ -458,13 +521,23 @@ static int thp_goodix_suspend(struct thp_device *tdev)
 	int ret = 0;
 
 	THP_LOG_INFO("%s: called\n", __func__);
-
-	if (thp_get_status(THP_STAUTS_UDFP) || is_pt_test_mode(tdev)) {
+	if (!tdev) {
+		THP_LOG_ERR("%s: tdev null\n", __func__);
+		return -EINVAL;
+	}
+	gs_thp_udfp_stauts = thp_get_status(THP_STAUTS_UDFP);
+	if (gs_thp_udfp_stauts) {//To avoid THP_STAUTS_UDFP be changed in suspend status.
 		THP_LOG_INFO("disable frame data report\n");
 		ret =  thp_goodix_switch_cmd(tdev, CMD_FRAME_DATA, FEATURE_DISABLE);
 		if (ret)
 			THP_LOG_ERR("failed disable frame data report\n");
-	} else {
+
+	} else if(is_pt_test_mode(tdev)){
+		THP_LOG_INFO("%s: suspend PT mode \n", __func__);
+		ret =  thp_goodix_switch_cmd(tdev, CMD_PT_MODE, PT_MODE);
+		if (ret)
+			THP_LOG_ERR("failed enable PT mode\n");
+	}else{
 		goodix_power_off(tdev);
 		THP_LOG_INFO("enter poweroff mode\n");
 	}
@@ -477,6 +550,10 @@ static int goodix_get_project_id(struct thp_device *tdev, char *buf, unsigned in
 
 	char proj_id[THP_PROJECT_ID_LEN + 1] = {0};
 	int ret = 0;
+	if (!tdev || !buf) {
+		THP_LOG_ERR("%s: tdev null\n", __func__);
+		return -EINVAL;
+	}
 	ret = thp_goodix_spi_read(tdev, GOODIX_PROJECT_ID_ADDR, proj_id, THP_PROJECT_ID_LEN);
 	if(ret){
 		THP_LOG_ERR("Project_id Read ERR\n");
@@ -496,9 +573,23 @@ static int goodix_get_project_id(struct thp_device *tdev, char *buf, unsigned in
 static void thp_goodix_exit(struct thp_device *tdev)
 {
 	THP_LOG_INFO("%s: called\n", __func__);
+	if (!tdev) {
+		THP_LOG_ERR("%s: tdev null\n", __func__);
+		return -EINVAL;
+	}
 	kfree(tdev->tx_buff);
 	kfree(tdev->rx_buff);
 	kfree(tdev);
+	return;
+}
+
+static int thp_goodix_afe_notify_callback(struct thp_device *tdev, unsigned long event)
+{
+	if (!tdev) {
+		THP_LOG_ERR("%s: tdev null\n", __func__);
+		return -EINVAL;
+	}
+	return thp_goodix_get_afe_info(tdev);
 }
 
 struct thp_device_ops goodix_dev_ops = {
@@ -509,6 +600,7 @@ struct thp_device_ops goodix_dev_ops = {
 	.suspend = thp_goodix_suspend,
 	.get_project_id = goodix_get_project_id,
 	.exit = thp_goodix_exit,
+	.afe_notify = thp_goodix_afe_notify_callback,
 };
 
 static int __init thp_goodix_module_init(void)

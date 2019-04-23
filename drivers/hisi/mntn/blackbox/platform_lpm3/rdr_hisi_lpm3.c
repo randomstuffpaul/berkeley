@@ -73,7 +73,6 @@ static volatile u32 g_modid;
 static char *sctrl_base;
 
 /*lpm3 log cleartext define*/
-#define LPM3_LOG_OFFSET(addr) ((u32)(addr - g_lpmcu_rdr_ddr_addr))
 typedef int (*cleartext_func_t)(char *dir_path, s8 *file_name, u64 log_addr, u32 log_len);
 
 typedef struct LOG_LPM3_CLEARTEXT {
@@ -91,16 +90,16 @@ static int lpm3_nvic_reg_prase(char *dir_path, s8 *file_name, u64 log_addr, u32 
 static int lpm3_log_prase(char *dir_path, s8 *file_name, u64 log_addr, u32 log_len);
 
 log_lpm3_cleartext_t g_lpm3_cleartext[] = {
-		{"HEAD_INFO.txt", LPM3_LOG_OFFSET(M3_RDR_SYS_CONTEXT_HEAD_ADDR), M3_RDR_SYS_CONTEXT_HEAD_SIZE, head_info_prase},
-		{"LPM3_CORE_REGS.txt", LPM3_LOG_OFFSET(M3_RDR_SYS_CONTEXT_M3_COREREG_ADDR), M3_RDR_SYS_CONTEXT_M3_COREREG_SIZE, lpm3_core_reg_prase},
-		{"LPM3_EXC_SPECIAL.txt", LPM3_LOG_OFFSET(M3_RDR_SYS_CONTEXT_EXC_SPECIAL_ADDR), M3_RDR_SYS_CONTEXT_EXC_SPECIAL_SIZE, lpm3_exc_special_prase},
-		{"LPM3_NVIC_REGS.txt", LPM3_LOG_OFFSET(M3_RDR_SYS_CONTEXT_M3_NVICREG_ADDR), M3_RDR_SYS_CONTEXT_M3_NVICREG_SIZE, lpm3_nvic_reg_prase},
-		{"CRG_PERI.txt", LPM3_LOG_OFFSET(M3_RDR_CRG_PERI_ADDR), M3_RDR_CRG_PERI_SIZE, system_reg_prase},
-		{"SCTRL.txt", LPM3_LOG_OFFSET(M3_RDR_SCTRL_ADDR), M3_RDR_SCTRL_SIZE, system_reg_prase},
-		{"PMCTRL.txt", LPM3_LOG_OFFSET(M3_RDR_PMCTRL_ADDR), M3_RDR_PMCTRL_SIZE, system_reg_prase},
-		{"PCTRL.txt", LPM3_LOG_OFFSET(M3_RDR_PCTRL_ADDR), M3_RDR_PCTRL_SIZE, system_reg_prase},
-		{"LPM3_LOG.txt", LPM3_LOG_OFFSET(M3_RDR_SYS_CONTEXT_M3_LOG_ADDR), M3_RDR_SYS_CONTEXT_M3_LOG_SIZE, lpm3_log_prase},
-		{"RUNTIME_VAR.txt", LPM3_LOG_OFFSET(M3_RDR_SYS_CONTEXT_RUNTIME_VAR_ADDR), M3_RDR_SYS_CONTEXT_RUNTIME_VAR_SIZE, system_reg_prase},
+		{"HEAD_INFO.txt", M3_RDR_SYS_CONTEXT_HEAD_OFFSET, M3_RDR_SYS_CONTEXT_HEAD_SIZE, head_info_prase},
+		{"LPM3_CORE_REGS.txt", M3_RDR_SYS_CONTEXT_M3_COREREG_OFFSET, M3_RDR_SYS_CONTEXT_M3_COREREG_SIZE, lpm3_core_reg_prase},
+		{"LPM3_EXC_SPECIAL.txt", M3_RDR_SYS_CONTEXT_EXC_SPECIAL_OFFSET, M3_RDR_SYS_CONTEXT_EXC_SPECIAL_SIZE, lpm3_exc_special_prase},
+		{"LPM3_NVIC_REGS.txt", M3_RDR_SYS_CONTEXT_M3_NVICREG_OFFSET, M3_RDR_SYS_CONTEXT_M3_NVICREG_SIZE, lpm3_nvic_reg_prase},
+		{"CRG_PERI.txt", M3_RDR_CRG_PERI_OFFSET, M3_RDR_CRG_PERI_SIZE, system_reg_prase},
+		{"SCTRL.txt", M3_RDR_SCTRL_OFFSET, M3_RDR_SCTRL_SIZE, system_reg_prase},
+		{"PMCTRL.txt", M3_RDR_PMCTRL_OFFSET, M3_RDR_PMCTRL_SIZE, system_reg_prase},
+		{"PCTRL.txt", M3_RDR_PCTRL_OFFSET, M3_RDR_PCTRL_SIZE, system_reg_prase},
+		{"LPM3_LOG.txt", M3_RDR_SYS_CONTEXT_M3_LOG_OFFSET, M3_RDR_SYS_CONTEXT_M3_LOG_SIZE, lpm3_log_prase},
+		{"RUNTIME_VAR.txt", M3_RDR_SYS_CONTEXT_RUNTIME_VAR_OFFSET, M3_RDR_SYS_CONTEXT_RUNTIME_VAR_SIZE, system_reg_prase},
 };
 
 /*lpm3 log cleartext -- head info*/
@@ -109,7 +108,7 @@ log_lpm3_cleartext_t g_lpm3_cleartext[] = {
 #define PC_LO_LOCK_TIMEOUT			(0x5CC5DEDE)
 #define PC_HI_LOCK_TIMEOUT			(0xC55CDEDE)
 #define CPU_CORE_NUM				(8)
-#define PC_INFO_STR_MAX_LENGTH		(48)
+#define PC_INFO_STR_MAX_LENGTH		(90)
 
 /*lpm3 nvic define*/
 #define NVIC_TYPE_OFFSET			(0x0100)	/*E000E100*/
@@ -327,6 +326,10 @@ static int system_reg_prase(char *dir_path, s8 *file_name, u64 log_addr, u32 log
 	return 0;
 }
 
+struct rdr_buf_head {
+	u32 acore_pc[CPU_CORE_NUM * 2];
+};
+
 static int head_info_prase(char *dir_path, s8 *file_name, u64 log_addr, u32 log_len)
 {
 	u8 cpu_idx;
@@ -335,6 +338,7 @@ static int head_info_prase(char *dir_path, s8 *file_name, u64 log_addr, u32 log_
 	bool error = false;
 	u32 data_low, data_high;
 	s8 pc_info[PC_INFO_STR_MAX_LENGTH];
+	struct rdr_buf_head *head;
 
 	fp = bbox_cleartext_get_filep(dir_path, file_name);
 	if (IS_ERR_OR_NULL(fp)) {
@@ -344,21 +348,26 @@ static int head_info_prase(char *dir_path, s8 *file_name, u64 log_addr, u32 log_
 
 	rdr_cleartext_print(fp, &error, "=================HEAD INFO START================\n");
 
-	for(cpu_idx = 0; cpu_idx < CPU_CORE_NUM; cpu_idx++) {
-		memset_s(pc_info, PC_INFO_STR_MAX_LENGTH, 0, PC_INFO_STR_MAX_LENGTH);
+	head = (struct rdr_buf_head *)log_addr;
+	for (cpu_idx = 0; cpu_idx < CPU_CORE_NUM; cpu_idx++) {
 		pc_info[PC_INFO_STR_MAX_LENGTH - 1] = '\0';
 
-		data_low = *((u32 volatile *)(log_addr + cpu_idx * sizeof(u64)));
+		data_low = head->acore_pc[2 * cpu_idx];
 		BB_PRINT_PN("lpm3 cleartest head_info low: 0x%x.\n", data_low);
-		data_high= *((u32 volatile *)(log_addr + cpu_idx * sizeof(u64) + sizeof(u32)));
+		data_high = head->acore_pc[2 * cpu_idx + 1];
 		BB_PRINT_PN("lpm3 cleartest head_info high: 0x%x.\n", data_high);
 
 		if (data_low == PC_LO_PWR_DOWN && data_high == PC_HI_PWR_DOWN)
-			ret = snprintf_s(pc_info, PC_INFO_STR_MAX_LENGTH, PC_INFO_STR_MAX_LENGTH - 1, "cpu%d: %s\n", cpu_idx, "PWR_DOWN");
+			ret = snprintf_s(pc_info, PC_INFO_STR_MAX_LENGTH, PC_INFO_STR_MAX_LENGTH - 1,
+					"cpu%d: %s\n", cpu_idx, "PWR_DOWN");
 		else if (data_low == PC_LO_LOCK_TIMEOUT && data_high == PC_HI_LOCK_TIMEOUT)
-			ret = snprintf_s(pc_info, PC_INFO_STR_MAX_LENGTH, PC_INFO_STR_MAX_LENGTH - 1, "cpu%d: %s\n", cpu_idx, "LOCK_TIMEOUT");
-		else
-			ret = snprintf_s(pc_info, PC_INFO_STR_MAX_LENGTH, PC_INFO_STR_MAX_LENGTH - 1, "cpu%d PC: 0x%08x%08x\n", cpu_idx, data_high, data_low);
+			ret = snprintf_s(pc_info, PC_INFO_STR_MAX_LENGTH, PC_INFO_STR_MAX_LENGTH - 1,
+					"cpu%d: %s\n", cpu_idx, "LOCK_TIMEOUT");
+		else {
+			ret = snprintf_s(pc_info, PC_INFO_STR_MAX_LENGTH, PC_INFO_STR_MAX_LENGTH - 1,
+					"cpu%d PC: 0x%08x%08x\n", cpu_idx, data_high, data_low);
+		}
+
 		if (ret < 0) {
 			BB_PRINT_ERR("[%s], snprintf_s ret %d!\n", __func__, ret);
 			return -1;

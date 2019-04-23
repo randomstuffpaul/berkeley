@@ -160,6 +160,7 @@ struct kbase_mem_phy_alloc {
 			dma_addr_t *dma_addrs;
 		} user_buf;
 	} imported;
+	unsigned int  lb_policy_id; /* the cache policy id of the system-cache. */
 	u64 header_page_number;
 };
 
@@ -300,8 +301,26 @@ struct kbase_va_region {
 /* Memory has permanent kernel side mapping */
 #define KBASE_REG_PERMANENT_KERNEL_MAPPING (1ul << 25)
 
+/*
+ * GPU VA region has been freed by the userspace, but still remains allocated
+ * due to the reference held by CPU mappings created on the GPU VA region.
+ *
+ * A region with this flag set has had kbase_gpu_munmap() called on it, but can
+ * still be looked-up in the region tracker as a non-free region. Hence must
+ * not create or update any more GPU mappings on such regions because they will
+ * not be unmapped when the region is finally destroyed.
+ *
+ * Since such regions are still present in the region tracker, new allocations
+ * attempted with BASE_MEM_SAME_VA might fail if their address intersects with
+ * a region with this flag set.
+ *
+ * In addition, this flag indicates the gpu_alloc member might no longer valid
+ * e.g. in infinite cache simulation.
+ */
+#define KBASE_REG_VA_FREED (1ul << 26)
+
 /* Scramble memory*/
-#define KBASE_REG_SCRAMBLE_BIT        (1ul << 26)
+#define KBASE_REG_SCRAMBLE_BIT        (1ul << 31)
 
 #define KBASE_REG_ZONE_SAME_VA      KBASE_REG_ZONE(0)
 
@@ -333,11 +352,73 @@ struct kbase_va_region {
 	u16 jit_usage_id;
 	/* The JIT bin this allocation came from */
 	u8 jit_bin_id;
+
+	int    va_refcnt; /* number of users of this va */
 #if MALI_GMC
 	struct work_struct gmc_work;
 	int op;
 #endif
 };
+
+static inline bool kbase_is_region_free(struct kbase_va_region *reg)
+{
+	return (!reg || reg->flags & KBASE_REG_FREE);
+}
+
+static inline bool kbase_is_region_invalid(struct kbase_va_region *reg)
+{
+	return (!reg || reg->flags & KBASE_REG_VA_FREED);
+}
+
+static inline bool kbase_is_region_invalid_or_free(struct kbase_va_region *reg)
+{
+	/*
+	 * Possibly not all functions that find regions would be using this
+	 * helper, so they need to be checked when maintaining this function.
+	 */
+	return (kbase_is_region_invalid(reg) ||	kbase_is_region_free(reg));
+}
+
+int kbase_remove_va_region(struct kbase_va_region *reg);
+static inline void kbase_region_refcnt_free(struct kbase_va_region *reg)
+{
+	/* If region was mapped then remove va region*/
+	if (reg->start_pfn)
+		kbase_remove_va_region(reg);
+
+	/* To detect use-after-free in debug builds */
+	KBASE_DEBUG_CODE(reg->flags |= KBASE_REG_FREE);
+	kfree(reg);
+}
+
+static inline struct kbase_va_region *kbase_va_region_alloc_get(
+		struct kbase_context *kctx, struct kbase_va_region *region)
+{
+	lockdep_assert_held(&kctx->reg_lock);
+
+	WARN_ON(!region->va_refcnt);
+
+	/* non-atomic as kctx->reg_lock is held */
+	region->va_refcnt++;
+
+	return region;
+}
+
+static inline struct kbase_va_region *kbase_va_region_alloc_put(
+		struct kbase_context *kctx, struct kbase_va_region *region)
+{
+	lockdep_assert_held(&kctx->reg_lock);
+
+	WARN_ON(region->va_refcnt <= 0);
+	WARN_ON(region->flags & KBASE_REG_FREE);
+
+	/* non-atomic as kctx->reg_lock is held */
+	region->va_refcnt--;
+	if (!region->va_refcnt)
+		kbase_region_refcnt_free(region);
+
+	return NULL;
+}
 
 /* Common functions */
 static inline struct tagged_addr *kbase_get_cpu_phy_pages(
@@ -423,6 +504,7 @@ static inline struct kbase_mem_phy_alloc *kbase_alloc_create(size_t nr_pages, en
 		alloc->imported.user_buf.dma_addrs =
 				(void *) (alloc->pages + nr_pages);
 
+	alloc->lb_policy_id = 0;
 	alloc->header_page_number = 0;
 	return alloc;
 }
@@ -510,6 +592,7 @@ static inline u32 kbase_atomic_sub_pages(u32 num_pages, atomic_t *used_pages)
  * @pool:      Memory pool to initialize
  * @max_size:  Maximum number of free pages the pool can hold
  * @order:     Page order for physical page size (order=0=>4kB, order=9=>2MB)
+ * @lb_policy_id: The policy id of last buffer, 0 for normal memory.
  * @kbdev:     Kbase device where memory is used
  * @next_pool: Pointer to the next pool or NULL.
  *
@@ -532,6 +615,7 @@ static inline u32 kbase_atomic_sub_pages(u32 num_pages, atomic_t *used_pages)
 int kbase_mem_pool_init(struct kbase_mem_pool *pool,
 		size_t max_size,
 		size_t order,
+		unsigned int lb_policy_id,
 		struct kbase_device *kbdev,
 		struct kbase_mem_pool *next_pool);
 
@@ -817,7 +901,6 @@ int kbase_add_va_region(struct kbase_context *kctx, struct kbase_va_region *reg,
 int kbase_add_va_region_rbtree(struct kbase_device *kbdev,
 		struct kbase_va_region *reg, u64 addr, size_t nr_pages,
 		size_t align);
-int kbase_remove_va_region(struct kbase_va_region *reg);
 
 bool kbase_check_alloc_flags(unsigned long flags);
 bool kbase_check_import_flags(unsigned long flags);
@@ -1102,6 +1185,10 @@ enum hrtimer_restart kbasep_as_poke_timer_callback(struct hrtimer *timer);
 void kbase_as_poking_timer_retain_atom(struct kbase_device *kbdev, struct kbase_context *kctx, struct kbase_jd_atom *katom);
 void kbase_as_poking_timer_release_atom(struct kbase_device *kbdev, struct kbase_context *kctx, struct kbase_jd_atom *katom);
 
+
+struct kbase_mem_pool* kbase_mem_select_pool(struct kbase_context *kctx,
+		unsigned int lb_policy_id, bool large_page);
+
 /**
  * kbase_alloc_phy_pages_helper - Allocates physical pages.
  * @alloc:              allocation object to add pages to
@@ -1204,30 +1291,15 @@ void kbase_free_phy_pages_helper_locked(struct kbase_mem_phy_alloc *alloc,
 
 static inline void kbase_set_dma_addr(struct page *p, dma_addr_t dma_addr)
 {
-	SetPagePrivate(p);
-	if (sizeof(dma_addr_t) > sizeof(p->private)) {
-		/* on 32-bit ARM with LPAE dma_addr_t becomes larger, but the
-		 * private field stays the same. So we have to be clever and
-		 * use the fact that we only store DMA addresses of whole pages,
-		 * so the low bits should be zero */
-		KBASE_DEBUG_ASSERT(!(dma_addr & (PAGE_SIZE - 1)));
-		set_page_private(p, dma_addr >> PAGE_SHIFT);
-	} else {
-		set_page_private(p, dma_addr);
-	}
 }
 
 static inline dma_addr_t kbase_dma_addr(struct page *p)
 {
-	if (sizeof(dma_addr_t) > sizeof(p->private))
-		return ((dma_addr_t)page_private(p)) << PAGE_SHIFT;
-
-	return (dma_addr_t)page_private(p);
+	return (dma_addr_t)page_to_phys(p);
 }
 
 static inline void kbase_clear_dma_addr(struct page *p)
 {
-	ClearPagePrivate(p);
 }
 
 /**

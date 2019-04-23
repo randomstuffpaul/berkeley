@@ -23,3 +23,10 @@ config HISI_PMALLOC
 	It allows to write-protect variables allocated dynamically
 	ls /sys/kernel/pmalloc
 
+config DEBUG_HISI_PMALLOC
+	bool "Tests for Protectable Memory Allocator"
+	default y
+	depends on HISI_PMALLOC && HISI_HHEE_DEBUG
+	help
+	Various entries are listed under /sys/kernel/debug/pmalloc
+

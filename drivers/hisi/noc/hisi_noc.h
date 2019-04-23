@@ -38,6 +38,7 @@
 #define PMCTRL_POWER_IDLE_POISION2 2
 #define GET_PMCTRL_POWER_IDLE1 16
 #define GET_PMCTRL_POWER_IDLE2 32
+#define HIGH_ENABLE_MASK 16
 
 /* NOTE: Must the same order with DTS.*/
 enum NOC_REG_DUMP_NAME {
@@ -78,6 +79,8 @@ struct hisi_noc_reg_list {
 	unsigned int pmctrl_power_idlereq2_offset;
 	unsigned int pmctrl_power_idleack2_offset;
 	unsigned int pmctrl_power_idle2_offset;
+	unsigned int pmctrl_int1_stat_offset;
+	unsigned int pmctrl_int1_mask_offset;
 };
 
 struct hisi_noc_err_probe_reg {

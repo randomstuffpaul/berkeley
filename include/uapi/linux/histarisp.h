@@ -256,6 +256,7 @@ typedef struct _msg_req_map_buffer_t
     unsigned int cam_id;
     unsigned int mem_pool_buffer;
     unsigned int buffer_size;
+    unsigned int vendor_capability_extend;//bit[0]: 1-pdaf support,0- pdaf not support;bit[1]:1-rear dual camera support,0-rear dual camera not support; others: reserved
 } msg_req_map_buffer_t;
 
 typedef struct _msg_ack_map_buffer_t

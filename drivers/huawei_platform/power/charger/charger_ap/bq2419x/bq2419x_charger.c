@@ -32,13 +32,14 @@
 #include <linux/irq.h>
 #include <linux/notifier.h>
 #include <linux/mutex.h>
+#include <linux/raid/pq.h>
+
 #include <linux/hisi/usb/hisi_usb.h>
 #include <linux/hisi/hisi_adc.h>
 #include <huawei_platform/log/hw_log.h>
 #ifdef CONFIG_HUAWEI_HW_DEV_DCT
 #include <huawei_platform/devdetect/hw_dev_dec.h>
 #endif
-#include <linux/raid/pq.h>
 #include <huawei_platform/power/huawei_charger.h>
 #ifdef CONFIG_HISI_BCI_BATTERY
 #include <linux/power/hisi/hisi_bci_battery.h>
@@ -49,8 +50,12 @@
 HWLOG_REGIST();
 
 struct bq2419x_device_info *g_bq2419x_dev;
-static unsigned int rilim = 220;	/*this should be configured in dts file based on the real value of the Iin limit resistance*/
-static unsigned int adc_channel_iin = 10;	/*this should be configured in dts file based on the real adc channel number*/
+static unsigned int rilim = BQ2419X_RILIM_220_OHM; /* this should be configured in dts file based on the real value of the Iin limit resistance */
+static unsigned int adc_channel_iin = BQ2419X_ADC_CHANNEL_IIN_10; /* this should be configured in dts file based on the real adc channel number */
+
+#define MSG_LEN                      (2)
+#define BUF_LEN                      (26)
+
 /**********************************************************
 *  Function:       params_to_reg
 *  Discription:    turn the setting parameter to register value
@@ -62,10 +67,12 @@ static int params_to_reg(const int tbl[], int tbl_size, int val)
 	int i;
 
 	for (i = 1; i < tbl_size; i++) {
-		if (val < tbl[i])
-			return i - 1;
+		if (val < tbl[i]) {
+			return (i - 1);
+		}
 	}
-	return tbl_size - 1;
+
+	return (tbl_size - 1);
 }
 
 /**********************************************************
@@ -77,11 +84,15 @@ static int params_to_reg(const int tbl[], int tbl_size, int val)
 *                      num_bytes:bytes number
 *  return value:  0-sucess or others-fail
 **********************************************************/
-static int bq2419x_write_block(struct bq2419x_device_info *di, u8 *value,
-			       u8 reg, unsigned num_bytes)
+static int bq2419x_write_block(struct bq2419x_device_info *di, u8 *value, u8 reg, unsigned num_bytes)
 {
 	struct i2c_msg msg[1];
 	int ret = 0;
+
+	if (NULL == di || NULL == value) {
+		hwlog_err("error: di is null or value is null!\n");
+		return -EIO;
+	}
 
 	*value = reg;
 
@@ -94,12 +105,13 @@ static int bq2419x_write_block(struct bq2419x_device_info *di, u8 *value,
 
 	/* i2c_transfer returns number of messages transferred */
 	if (ret != 1) {
-		hwlog_err("i2c_write failed to transfer all messages\n");
+		hwlog_err("error: i2c_write failed to transfer all messages!\n");
 		if (ret < 0)
 			return ret;
 		else
 			return -EIO;
-	} else {
+	}
+	else {
 		return 0;
 	}
 }
@@ -113,12 +125,16 @@ static int bq2419x_write_block(struct bq2419x_device_info *di, u8 *value,
 *                      num_bytes:bytes number
 *  return value:  0-sucess or others-fail
 **********************************************************/
-static int bq2419x_read_block(struct bq2419x_device_info *di, u8 *value,
-			      u8 reg, unsigned num_bytes)
+static int bq2419x_read_block(struct bq2419x_device_info *di, u8 *value, u8 reg, unsigned num_bytes)
 {
-	struct i2c_msg msg[2];
+	struct i2c_msg msg[MSG_LEN];
 	u8 buf = 0;
 	int ret = 0;
+
+	if (NULL == di || NULL == value) {
+		hwlog_err("error: di is null or value is null!\n");
+		return -EIO;
+	}
 
 	buf = reg;
 
@@ -132,16 +148,17 @@ static int bq2419x_read_block(struct bq2419x_device_info *di, u8 *value,
 	msg[1].buf = value;
 	msg[1].len = num_bytes;
 
-	ret = i2c_transfer(di->client->adapter, msg, 2);
+	ret = i2c_transfer(di->client->adapter, msg, MSG_LEN);
 
 	/* i2c_transfer returns number of messages transferred */
-	if (ret != 2) {
-		hwlog_err("i2c_write failed to transfer all messages\n");
+	if (ret != MSG_LEN) {
+		hwlog_err("error: i2c_read failed to transfer all messages!\n");
 		if (ret < 0)
 			return ret;
 		else
 			return -EIO;
-	} else {
+	}
+	else {
 		return 0;
 	}
 }
@@ -156,8 +173,12 @@ static int bq2419x_read_block(struct bq2419x_device_info *di, u8 *value,
 static int bq2419x_write_byte(u8 reg, u8 value)
 {
 	struct bq2419x_device_info *di = g_bq2419x_dev;
-	/* 2 bytes offset 1 contains the data offset 0 is used by i2c_write */
-	u8 temp_buffer[2] = { 0 };
+	u8 temp_buffer[MSG_LEN] = { 0 }; /* 2 bytes offset 1 contains the data offset 0 is used by i2c_write */
+
+	if (NULL == di) {
+		hwlog_err("error: di is null!\n");
+		return -ENOMEM;
+	}
 
 	/* offset 1 contains the data */
 	temp_buffer[1] = value;
@@ -174,6 +195,11 @@ static int bq2419x_write_byte(u8 reg, u8 value)
 static int bq2419x_read_byte(u8 reg, u8 *value)
 {
 	struct bq2419x_device_info *di = g_bq2419x_dev;
+
+	if (NULL == di) {
+		hwlog_err("error: di is null!\n");
+		return -ENOMEM;
+	}
 
 	return bq2419x_read_block(di, value, reg, 1);
 }
@@ -193,8 +219,9 @@ static int bq2419x_write_mask(u8 reg, u8 MASK, u8 SHIFT, u8 value)
 	u8 val = 0;
 
 	ret = bq2419x_read_byte(reg, &val);
-	if (ret < 0)
+	if (ret < 0) {
 		return ret;
+	}
 
 	val &= ~MASK;
 	val |= ((value << SHIFT) & MASK);
@@ -219,8 +246,10 @@ static int bq2419x_read_mask(u8 reg, u8 MASK, u8 SHIFT, u8 *value)
 	u8 val = 0;
 
 	ret = bq2419x_read_byte(reg, &val);
-	if (ret < 0)
+	if (ret < 0) {
 		return ret;
+	}
+
 	val &= MASK;
 	val >>= SHIFT;
 	*value = val;
@@ -250,11 +279,8 @@ static int bq2419x_read_mask(u8 reg, u8 MASK, u8 SHIFT, u8 *value)
 #define BQ2419X_SYSFS_FIELD_RO(_name, r, f)                         \
 	BQ2419X_SYSFS_FIELD(_name, r, f, S_IRUGO, NULL)
 
-static ssize_t bq2419x_sysfs_show(struct device *dev,
-				  struct device_attribute *attr, char *buf);
-static ssize_t bq2419x_sysfs_store(struct device *dev,
-				   struct device_attribute *attr,
-				   const char *buf, size_t count);
+static ssize_t bq2419x_sysfs_show(struct device *dev, struct device_attribute *attr, char *buf);
+static ssize_t bq2419x_sysfs_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count);
 
 struct bq2419x_sysfs_field_info {
 	struct device_attribute attr;
@@ -327,10 +353,11 @@ static void bq2419x_sysfs_init_attrs(void)
 {
 	int i, limit = ARRAY_SIZE(bq2419x_sysfs_field_tbl);
 
-	for (i = 0; i < limit; i++)
+	for (i = 0; i < limit; i++) {
 		bq2419x_sysfs_attrs[i] = &bq2419x_sysfs_field_tbl[i].attr.attr;
+	}
 
-	bq2419x_sysfs_attrs[limit] = NULL;	/* Has additional entry for this */
+	bq2419x_sysfs_attrs[limit] = NULL; /* Has additional entry for this */
 }
 
 /**********************************************************
@@ -343,12 +370,15 @@ static struct bq2419x_sysfs_field_info *bq2419x_sysfs_field_lookup(const char *n
 {
 	int i, limit = ARRAY_SIZE(bq2419x_sysfs_field_tbl);
 
-	for (i = 0; i < limit; i++)
-		if (!strcmp(name, bq2419x_sysfs_field_tbl[i].attr.attr.name))
+	for (i = 0; i < limit; i++) {
+		if (!strcmp(name, bq2419x_sysfs_field_tbl[i].attr.attr.name)) {
 			break;
+		}
+	}
 
-	if (i >= limit)
+	if (i >= limit) {
 		return NULL;
+	}
 
 	return &bq2419x_sysfs_field_tbl[i];
 }
@@ -362,19 +392,22 @@ static struct bq2419x_sysfs_field_info *bq2419x_sysfs_field_lookup(const char *n
 *  return value:  0-sucess or others-fail
 **********************************************************/
 static ssize_t bq2419x_sysfs_show(struct device *dev,
-				  struct device_attribute *attr, char *buf)
+					struct device_attribute *attr, char *buf)
 {
 	struct bq2419x_sysfs_field_info *info;
 	int ret;
 	u8 v;
 
 	info = bq2419x_sysfs_field_lookup(attr->attr.name);
-	if (!info)
+	if (!info) {
+    		hwlog_err("error: get sysfs entries failed!\n");
 		return -EINVAL;
+	}
 
 	ret = bq2419x_read_mask(info->reg, info->mask, info->shift, &v);
-	if (ret)
+	if (ret) {
 		return ret;
+	}
 
 	return scnprintf(buf, PAGE_SIZE, "%hhx\n", v);
 }
@@ -389,24 +422,29 @@ static ssize_t bq2419x_sysfs_show(struct device *dev,
 *  return value:  0-sucess or others-fail
 **********************************************************/
 static ssize_t bq2419x_sysfs_store(struct device *dev,
-				   struct device_attribute *attr,
-				   const char *buf, size_t count)
+					struct device_attribute *attr,
+					const char *buf, size_t count)
 {
 	struct bq2419x_sysfs_field_info *info;
 	int ret;
 	u8 v;
 
 	info = bq2419x_sysfs_field_lookup(attr->attr.name);
-	if (!info)
+	if (!info) {
+		hwlog_err("error: get sysfs entries failed!\n");
 		return -EINVAL;
+	}
 
 	ret = kstrtou8(buf, 0, &v);
-	if (ret < 0)
+	if (ret < 0) {
+		hwlog_err("error: get kstrtou8 failed!\n");
 		return ret;
+	}
 
 	ret = bq2419x_write_mask(info->reg, info->mask, info->shift, v);
-	if (ret)
+	if (ret) {
 		return ret;
+	}
 
 	return count;
 }
@@ -434,7 +472,9 @@ static void bq2419x_sysfs_remove_group(struct bq2419x_device_info *di)
 {
 	sysfs_remove_group(&di->dev->kobj, &bq2419x_sysfs_attr_group);
 }
+
 #else
+
 static int bq2419x_sysfs_create_group(struct bq2419x_device_info *di)
 {
 	return 0;
@@ -443,6 +483,7 @@ static int bq2419x_sysfs_create_group(struct bq2419x_device_info *di)
 static inline void bq2419x_sysfs_remove_group(struct bq2419x_device_info *di)
 {
 }
+
 #endif
 
 static int bq2419x_device_check(void)
@@ -452,12 +493,13 @@ static int bq2419x_device_check(void)
 
 	ret = bq2419x_read_byte(BQ2419X_REG_VPRS, &reg);
 	if (ret) {
-		hwlog_err("read bq2419x charger version error !\n");
+		hwlog_err("error: device_check read fail!\n");
 		return CHARGE_IC_BAD;
 	}
 
-	if ((reg & BQ2419X_REG_VPRS_DEV_REG_MASK)
-	    && (reg & BQ2419X_REG_VPRS_PN_MASK)) {
+	hwlog_info("device_check [%x]=0x%x\n", BQ2419X_REG_VPRS, reg);
+
+	if ((reg & BQ2419X_REG_VPRS_DEV_REG_MASK) && (reg & BQ2419X_REG_VPRS_PN_MASK)) {
 		return CHARGE_IC_GOOD;
 	}
 
@@ -473,36 +515,47 @@ static int bq2419x_device_check(void)
 static int bq2419x_5v_chip_init(struct bq2419x_device_info *di)
 {
 	int ret = 0;
-	/*boost mode current limit = 500mA */
+
+	/* boost mode current limit = 500mA */
 	ret = bq2419x_write_byte(BQ2419X_REG_POC, 0x1a);
-	/*I2C watchdog timer setting = 80s */
-	/*fast charge timer setting = 12h */
+
+	/* I2C watchdog timer setting = 80s */
+	/* fast charge timer setting = 12h */
 	ret |= bq2419x_write_byte(BQ2419X_REG_CTTC, 0x2d);
-	/*iprechg = 256ma,iterm current = 128ma */
+
+	/* iprechg = 256ma,iterm current = 128ma */
 	ret |= bq2419x_write_byte(BQ2419X_REG_PCTCC, 0x10);
-	/*IR compensation voatge clamp = 48mV */
-	/*IR compensation resistor setting = 40mohm */
+
+	/* IR compensation voatge clamp = 48mV */
+	/* IR compensation resistor setting = 40mohm */
 	ret |= bq2419x_write_byte(BQ2419X_REG_ICTRC, 0x8f);
-	gpio_set_value(di->gpio_cd, 0);	/*enable charging*/
+
+	/* enable charging */
+	gpio_set_value(di->gpio_cd, 0);
 
 	return ret;
 }
+
 static int bq2419x_chip_init(struct chip_init_crit* init_crit)
 {
 	int ret = -1;
 	struct bq2419x_device_info *di = g_bq2419x_dev;
-	if (!di || !init_crit) {
-		hwlog_err("%s: di or init_crit is null\n", __func__);
+
+	if (NULL == di || NULL == init_crit) {
+		hwlog_err("error: di or init_crit is null!\n");
 		return -ENOMEM;
 	}
-	switch(init_crit->vbus) {
+
+	switch (init_crit->vbus) {
 		case ADAPTER_5V:
 			ret = bq2419x_5v_chip_init(di);
-			break;
+		break;
+
 		default:
-			hwlog_err("%s: init mode err\n", __func__);
-			break;
+			hwlog_err("error: invaid init_crit vbus mode!\n");
+		break;
 	}
+
 	return ret;
 }
 
@@ -517,15 +570,20 @@ static int bq2419x_set_input_current(int value)
 	int val = 0;
 	int array_size = ARRAY_SIZE(bq2419x_iin_values);
 
-	if (value > bq2419x_iin_values[array_size - 1])
+	if (value > bq2419x_iin_values[array_size - 1]) {
 		return bq2419x_iin_values[array_size - 1];
-	else if (value < bq2419x_iin_values[0])
+	}
+	else if (value < bq2419x_iin_values[0]) {
 		return bq2419x_iin_values[0];
+	}
 
 	val = params_to_reg(bq2419x_iin_values, array_size, value);
+
+	hwlog_info("set_input_current [%x]=0x%x\n", BQ2419X_REG_ISC, val);
+
 	return bq2419x_write_mask(BQ2419X_REG_ISC,
-				  BQ2419X_REG_ISC_IINLIM_MASK,
-				  BQ2419X_REG_ISC_IINLIM_SHIFT, val);
+				BQ2419X_REG_ISC_IINLIM_MASK,
+				BQ2419X_REG_ISC_IINLIM_SHIFT, val);
 }
 
 /**********************************************************
@@ -541,32 +599,39 @@ static int bq2419x_set_charge_current(int value)
 	int force_20pct_en = 0;
 	int array_size = ARRAY_SIZE(bq2419x_ichg_values);
 
-	if (value > bq2419x_ichg_values[array_size - 1])
+	if (value > bq2419x_ichg_values[array_size - 1]) {
 		return bq2419x_ichg_values[array_size - 1];
+	}
 
 	/* 1.If currentmA is below ICHG_512, we can set the ICHG to 5*currentmA and
 	   set the FORCE_20PCT in REG02 to make the true current 20% of the ICHG
 	   2.To slove the OCP BUG of BQ2419X, we need set the ICHG(lower than 1024mA)
-	   to 5*currentmA and set the FORCE_20PCT in REG02. */
+	   to 5*currentmA and set the FORCE_20PCT in REG02.
+	*/
 	if (value < 1024) {
 		value *= 5;
 		force_20pct_en = 1;
 	}
+
 	/* why don't return bq2419x_ichg_values[0] when value < bq2419x_ichg_values[0]?
 	   because the charge current have 20pct setting mode, if someone want to setting 100mA,
 	   we should set 100*5 by 20pct mode, instead of return 512mA.
-	 */
+	*/
 	ret = bq2419x_write_mask(BQ2419X_REG_CCC,
-				 BQ2419X_REG_CCC_FORCE_20PCT_MASK,
-				 BQ2419X_REG_CCC_FORCE_20PCT_SHIFT,
-				 force_20pct_en);
-	if (ret < 0)
+				BQ2419X_REG_CCC_FORCE_20PCT_MASK,
+				BQ2419X_REG_CCC_FORCE_20PCT_SHIFT, force_20pct_en);
+	if (ret < 0) {
+		hwlog_err("error: set_charge_current write fail!\n");
 		return ret;
+	}
 
 	val = params_to_reg(bq2419x_ichg_values, array_size, value);
+
+	hwlog_info("set_charge_current [%x]=0x%x\n", BQ2419X_REG_CCC, val);
+
 	return bq2419x_write_mask(BQ2419X_REG_CCC,
-				  BQ2419X_REG_CCC_ICHG_MASK,
-				  BQ2419X_REG_CCC_ICHG_SHIFT, val);
+				BQ2419X_REG_CCC_ICHG_MASK,
+				BQ2419X_REG_CCC_ICHG_SHIFT, val);
 }
 
 /**********************************************************
@@ -580,15 +645,20 @@ static int bq2419x_set_terminal_voltage(int value)
 	int val = 0;
 	int array_size = ARRAY_SIZE(bq2419x_vreg_values);
 
-	if (value > bq2419x_vreg_values[array_size - 1])
+	if (value > bq2419x_vreg_values[array_size - 1]) {
 		return bq2419x_vreg_values[array_size - 1];
-	else if (value < bq2419x_vreg_values[0])
+	}
+	else if (value < bq2419x_vreg_values[0]) {
 		return bq2419x_vreg_values[0];
+	}
 
 	val = params_to_reg(bq2419x_vreg_values, array_size, value);
+
+	hwlog_info("set_terminal_voltage [%x]=0x%x\n", BQ2419X_REG_CVC, val);
+
 	return bq2419x_write_mask(BQ2419X_REG_CVC,
-				  BQ2419X_REG_CVC_VREG_MASK,
-				  BQ2419X_REG_CVC_VREG_SHIFT, val);
+				BQ2419X_REG_CVC_VREG_MASK,
+				BQ2419X_REG_CVC_VREG_SHIFT, val);
 }
 
 /**********************************************************
@@ -602,15 +672,20 @@ static int bq2419x_set_dpm_voltage(int value)
 	int val = 0;
 	int array_size = ARRAY_SIZE(bq2419x_vindpm_values);
 
-	if (value > bq2419x_vindpm_values[array_size - 1])
+	if (value > bq2419x_vindpm_values[array_size - 1]) {
 		return bq2419x_vindpm_values[array_size - 1];
-	else if (value < bq2419x_vindpm_values[0])
+	}
+	else if (value < bq2419x_vindpm_values[0]) {
 		return bq2419x_vindpm_values[0];
+	}
 
 	val = params_to_reg(bq2419x_vindpm_values, array_size, value);
+
+	hwlog_info("set_dpm_voltage [%x]=0x%x\n", BQ2419X_REG_ISC, val);
+
 	return bq2419x_write_mask(BQ2419X_REG_ISC,
-				  BQ2419X_REG_ISC_VINDPM_MASK,
-				  BQ2419X_REG_ISC_VINDPM_SHIFT, val);
+				BQ2419X_REG_ISC_VINDPM_MASK,
+				BQ2419X_REG_ISC_VINDPM_SHIFT, val);
 }
 
 /**********************************************************
@@ -624,15 +699,20 @@ static int bq2419x_set_terminal_current(int value)
 	int val = 0;
 	int array_size = ARRAY_SIZE(bq2419x_iterm_values);
 
-	if (value > bq2419x_iterm_values[array_size - 1])
+	if (value > bq2419x_iterm_values[array_size - 1]) {
 		return bq2419x_iterm_values[array_size - 1];
-	else if (value < bq2419x_iterm_values[0])
+	}
+	else if (value < bq2419x_iterm_values[0]) {
 		return bq2419x_iterm_values[0];
+	}
 
 	val = params_to_reg(bq2419x_iterm_values, array_size, value);
+
+	hwlog_info("set_terminal_current [%x]=0x%x\n", BQ2419X_REG_PCTCC, val);
+
 	return bq2419x_write_mask(BQ2419X_REG_PCTCC,
-				  BQ2419X_REG_PCTCC_ITERM_MASK,
-				  BQ2419X_REG_PCTCC_ITERM_SHIFT, val);
+				BQ2419X_REG_PCTCC_ITERM_MASK,
+				BQ2419X_REG_PCTCC_ITERM_SHIFT, val);
 }
 
 /**********************************************************
@@ -646,9 +726,10 @@ static int bq2419x_set_charge_enable(int enable)
 	struct bq2419x_device_info *di = g_bq2419x_dev;
 
 	gpio_set_value(di->gpio_cd, !enable);
+
 	return bq2419x_write_mask(BQ2419X_REG_POC,
-				  BQ2419X_REG_POC_CHG_CONFIG_MASK,
-				  BQ2419X_REG_POC_CHG_CONFIG_SHIFT, enable);
+				BQ2419X_REG_POC_CHG_CONFIG_MASK,
+				BQ2419X_REG_POC_CHG_CONFIG_SHIFT, enable);
 }
 
 /**********************************************************
@@ -665,23 +746,25 @@ static int bq2419x_set_otg_enable(int enable)
 	gpio_set_value(di->gpio_cd, !enable);
 	val = enable << 1;
 
-	/*NOTICE:
+	/* NOTICE:
 	   why enable irq when entry to OTG mode only?
 	   because we care VBUS overloaded OCP or OVP's interrupt in boost mode
-	 */
+	*/
 	if ((!di->irq_active) && (enable)) {
-		di->irq_active = 1;
+		di->irq_active = 1; /* ACTIVE */
 		enable_irq(di->irq_int);
-	} else if ((di->irq_active) && (!enable)) {
-		di->irq_active = 0;
+	}
+	else if ((di->irq_active) && (!enable)) {
+		di->irq_active = 0; /* INACTIVE */
 		disable_irq(di->irq_int);
-	} else {
-		/*do nothing!!*/
+	}
+	else {
+		/* do nothing */
 	}
 
 	return bq2419x_write_mask(BQ2419X_REG_POC,
-				  BQ2419X_REG_POC_CHG_CONFIG_MASK,
-				  BQ2419X_REG_POC_CHG_CONFIG_SHIFT, val);
+				BQ2419X_REG_POC_CHG_CONFIG_MASK,
+				BQ2419X_REG_POC_CHG_CONFIG_SHIFT, val);
 }
 
 /**********************************************************
@@ -693,8 +776,8 @@ static int bq2419x_set_otg_enable(int enable)
 static int bq2419x_set_term_enable(int enable)
 {
 	return bq2419x_write_mask(BQ2419X_REG_CTTC,
-				  BQ2419X_REG_CTTC_EN_TERM_MASK,
-				  BQ2419X_REG_CTTC_EN_TERM_SHIFT, enable);
+				BQ2419X_REG_CTTC_EN_TERM_MASK,
+				BQ2419X_REG_CTTC_EN_TERM_SHIFT, enable);
 }
 
 /**********************************************************
@@ -709,25 +792,37 @@ static int bq2419x_get_charge_state(unsigned int *state)
 	int ret = 0;
 
 	ret = bq2419x_read_byte(BQ2419X_REG_SS, &reg);
-	if ((reg & BQ2419X_REG_SS_PG) == BQ2419X_REG_SS_NOTPG)
+
+	hwlog_info("get_charge_state [%x]=0x%x\n", BQ2419X_REG_SS, reg);
+
+	if ((reg & BQ2419X_REG_SS_PG) == BQ2419X_REG_SS_NOTPG) {
 		*state |= CHAGRE_STATE_NOT_PG;
+	}
 
-	if ((reg & BQ2419X_REG_SS_DPM) == BQ2419X_REG_SS_DPM)
+	if ((reg & BQ2419X_REG_SS_DPM) == BQ2419X_REG_SS_DPM) {
 		*state |= CHAGRE_STATE_INPUT_DPM;
+	}
 
-	if ((reg & BQ2419X_REG_SS_CHRGDONE) == BQ2419X_REG_SS_CHRGDONE)
+	if ((reg & BQ2419X_REG_SS_CHRGDONE) == BQ2419X_REG_SS_CHRGDONE) {
 		*state |= CHAGRE_STATE_CHRG_DONE;
+	}
 
 	ret |= bq2419x_read_byte(BQ2419X_REG_F, &reg);
 	ret |= bq2419x_read_byte(BQ2419X_REG_F, &reg);
-	if ((reg & BQ2419X_REG_F_WDT_TIMEOUT) == BQ2419X_REG_F_WDT_TIMEOUT)
+
+	hwlog_info("get_charge_state [%x]=0x%x\n", BQ2419X_REG_F, reg);
+
+	if ((reg & BQ2419X_REG_F_WDT_TIMEOUT) == BQ2419X_REG_F_WDT_TIMEOUT) {
 		*state |= CHAGRE_STATE_WDT_FAULT;
+	}
 
-	if ((reg & BQ2419X_REG_F_VBUS_OVP) == BQ2419X_REG_F_VBUS_OVP)
+	if ((reg & BQ2419X_REG_F_VBUS_OVP) == BQ2419X_REG_F_VBUS_OVP) {
 		*state |= CHAGRE_STATE_VBUS_OVP;
+	}
 
-	if ((reg & BQ2419X_REG_F_BATT_OVP) == BQ2419X_REG_F_BATT_OVP)
+	if ((reg & BQ2419X_REG_F_BATT_OVP) == BQ2419X_REG_F_BATT_OVP) {
 		*state |= CHAGRE_STATE_BATT_OVP;
+	}
 
 	return ret;
 }
@@ -741,8 +836,8 @@ static int bq2419x_get_charge_state(unsigned int *state)
 static int bq2419x_reset_watchdog_timer(void)
 {
 	return bq2419x_write_mask(BQ2419X_REG_POC,
-				  BQ2419X_REG_POC_WDT_RESET_MASK,
-				  BQ2419X_REG_POC_WDT_RESET_SHIFT, 0x01);
+				BQ2419X_REG_POC_WDT_RESET_MASK,
+				BQ2419X_REG_POC_WDT_RESET_SHIFT, 0x01);
 }
 
 /**********************************************************
@@ -759,11 +854,16 @@ static int bq2419x_get_Vilim_sample(void)
 
 	for (i = 0; i < retry_times; ++i) {
 		V_sample = hisi_adc_get_value(adc_channel_iin);
-		if (V_sample < 0)
-			hwlog_err("adc read channel 10 fail!\n");
-		else
+		if (V_sample < 0) {
+			hwlog_err("error: adc read channel 10 fail!\n");
+		}
+		else {
 			break;
+		}
 	}
+
+	hwlog_info("get Vilim_sample=%d\n", V_sample);
+
 	return V_sample;
 }
 
@@ -779,24 +879,28 @@ static int bq2419x_get_ilim(void)
 	int cnt = 0;
 	int V_temp;
 	int delay_times = 100;
-	int sample_num = 5;	/*use 5 samples to get an average value*/
+	int sample_num = 5; /* use 5 samples to get an average value */
 	int sum = 0;
-	int Kilim = 485;	/*based bq2419x spec*/
+	int Kilim = 485; /* based bq2419x spec */
 
 	for (i = 0; i < sample_num; ++i) {
 		V_temp = bq2419x_get_Vilim_sample();
 		if (V_temp >= 0) {
 			sum += V_temp;
 			++cnt;
-		} else {
-			hwlog_err("bq2419x get V_temp fail!\n");
 		}
+		else {
+			hwlog_err("error: get_ilim get V_temp fail!\n");
+		}
+
 		msleep(delay_times);
 	}
+
 	if (cnt > 0) {
 		return (sum * Kilim) / (rilim * cnt);
-	} else {
-		hwlog_err("use 0 as default Vilim!\n");
+	}
+	else {
+		hwlog_err("error: use 0 as default Vilim!\n");
 		return 0;
 	}
 }
@@ -805,8 +909,8 @@ static int bq2419x_get_ilim(void)
 *  Function:       bq2419x_check_charger_plugged
 *  Discription:    check whether USB or adaptor is plugged
 *  Parameters:     NULL
-*  return value:   1 means USB or adaptor plugged
-*                  0 means USB or adaptor not plugged
+*  return value:   TRUE means USB or adaptor plugged
+*                  FALSE means USB or adaptor not plugged
 **********************************************************/
 static int bq2419x_check_charger_plugged(void)
 {
@@ -814,11 +918,14 @@ static int bq2419x_check_charger_plugged(void)
 	int ret = 0;
 
 	ret = bq2419x_read_byte(BQ2419X_REG_SS, &reg);
-	if ((reg & BQ2419X_REG_SS_VBUS_STAT_MASK) ==
-	    BQ2419X_REG_SS_VBUS_PLUGGED) {
-		return 1;
+
+	hwlog_info("check_charger_plugged [%x]=0x%x\n", BQ2419X_REG_SS, reg);
+
+	if ((reg & BQ2419X_REG_SS_VBUS_STAT_MASK) == BQ2419X_REG_SS_VBUS_PLUGGED) {
+		return TRUE;
 	}
-	return 0;
+
+	return FALSE;
 }
 
 /**********************************************************
@@ -835,14 +942,18 @@ static int bq2419x_check_input_dpm_state(void)
 
 	ret = bq2419x_read_byte(BQ2419X_REG_SS, &reg);
 	if (ret < 0) {
-		hwlog_err("bq2419x_check_input_dpm_state err\n");
+		hwlog_err("error: check_input_dpm_state read fail!\n");
 		return ret;
 	}
 
-	if (reg & BQ2419X_REG_SS_DPM_STAT_MASK)
+	hwlog_info("check_input_dpm_state [%x]=0x%x\n", BQ2419X_REG_SS, reg);
+
+	if (reg & BQ2419X_REG_SS_DPM_STAT_MASK) {
 		return TRUE;
-	else
+	}
+	else {
 		return FALSE;
+	}
 }
 
 /**********************************************************
@@ -854,18 +965,21 @@ static int bq2419x_check_input_dpm_state(void)
 static int bq2419x_dump_register(char *reg_value)
 {
 	u8 reg[BQ2419X_REG_NUM] = { 0 };
-	char buff[26] = { 0 };
+	char buff[BUF_LEN] = { 0 };
 	int i = 0;
 
 	memset(reg_value, 0, CHARGELOG_SIZE);
-	snprintf(buff, 26, "%-8.2d", bq2419x_get_ilim());
+
+	snprintf(buff, BUF_LEN, "%-8.2d", bq2419x_get_ilim());
 	strncat(reg_value, buff, strlen(buff));
+
 	for (i = 0; i < BQ2419X_REG_NUM; i++) {
 		bq2419x_read_byte(i, &reg[i]);
 		bq2419x_read_byte(i, &reg[i]);
-		snprintf(buff, 26, "0x%-8.2x", reg[i]);
+		snprintf(buff, BUF_LEN, "0x%-8.2x", reg[i]);
 		strncat(reg_value, buff, strlen(buff));
 	}
+
 	return 0;
 }
 
@@ -877,16 +991,19 @@ static int bq2419x_dump_register(char *reg_value)
 **********************************************************/
 static int bq2419x_get_register_head(char *reg_head)
 {
-	char buff[26] = { 0 };
+	char buff[BUF_LEN] = { 0 };
 	int i = 0;
 
 	memset(reg_head, 0, CHARGELOG_SIZE);
-	snprintf(buff, 26, "Ibus    ");
+
+	snprintf(buff, BUF_LEN, "Ibus    ");
 	strncat(reg_head, buff, strlen(buff));
+
 	for (i = 0; i < BQ2419X_REG_NUM; i++) {
-		snprintf(buff, 26, "Reg[%d]    ", i);
+		snprintf(buff, BUF_LEN, "Reg[%d]    ", i);
 		strncat(reg_head, buff, strlen(buff));
 	}
+
 	return 0;
 }
 
@@ -899,9 +1016,8 @@ static int bq2419x_get_register_head(char *reg_head)
 static int bq2419x_set_batfet_disable(int disable)
 {
 	return bq2419x_write_mask(BQ2419X_REG_MOC,
-				  BQ2419X_REG_MOC_BATFET_DISABLE_MASK,
-				  BQ2419X_REG_MOC_BATFET_DISABLE_SHIFT,
-				  disable);
+				BQ2419X_REG_MOC_BATFET_DISABLE_MASK,
+				BQ2419X_REG_MOC_BATFET_DISABLE_SHIFT, disable);
 }
 
 /**********************************************************
@@ -915,15 +1031,20 @@ static int bq2419x_set_watchdog_timer(int value)
 	u8 val = 0;
 	int array_size = ARRAY_SIZE(bq2419x_watchdog_values);
 
-	if (value > bq2419x_watchdog_values[array_size - 1])
+	if (value > bq2419x_watchdog_values[array_size - 1]) {
 		return bq2419x_watchdog_values[array_size - 1];
-	else if (value < bq2419x_watchdog_values[0])
+	}
+	else if (value < bq2419x_watchdog_values[0]) {
 		return bq2419x_watchdog_values[0];
+	}
 
 	val = params_to_reg(bq2419x_watchdog_values, array_size, value);
+
+	hwlog_info("set_watchdog_timer [%x]=0x%x\n", BQ2419X_REG_CTTC, val);
+
 	return bq2419x_write_mask(BQ2419X_REG_CTTC,
-				  BQ2419X_REG_CTTC_WATCHDOG_MASK,
-				  BQ2419X_REG_CTTC_WATCHDOG_SHIFT, val);
+				BQ2419X_REG_CTTC_WATCHDOG_MASK,
+				BQ2419X_REG_CTTC_WATCHDOG_SHIFT, val);
 }
 
 /**********************************************************
@@ -936,14 +1057,16 @@ static int bq2419x_set_charger_hiz(int enable)
 {
 	int ret = 0;
 
-	if (enable > 0)
+	if (enable > 0) {
 		ret |= bq2419x_write_mask(BQ2419X_REG_ISC,
-					  BQ2419X_REG_ISC_EN_HIZ_MASK,
-					  BQ2419X_REG_ISC_EN_HIZ_SHIFT, TRUE);
-	else
+				BQ2419X_REG_ISC_EN_HIZ_MASK,
+				BQ2419X_REG_ISC_EN_HIZ_SHIFT, TRUE);
+	}
+	else {
 		ret |= bq2419x_write_mask(BQ2419X_REG_ISC,
-					  BQ2419X_REG_ISC_EN_HIZ_MASK,
-					  BQ2419X_REG_ISC_EN_HIZ_SHIFT, FALSE);
+				BQ2419X_REG_ISC_EN_HIZ_MASK,
+				BQ2419X_REG_ISC_EN_HIZ_SHIFT, FALSE);
+	}
 
 	return ret;
 }
@@ -980,18 +1103,19 @@ struct charge_device_ops bq2419x_ops = {
 **********************************************************/
 static void bq2419x_irq_work(struct work_struct *work)
 {
-	struct bq2419x_device_info *di =
-	    container_of(work, struct bq2419x_device_info, irq_work);
+	struct bq2419x_device_info *di = container_of(work, struct bq2419x_device_info, irq_work);
 	u8 reg = 0;
 
-	msleep(100);
+	msleep(100); /* sleep 100ms */
+
 	bq2419x_read_byte(BQ2419X_REG_F, &reg);
 	bq2419x_read_byte(BQ2419X_REG_F, &reg);
 
+	hwlog_err("boost_ovp_reg [%x]=0x%x\n", BQ2419X_REG_F, reg);
+
 	if (reg & BQ2419X_REG_F_BOOST_OCP) {
-		hwlog_info("CHARGE_FAULT_BOOST_OCP\n");
-		atomic_notifier_call_chain(&fault_notifier_list,
-					   CHARGE_FAULT_BOOST_OCP, NULL);
+		hwlog_info("CHARGE_FAULT_BOOST_OCP happened\n");
+		atomic_notifier_call_chain(&fault_notifier_list, CHARGE_FAULT_BOOST_OCP, NULL);
 	}
 
 	if (di->irq_active == 0) {
@@ -1011,14 +1135,22 @@ static irqreturn_t bq2419x_interrupt(int irq, void *_di)
 {
 	struct bq2419x_device_info *di = _di;
 
-	hwlog_info("bq2419x interrupt\n");
+	if (NULL == di) {
+		hwlog_err("error: di is null!\n");
+		return -1;
+	}
+
+	hwlog_info("bq2419x interrupt happened (%d)!\n", di->irq_active);
+
 	if (di->irq_active == 1) {
 		di->irq_active = 0;
 		disable_irq_nosync(di->irq_int);
 		schedule_work(&di->irq_work);
-	} else {
-		hwlog_info("The irq is not enable,do nothing!\n");
 	}
+	else {
+		hwlog_info("the irq is not enable, do nothing!\n");
+	}
+
 	return IRQ_HANDLED;
 }
 
@@ -1029,97 +1161,131 @@ static irqreturn_t bq2419x_interrupt(int irq, void *_di)
 *                      id:i2c_device_id
 *  return value:  0-sucess or others-fail
 **********************************************************/
-static int bq2419x_probe(struct i2c_client *client,
-			 const struct i2c_device_id *id)
+static int bq2419x_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
 	int ret = 0;
 	struct bq2419x_device_info *di = NULL;
-	struct charge_device_ops *ops = NULL;
 	struct device_node *np = NULL;
 	struct class *power_class = NULL;
 
+	hwlog_info("probe begin\n");
+
+	if (NULL == client || NULL == id) {
+		hwlog_err("error: client is null or id is null!\n");
+		return -ENOMEM;
+	}
+
 	di = kzalloc(sizeof(*di), GFP_KERNEL);
 	if (!di) {
-		hwlog_err("bq2419x_device_info is NULL!\n");
+		hwlog_err("error: kzalloc failed!\n");
 		return -ENOMEM;
 	}
 	g_bq2419x_dev = di;
+
 	di->dev = &client->dev;
 	np = di->dev->of_node;
 	di->client = client;
 	i2c_set_clientdata(client, di);
 
 	INIT_WORK(&di->irq_work, bq2419x_irq_work);
+
+	ret = of_property_read_u32(np, "rilim", &rilim));
+	if (ret) {
+		rilim = BQ2419X_RILIM_220_OHM;
+	}
+	hwlog_info("rilim=%d\n", rilim);
+
+	ret = of_property_read_u32(np, "adc_channel_iin", &adc_channel_iin));
+	if (ret) {
+		adc_channel_iin = BQ2419X_ADC_CHANNEL_IIN_10;
+	}
+	hwlog_info("adc_channel_iin=%d\n", adc_channel_iin);
+
 	di->gpio_cd = of_get_named_gpio(np, "gpio_cd", 0);
+	hwlog_info("gpio_cd=%d\n", di->gpio_cd);
+
 	if (!gpio_is_valid(di->gpio_cd)) {
-		hwlog_err("gpio_cd is not valid\n");
+		hwlog_err("error: gpio(gpio_cd) is not valid!\n");
 		ret = -EINVAL;
 		goto bq2419x_fail_0;
 	}
-	di->gpio_int = of_get_named_gpio(np, "gpio_int", 0);
-	if (!gpio_is_valid(di->gpio_int)) {
-		hwlog_err("gpio_int is not valid\n");
-		ret = -EINVAL;
-		goto bq2419x_fail_0;
-	}
-	/*set gpio to control CD pin to disable/enable bq2419x IC */
+
 	ret = gpio_request(di->gpio_cd, "charger_cd");
 	if (ret) {
-		hwlog_err("could not request gpio_cd\n");
+		hwlog_err("error: gpio(gpio_cd) request fail!\n");
 		goto bq2419x_fail_0;
 	}
-	gpio_direction_output(di->gpio_cd, 0);
-	ret = gpio_request(di->gpio_int, "charger_int");
+
+	/* set gpio to control CD pin to disable/enable bq2419x IC */
+	ret = gpio_direction_output(di->gpio_cd, 0);
 	if (ret) {
-		hwlog_err("could not request gpio_int\n");
+		hwlog_err("error: gpio(gpio_cd) set output fail!\n");
 		goto bq2419x_fail_1;
 	}
-	if (of_property_read_u32(np, "rilim", &rilim))
-		hwlog_err("get rilim error,use default one!\n");
 
-	if (of_property_read_u32(np, "adc_channel_iin", &adc_channel_iin))
-		hwlog_err("get adc_channel_iin error,use default one!\n");
+	di->gpio_int = of_get_named_gpio(np, "gpio_int", 0);
+	hwlog_info("gpio_int=%d\n", di->gpio_int);
 
-	gpio_direction_input(di->gpio_int);
-	di->irq_int = gpio_to_irq(di->gpio_int);
-	if (di->irq_int < 0) {
-		ret = -ENOMEM;
-		hwlog_err("could not map gpio_int to irq\n");
+	if (!gpio_is_valid(di->gpio_int)) {
+		hwlog_err("error: gpio(gpio_int) is not valid!\n");
+		ret = -EINVAL;
+		goto bq2419x_fail_1;
+	}
+
+	ret = gpio_request(di->gpio_int, "charger_int");
+	if (ret) {
+		hwlog_err("error: gpio(gpio_int) request fail!\n");
+		goto bq2419x_fail_1;
+	}
+
+	ret = gpio_direction_input(di->gpio_int);
+	if (ret) {
+		hwlog_err("error: gpio(gpio_int) set input fail!\n");
 		goto bq2419x_fail_2;
 	}
 
-	ret =
-	    request_irq(di->irq_int, bq2419x_interrupt, IRQF_TRIGGER_FALLING,
-			"charger_int_irq", di);
+	di->irq_int = gpio_to_irq(di->gpio_int);
+	if (di->irq_int < 0) {
+		hwlog_err("error: gpio(gpio_int) map to irq fail!\n");
+		ret = -EINVAL;
+		goto bq2419x_fail_2;
+	}
+
+	ret = request_irq(di->irq_int, bq2419x_interrupt, IRQF_TRIGGER_FALLING, "charger_int_irq", di);
 	if (ret) {
-		hwlog_err("could not request irq_int\n");
+		hwlog_err("error: gpio(gpio_int) irq request fail!\n");
 		di->irq_int = -1;
 		goto bq2419x_fail_2;
 	}
+
 	disable_irq(di->irq_int);
 	di->irq_active = 0;
 
-	ops = &bq2419x_ops;
-	ret = charge_ops_register(ops);
+	ret = charge_ops_register(&bq2419x_ops);
 	if (ret) {
-		hwlog_err("register charge ops failed!\n");
+		hwlog_err("error: bq2419x charge ops register fail!\n");
 		goto bq2419x_fail_3;
 	}
+
 	ret = bq2419x_sysfs_create_group(di);
-	if (ret)
-		hwlog_err("create sysfs entries failed!\n");
+	if (ret) {
+		hwlog_err("error: sysfs group create failed!\n");
+	}
+
 	power_class = hw_power_get_class();
 	if (power_class) {
-		if (charge_dev == NULL)
+		if (charge_dev == NULL) {
 			charge_dev = device_create(power_class, NULL, 0, NULL, "charger");
+		}
+
 		ret = sysfs_create_link(&charge_dev->kobj, &di->dev->kobj, "bq2419x");
 		if (ret) {
-			hwlog_err("create link to bq2419x fail.\n");
+			hwlog_err("error: sysfs link create failed!\n");
 			goto bq2419x_fail_4;
 		}
 	}
 
-	hwlog_info("bq2419x probe ok!\n");
+	hwlog_info("probe end!\n");
 	return 0;
 
 bq2419x_fail_4:
@@ -1148,30 +1314,37 @@ static int bq2419x_remove(struct i2c_client *client)
 {
 	struct bq2419x_device_info *di = i2c_get_clientdata(client);
 
+	hwlog_info("remove begin\n");
+
 	bq2419x_sysfs_remove_group(di);
 
 	gpio_set_value(di->gpio_cd, 1);
-	if (di->gpio_cd)
+
+	if (di->gpio_cd) {
 		gpio_free(di->gpio_cd);
+	}
 
-	if (di->irq_int)
+	if (di->irq_int) {
 		free_irq(di->irq_int, di);
+	}
 
-	if (di->gpio_int)
+	if (di->gpio_int) {
 		gpio_free(di->gpio_int);
+	}
 
 	kfree(di);
+
+	hwlog_info("remove end\n");
 	return 0;
 }
 
 MODULE_DEVICE_TABLE(i2c, bq24192);
 static struct of_device_id bq2419x_of_match[] = {
 	{
-	 .compatible = "huawei,bq2419x_charger",
-	 .data = NULL,
-	 },
-	{
-	 },
+		.compatible = "huawei,bq2419x_charger",
+		.data = NULL,
+	},
+	{},
 };
 
 static const struct i2c_device_id bq2419x_i2c_id[] = {
@@ -1183,10 +1356,10 @@ static struct i2c_driver bq2419x_driver = {
 	.remove = bq2419x_remove,
 	.id_table = bq2419x_i2c_id,
 	.driver = {
-		   .owner = THIS_MODULE,
-		   .name = "bq2419x_charger",
-		   .of_match_table = of_match_ptr(bq2419x_of_match),
-		   },
+		.owner = THIS_MODULE,
+		.name = "bq2419x_charger",
+		.of_match_table = of_match_ptr(bq2419x_of_match),
+	},
 };
 
 /**********************************************************
@@ -1200,8 +1373,9 @@ static int __init bq2419x_init(void)
 	int ret = 0;
 
 	ret = i2c_add_driver(&bq2419x_driver);
-	if (ret)
-		hwlog_err("%s: i2c_add_driver error!!!\n", __func__);
+	if (ret) {
+		hwlog_err("error: bq2419x i2c_add_driver error!\n");
+	}
 
 	return ret;
 }
@@ -1219,6 +1393,7 @@ static void __exit bq2419x_exit(void)
 
 module_init(bq2419x_init);
 module_exit(bq2419x_exit);
+
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("bq2419x charger module driver");
 MODULE_AUTHOR("HW Inc");

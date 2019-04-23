@@ -23,11 +23,6 @@ int support_pd = 0;
 #ifdef CONFIG_SUPERSWITCH_FSC
 bool FUSB3601_in_factory_mode(void);
 #endif
-#ifdef CONFIG_CC_ANTI_CORROSION
-#include <huawei_platform/usb/hw_cc_anti_corrosion.h>
-extern struct cc_anti_corrosion_dev *cc_corrosion_dev_p;
-#define CORROSION_DELAY 10
-#endif
 #ifndef HWLOG_TAG
 #define HWLOG_TAG huawei_usb_vbus
 HWLOG_REGIST();
@@ -139,14 +134,6 @@ static void send_charger_connect_event(void)
 #else
 	hisi_usb_otg_event(CHARGER_CONNECT_EVENT);
 #endif
-
-#ifdef CONFIG_CC_ANTI_CORROSION
-	if (cc_corrosion_dev_p) {
-		pr_info("%s schedule delayed work\n",__func__);
-		schedule_delayed_work(&cc_corrosion_dev_p->update_nv_work, msecs_to_jiffies(CORROSION_DELAY));
-	}
-#endif
-
 }
 
 static void send_charger_disconnect_event(void)
@@ -398,11 +385,13 @@ static int hisi_usb_vbus_probe(struct platform_device *pdev)
 	hw_vbus_connect_irq = hisi_get_pmic_irq_byname(VBUS_CONNECT);
 	if (0 == hw_vbus_connect_irq) {
 		hwlog_err("failed to get connect irq\n");
+		wake_lock_destroy(&hwusb_lock);
 		return -ENOENT;
 	}
 	hw_vbus_disconnect_irq = hisi_get_pmic_irq_byname(VBUS_DISCONNECT);
 	if (0 == hw_vbus_disconnect_irq) {
 		hwlog_err("failed to get disconnect irq\n");
+		wake_lock_destroy(&hwusb_lock);
 		return -ENOENT;
 	}
 
@@ -413,6 +402,7 @@ static int hisi_usb_vbus_probe(struct platform_device *pdev)
 					  IRQF_NO_SUSPEND, "hiusb_in_interrupt", pdev);
 	if (ret) {
 		hwlog_err("request charger connect irq failed, irq: %d!\n", hw_vbus_connect_irq);
+		wake_lock_destroy(&hwusb_lock);
 		return ret;
 	}
 
@@ -453,6 +443,7 @@ static int hisi_usb_vbus_remove(struct platform_device *pdev)
 {
 	free_irq(hw_vbus_connect_irq, pdev);
 	free_irq(hw_vbus_disconnect_irq, pdev);
+	wake_lock_destroy(&hwusb_lock);
 	return 0;
 }
 

@@ -15,7 +15,7 @@ typedef struct {
 	HI_U8      u8IsMapVirtual;
 	HI_U8      u8IsMapped;
 	HI_U32     u32ShareFd;
-	HI_U32     u32StartPhyAddr;
+	UADDR      startPhyAddr;
 	HI_U32     u32Size;
 	VDEC_SCENE scene;
 	HI_VOID    *pStartVirAddr;

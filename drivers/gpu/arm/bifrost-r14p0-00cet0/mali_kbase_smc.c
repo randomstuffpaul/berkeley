@@ -65,7 +65,7 @@ u64 kbase_invoke_smc(u32 oen, u16 function_number, bool smc64,
 	/* Only the six bits allowed should be used. */
 	KBASE_DEBUG_ASSERT((oen & ~SMC_OEN_MASK) == 0);
 
-	fid |= SMC_FAST_CALL; /* Bit 31: Fast call */
+	fid |= SMC_FAST_CALL; /* Bit 31: Fast call *///lint !e648
 	if (smc64)
 		fid |= SMC_64; /* Bit 30: 1=SMC64, 0=SMC32 */
 	fid |= oen; /* Bit 29:24: OEN */

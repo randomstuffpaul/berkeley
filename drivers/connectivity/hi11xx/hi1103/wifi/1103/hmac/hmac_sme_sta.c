@@ -749,6 +749,13 @@ oal_uint32  hmac_cfg80211_start_scan_sta_etc(mac_vap_stru *pst_mac_vap, oal_uint
 
     OAL_MEMZERO(&st_scan_params, OAL_SIZEOF(mac_scan_req_stru));
     pst_cfg80211_scan_param = (mac_cfg80211_scan_param_stru *)puc_param;
+    if (pst_cfg80211_scan_param->ul_ie_len > WLAN_WPS_IE_MAX_SIZE)
+    {
+        OAM_WARNING_LOG1(pst_mac_vap->uc_vap_id, OAM_SF_SCAN, "{hmac_cfg80211_start_scan_sta_etc::cfg80211 scan param ie_len[%d] error.}", pst_cfg80211_scan_param->ul_ie_len);
+        /*lint -e801*/
+        goto ERROR_STEP;
+        /*lint +e801*/
+    }
 
     /* 初始扫描列表清0 */
     pst_mac_device = mac_res_get_dev_etc(pst_mac_vap->uc_device_id);

@@ -141,6 +141,9 @@ extern int vishay_vcnl36658_ps_flag;
 extern int ams_tof_flag;
 extern int sharp_tof_flag;
 extern int apds9253_006_ps_flag;
+extern int ams_tcs3701_ps_flag;
+extern int ams_tcs3701_rgb_flag;
+
 extern struct hisi_nve_info_user user_info;
 extern struct airpress_platform_data airpress_data;
 extern union sar_calibrate_data sar_calibrate_datas;
@@ -1137,7 +1140,6 @@ static DEVICE_ATTR(gyro_calibrate, 0664, attr_gyro_calibrate_show, attr_gyro_cal
 static ssize_t attr_ps_calibrate_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	int val = ps_calibration_res;
-	hwlog_info( "attr_ps_calibrate_show result=%d\n",val);
 	return snprintf(buf, PAGE_SIZE, "%d\n", val);
 }
 
@@ -1323,8 +1325,8 @@ static ssize_t attr_ps_calibrate_write(struct device *dev, struct device_attribu
 	memset(&ps_test,0,sizeof(ps_test));
 	#endif
 
-	if((txc_ps_flag != 1) && (ams_tmd2620_ps_flag != 1) &&	(avago_apds9110_ps_flag != 1) && (ams_tmd3725_ps_flag != 1) 
-		&& (liteon_ltr582_ps_flag != 1) && (apds9999_ps_flag != 1) && (ams_tmd3702_ps_flag != 1)
+	if((txc_ps_flag != 1) && (ams_tmd2620_ps_flag != 1) &&	(avago_apds9110_ps_flag != 1) && (ams_tmd3725_ps_flag != 1)
+		&& (liteon_ltr582_ps_flag != 1) && (apds9999_ps_flag != 1) && (ams_tmd3702_ps_flag != 1) && (ams_tcs3701_ps_flag != 1)
 		&& (ams_tof_flag != 1) && (sharp_tof_flag != 1)&& (vishay_vcnl36658_ps_flag != 1 )&&(apds9253_006_ps_flag != 1)) {
 		hwlog_info("ps sensor is not txc_ps_224 or ams_tmd2620 or avago_apds9110 or ams_tmd3725 or liteon_ltr582,no need calibrate\n");
 		return count;
@@ -1333,13 +1335,13 @@ static ssize_t attr_ps_calibrate_write(struct device *dev, struct device_attribu
 	if (strict_strtoul(buf, 10, &val))
 		return -EINVAL;
 	hwlog_info("ps or tof calibrate order is %d\n", val);
-	if((val < PS_XTALK_CALIBRATE)||(val > TOF_CALI_FOR_FIX)){
+	if((val < PS_XTALK_CALIBRATE)||(val > TOF_OPEN)){
 		hwlog_err("set ps or tof calibrate val invalid,val=%lu\n", val);
 		return count;
 	}
 	calibrate_order = (uint8_t)val;
-
-	if(val >= PS_XTALK_CALIBRATE && val <= PS_3CM_CALIBRATE && (ams_tof_flag != 1) && (sharp_tof_flag != 1)){//ps calibrate
+	if((val >= PS_XTALK_CALIBRATE && val <= PS_3CM_CALIBRATE || val == PS_MINPDATA_MODE || val == PS_SAVE_MINPDATA)
+		&& (ams_tof_flag != 1) && (sharp_tof_flag != 1)){//ps calibrate
 		pkg_mcu = send_calibrate_cmd(TAG_PS, val, &ps_calibration_res);
 		if (ps_calibration_res == COMMU_FAIL || ps_calibration_res == EXEC_FAIL)//COMMU_FAIL=4	EXEC_FAIL=2
 			goto save_log;
@@ -1353,14 +1355,19 @@ static ssize_t attr_ps_calibrate_write(struct device *dev, struct device_attribu
 				//ps_calib_data[val-1] = ps_calibate_offset_3;
 				hwlog_info("ps calibrate success, ps_calibate_offset_0=%d, ps_calibate_offset_3=%d\n", ps_calibate_offset_0,ps_calibate_offset_3);
 				hwlog_info("ps calibrate success, data=%d, len=%d val=%d\n", ps_calib_data[val-1],pkg_mcu.data_length,val);
-			}else{
+			}else if(val == 9){
+				ps_calib_data[0] = *((uint32_t *)pkg_mcu.data);
+				ps_calib_data_for_data_collect[0] = ps_calib_data[0];
+				hwlog_info("ps calibrate success, data=%d, len=%d val=%d\n", ps_calib_data[0],pkg_mcu.data_length,val);
+			}
+			else if(val != 8){
 				ps_calib_data[val-1] = *((int32_t *)pkg_mcu.data);
 				ps_calib_data_for_data_collect[val-1] = *((int32_t *)pkg_mcu.data);
 				hwlog_info("ps calibrate success, data=%d, len=%d val=%d\n", ps_calib_data[val-1],pkg_mcu.data_length,val);
 			}
 		}
 
-		if(val == 2){
+		if((val == 2)||(val == 8)){
 			ps_calibration_res=SUC;
 		}else{
 			ps_calibrate_save(ps_calib_data, 3*pkg_mcu.data_length);
@@ -1382,14 +1389,8 @@ static ssize_t attr_ps_calibrate_write(struct device *dev, struct device_attribu
 		if (ps_calibration_res == COMMU_FAIL || ps_calibration_res == EXEC_FAIL)//COMMU_FAIL=4	EXEC_FAIL=2
 			goto save_log;
 		else if(pkg_mcu.errno == 0) {
-			if((TOF_ZERO_CALIBRATE == val) && (tof_register_value != 0x1f) && sharp_tof_flag){
+			if((TOF_ZERO_CALIBRATE == val) && (tof_register_value != 0x1f) && sharp_tof_flag)
 				goto save_log;
-			}
-			if(TOF_CALI_FOR_FIX == val){
-				hwlog_info("tof fix calibrate succ\n");
-				ps_calibration_res = SUC;
-				goto save_log;
-			}
 			tof_calibrate_save(pkg_mcu.data, pkg_mcu.data_length,calibrate_order);
 		}
 	}
@@ -1588,7 +1589,8 @@ static ssize_t attr_als_calibrate_write(struct device *dev, struct device_attrib
 	#endif
 
 	if (rohm_rgb_flag != 1 && avago_rgb_flag != 1 && ams_tmd3725_rgb_flag != 1  && liteon_ltr582_rgb_flag != 1 && is_cali_supported !=1
-		&& apds9999_rgb_flag != 1 && ams_tmd3702_rgb_flag != 1 && apds9253_rgb_flag != 1 && vishay_vcnl36658_als_flag != 1) {
+		&& apds9999_rgb_flag != 1 && ams_tmd3702_rgb_flag != 1 && apds9253_rgb_flag != 1 && vishay_vcnl36658_als_flag != 1
+		&& ams_tcs3701_rgb_flag != 1) {
 		hwlog_info("als sensor is not rohm_bh1745 or avago apds9251 or ams_tmd3725 or liteon_ltr582 , is_cali_supported = %d, no need calibrate\n", is_cali_supported);
 		return count;
 	}
@@ -1596,7 +1598,7 @@ static ssize_t attr_als_calibrate_write(struct device *dev, struct device_attrib
 	if (strict_strtoul(buf, 10, &val))
 		return -EINVAL;
 
-	if (1 != val && !(2 == val && als_data.als_phone_type == LAYA_PHONE_TYPE))
+	if (1 != val && !(2 == val && (als_data.als_phone_type == LAYA_PHONE_TYPE || is_cali_supported)))
 		return count;
 
 	if (sensor_status.opened[TAG_ALS] == 0) { /*if ALS is not opened, open first*/
@@ -1639,7 +1641,7 @@ static ssize_t attr_als_calibrate_write(struct device *dev, struct device_attrib
 	get_test_time(date_str, sizeof(date_str));
 	als_cali_data = (int32_t *)pkg_mcu.data;
 
-	if (2 == val && als_data.als_phone_type == LAYA_PHONE_TYPE){
+	if (2 == val && (als_data.als_phone_type == LAYA_PHONE_TYPE || is_cali_supported)){
 		#ifdef SENSOR_DATA_ACQUISITION
 		cali_data_u16 = (uint16_t *)pkg_mcu.data;
 		als_dark_noise_offset_enq_notify_work(ALS_CALI_DARK_OFFSET_MSG, *cali_data_u16,
@@ -3150,7 +3152,6 @@ ssize_t sensors_calibrate_show(int tag, struct device *dev, struct device_attrib
 		return snprintf(buf, PAGE_SIZE, "%d\n", return_calibration != SUC);	/*flyhorse k: SUC-->"0", OTHERS-->"1"*/
 
 	case TAG_PS:
-		hwlog_info( "feima sensors_calibrate_show res=%d\n",ps_calibration_res);
 		return snprintf(buf, PAGE_SIZE, "%d\n", ps_calibration_res != SUC);	/*flyhorse k: SUC-->"0", OTHERS-->"1"*/
 
 	case TAG_ALS:

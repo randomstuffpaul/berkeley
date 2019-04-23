@@ -157,18 +157,18 @@ SINT32 SCDDRV_CheckCfgAddress(SCD_CONFIG_REG_S *pSmCtrlReg, MEM_BUFFER_S* pScdMe
 	}
 
 	if ((pSmCtrlReg->DownMsgPhyAddr == 0)
-		|| (pSmCtrlReg->DownMsgPhyAddr < pScdMemMap[SCD_SHAREFD_MESSAGE_POOL].u32StartPhyAddr)
+		|| (pSmCtrlReg->DownMsgPhyAddr < pScdMemMap[SCD_SHAREFD_MESSAGE_POOL].startPhyAddr)
 		|| (pSmCtrlReg->DownMsgPhyAddr
-			> (pScdMemMap[SCD_SHAREFD_MESSAGE_POOL].u32StartPhyAddr
+			> (pScdMemMap[SCD_SHAREFD_MESSAGE_POOL].startPhyAddr
 				+ pScdMemMap[SCD_SHAREFD_MESSAGE_POOL].u32Size
 				/* - DownMsgMaxOffset */))) {
 		dprint(PRN_FATAL, "%s DownMsgPhyAddr is out of range \n", __func__);
 		return SCDDRV_ERR;
 	}
 	if ((pSmCtrlReg->UpMsgPhyAddr == 0)
-		|| (pSmCtrlReg->UpMsgPhyAddr < pScdMemMap[SCD_SHAREFD_MESSAGE_POOL].u32StartPhyAddr)
+		|| (pSmCtrlReg->UpMsgPhyAddr < pScdMemMap[SCD_SHAREFD_MESSAGE_POOL].startPhyAddr)
 		|| (pSmCtrlReg->UpMsgPhyAddr
-			> (pScdMemMap[SCD_SHAREFD_MESSAGE_POOL].u32StartPhyAddr
+			> (pScdMemMap[SCD_SHAREFD_MESSAGE_POOL].startPhyAddr
 				+ pScdMemMap[SCD_SHAREFD_MESSAGE_POOL].u32Size
 				/* - UpMsgMaxOffset */))) {
 		dprint(PRN_FATAL, "%s UpMsgPhyAddr  is out of range \n", __func__);
@@ -182,8 +182,8 @@ SINT32 SCDDRV_CheckCfgAddress(SCD_CONFIG_REG_S *pSmCtrlReg, MEM_BUFFER_S* pScdMe
 
 
 	for (i = SCD_SHAREFD_OUTPUT_BUF; i < maxScdBufNum; i++) {
-		u32StartOutPutPhyAddr = pScdMemMap[i].u32StartPhyAddr;
-		u32EndOutPutPhyAddr   = pScdMemMap[i].u32StartPhyAddr + pScdMemMap[i].u32Size;
+		u32StartOutPutPhyAddr = pScdMemMap[i].startPhyAddr;
+		u32EndOutPutPhyAddr   = pScdMemMap[i].startPhyAddr + pScdMemMap[i].u32Size;
 		ret = SCDDRV_OK;
 		ret += SCDDRV_CheckAddress(pSmCtrlReg->BufferFirst,
 			u32StartOutPutPhyAddr, u32EndOutPutPhyAddr);

@@ -32,6 +32,7 @@
 #define FLP_IOCTL_TYPE_BATCHING         (0x464C0030)
 #define FLP_IOCTL_TYPE_CELLFENCE        (0x464C0040)
 #define FLP_IOCTL_TYPE_WIFIFENCE        (0x464C0050)
+#define FLP_IOCTL_TYPE_DIAG             (0x464C0060)
 
 #define FLP_IOCTL_TYPE_COMMON           (0x464C00F0)
 
@@ -67,12 +68,16 @@
 #define FD_IOCTL_TRAJECTORY_REQUEST             (FLP_IOCTL_TAG_FLP + 0x44)
 #define FD_IOCTL_CELLFENCE_INJECT_RESULT        (FLP_IOCTL_TAG_FLP + 0x45)
 #define FD_IOCTL_CELLFENCE_ADD_V2               (FLP_IOCTL_TAG_FLP + 0x46)
+#define FD_IOCTL_CELLBATCHING_CONFIG            (FLP_IOCTL_TAG_FLP + 0x47)
+#define FD_IOCTL_CELLBATCHING_REQUEST           (FLP_IOCTL_TAG_FLP + 0x48)
 
 #define FD_IOCTL_WIFIFENCE_ADD                  (0x464C0000 + 0x51)
 #define FD_IOCTL_WIFIFENCE_REMOVE               (0x464C0000 + 0x52)
 #define FD_IOCTL_WIFIFENCE_PAUSE                (0x464C0000 + 0x53)
 #define FD_IOCTL_WIFIFENCE_RESUME               (0x464C0000 + 0x54)
 #define FD_IOCTL_WIFIFENCE_GET_STATUS           (0x464C0000 + 0x55)
+
+#define FD_IOCTL_DIAG_SEND_CMD                  (FLP_IOCTL_TAG_FLP + 0x61)
 
 /*common ioctl*/
 #define FLP_IOCTL_COMMON_GET_UTC                (0x464C0000 + 0xFFF1)
@@ -242,6 +247,22 @@ typedef struct {
     char data[0];
 }FLP_IOMCU_SHMEM_TYPE;
 
+typedef struct {
+	unsigned int cmd;
+	unsigned int interval;
+	unsigned int reserved_1;
+	unsigned int reserved_2;
+}  cell_batching_start_config_t;
+
+typedef struct {
+	unsigned int  timestamplow;
+	unsigned int  timestamphigh;
+	unsigned int  cid;
+	unsigned short lac;
+	short rssi;
+	unsigned short mcc;
+	unsigned short mnc;
+} cell_batching_data_t;
 /***************cellfence -e********************/
 
 /***************wififence -b********************/
@@ -294,6 +315,8 @@ enum {
     FLP_GENL_CMD_WIFIFENCE_TRANSITION,
     FLP_GENL_CMD_WIFIFENCE_MONITOR,
     FLP_GENL_CMD_GEOFENCE_LOCATION,
+    FLP_GENL_CMD_CELLBATCHING_REPORT,
+    FLP_GENL_CMD_DIAG_DATA_REPORT,
     __FLP_GENL_CMD_MAX,
 };
 #define FLP_GENL_CMD_MAX (__FLP_GENL_CMD_MAX - 1)

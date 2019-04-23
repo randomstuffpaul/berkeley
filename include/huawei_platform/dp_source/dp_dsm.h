@@ -145,6 +145,7 @@ typedef enum {
 	DP_LINK_STATE_HDCP_FAILED,     // hdcp auth failed in DRM files
 
 	// for MMIE test
+	DP_LINK_STATE_HPD_NOT_EXISTED,      // hpd not existed
 	DP_LINK_STATE_LINK_REDUCE_RATE,     // reduce lanes or rate in link training
 	DP_LINK_STATE_INVALID_COMBINATIONS, // external combinations not support 4k@60fps
 
@@ -154,6 +155,7 @@ typedef enum {
 #define DP_HPD_REPEATED_THRESHOLD  (6) // 3 --> 6, reduce hpd report num
 #define DP_SAFE_MODE_DISPLAY_WIDTH (640)
 #define DP_SAFE_MODE_DISPLAY_HIGH  (480)
+#define DP_LINK_EVENT_BUF_MAX      (64)
 
 void dp_link_state_event(dp_link_state_t state);
 
@@ -182,6 +184,8 @@ void dp_imonitor_report(dp_imonitor_type_t type, void *data);
 // for info report by dmd
 void dp_dmd_report(dp_dmd_type_t type, const char *fmt, ...);
 
+void dp_set_hotplug_state(dp_link_state_t state);
+
 #ifdef DP_DEBUG_ENABLE
 int dp_get_pd_event_result(char *buffer, int size);
 int dp_get_hotplug_result(char *buffer, int size);
@@ -199,6 +203,8 @@ static inline void dp_imonitor_set_param_resolution(uint8_t *user_mode, uint8_t 
 
 static inline void dp_imonitor_report(dp_imonitor_type_t type, void *data) {}
 static inline void dp_dmd_report(dp_dmd_type_t type, const char *fmt, ...) {}
+
+static inline void dp_set_hotplug_state(dp_link_state_t state) {}
 
 #ifdef DP_DEBUG_ENABLE
 static inline int dp_get_pd_event_result(char *buffer, int size) { return 0; }

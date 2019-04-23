@@ -41,7 +41,7 @@
 					dev = "/dev/block/by-name/cust";
 					type = "ext4";
 					mnt_flags = "ro";
-					fsmgr_flags = "wait,slotselect,avb";
+					fsmgr_flags = "wait,avb";
 					status = "ok";
 				};
 				version {
@@ -49,7 +49,7 @@
 					dev = "/dev/block/by-name/version";
 					type = "ext4";
 					mnt_flags = "ro";
-					fsmgr_flags = "wait,slotselect,avb";
+					fsmgr_flags = "wait,avb";
 					status = "ok";
 				};
 				product {
@@ -57,7 +57,7 @@
 					dev = "/dev/block/by-name/product";
 					type = "ext4";
 					mnt_flags = "ro";
-					fsmgr_flags = "wait,slotselect,avb";
+					fsmgr_flags = "wait,avb";
 					status = "ok";
 				};
 				preload {
@@ -65,7 +65,7 @@
 					dev = "/dev/block/by-name/preload";
 					type = "ext4";
 					mnt_flags = "ro";
-					fsmgr_flags = "wait,slotselect,avb";
+					fsmgr_flags = "wait,avb";
 					status = "ok";
 				};
 			};

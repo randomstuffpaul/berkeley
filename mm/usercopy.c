@@ -210,6 +210,7 @@ static inline const char *check_heap_object(const void *ptr, unsigned long n,
 	 *
 	 * We also need to check for module addresses explicitly since we
 	 * may copy static data from modules to userspace
+	 *
 	 */
 	if (is_vmalloc_or_module_addr(ptr))
 		return NULL;

@@ -27,6 +27,7 @@ int hisi_usb_start_hifi_usb_reset_power(void);
  * switch to AP usb host from hifi usb.
  */
 void hisi_usb_stop_hifi_usb(void);
+void hisi_usb_stop_hifi_usb_reset_power(void);
 
 /**
  * Wether a usb_device using hifi usb.

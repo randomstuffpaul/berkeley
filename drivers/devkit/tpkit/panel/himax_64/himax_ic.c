@@ -76,7 +76,7 @@ struct himax_ts_data *g_himax_nc_ts_data = NULL;
 static struct mutex wrong_touch_lock;
 static int himax_palm_switch(struct ts_palm_info *info);
 int himax_nc_input_config(struct input_dev* input_dev); //himax_input_register(struct himax_ts_data *ts);
-static void himax_set_smwp_enable(uint8_t smwp_enable, bool suspended);
+static void himax_set_smwp_enable(uint8_t smwp_enable);
 extern int himax_nc_factory_start(struct himax_ts_data *ts,struct ts_rawdata_info *info_top);
 extern int i2c_himax_nc_read(uint8_t command, uint8_t *data, uint16_t length, uint16_t limit_len, uint8_t toRetry);
 extern int i2c_himax_nc_write(uint8_t command, uint8_t *data, uint16_t length, uint16_t limit_len, uint8_t toRetry);
@@ -145,7 +145,7 @@ static int himax_knuckle(int hx_touch_info_size, uint8_t *buf)
 	} else if(buf[hx_touch_info_size + IDX_PKG_NUM] == 0x02){
 		TS_LOG_INFO("processing 2nd package!\n");
 		for(i = 0 ; i < SIZE_2ND_PKG;i++) {
-			tmp_roi_data[SIZE_1ST_PKG + i] = buf[hx_touch_info_size + SIZE_HX_HEADER + i];
+			tmp_roi_data[SIZE_1ST_PKG + i] = buf[hx_touch_info_size + SIZE_HX_HEADER + SIZE_HX_HEADER + i];
 		}
 	} else {
 		TS_LOG_ERR("Package number fail = %d!\n", buf[hx_touch_info_size + IDX_PKG_NUM]);
@@ -218,10 +218,6 @@ static int himax_roi_switch(struct ts_roi_info *info)
 
 static int hmx_wakeup_gesture_enable_switch(struct ts_wakeup_gesture_enable_info *info)
 {
-	struct himax_ts_data *ts;
-	ts = g_himax_nc_ts_data;
-
-	himax_set_smwp_enable(SMWP_EN, true);
 	return NO_ERR;
 }
 static int himax_get_glove_switch(u8 *glove_switch)
@@ -434,7 +430,7 @@ static void himax_touch_information(void)
 			himax_rw_reg_reformat(ADDR_SWITCH_FLASH_RLD, cmd);
 			himax_nc_register_read(cmd, FOUR_BYTE_CMD, data);
 
-			if( (data[1]==0x3A && data[0]==0xA3) || (data1[1]==0x72 && data1[0]==0xC0))
+			if( (data1[1]==0x3A && data1[0]==0xA3) || (data[1]==0x72 && data[0]==0xC0))
 			{
 				TS_LOG_INFO("reload OK! \n");
 				reload_status = 1;
@@ -752,7 +748,7 @@ static int himax_start_get_rawdata_from_event(int hx_touch_info_size, int RawDat
 	int self_num = 0;
 	int retval = NO_ERR;
 
-	if(NULL == buf)
+	if((NULL == buf)||(hx_touch_info_size > HX_RECEIVE_BUF_MAX_SIZE - 3))
 	{
 		return HX_ERROR;
 	}
@@ -760,7 +756,6 @@ static int himax_start_get_rawdata_from_event(int hx_touch_info_size, int RawDat
 	for (i = 0, check_sum_cal = 0; i < (HX_RECEIVE_BUF_MAX_SIZE - hx_touch_info_size); i=i+2)
 	{
 		check_sum_cal += (buf[i + hx_touch_info_size + 1]*256 + buf[i + hx_touch_info_size]);
-		TS_LOG_ERR("fail,  i=%d, check_sum_cal: %x\n",i, check_sum_cal);
 	}
 
 	if  (check_sum_cal % 0x10000 != 0)
@@ -845,8 +840,8 @@ static void himax_debug_level_print(int debug_mode,int status,int hx_touch_info_
 			}
 			break;
 		case 1:
-			TS_LOG_INFO("Finger %d=> X:%d, Y:%d W:%d, Z:%d, F:%d, N:%d\n",
-			hx_touching.loop_i + 1, hx_touching.x, hx_touching.y, hx_touching.w, hx_touching.w, hx_touching.loop_i + 1, EN_NoiseFilter);
+			TS_LOG_INFO("Finger %d=> W:%d, Z:%d, F:%d, N:%d\n",
+			hx_touching.loop_i + 1, hx_touching.w, hx_touching.w, hx_touching.loop_i + 1, EN_NoiseFilter);
 			break;
 		case 2:
 			break;
@@ -857,14 +852,13 @@ static void himax_debug_level_print(int debug_mode,int status,int hx_touch_info_
 				{
 					if (g_himax_nc_ts_data->useScreenRes)
 					{
-							TS_LOG_INFO("Screen:F:%02d Down, X:%d, Y:%d, W:%d, N:%d\n",
-							hx_touching.loop_i+1, (hx_touching.x * g_himax_nc_ts_data->widthFactor) >> SHIFTBITS,
-							(hx_touching.y * g_himax_nc_ts_data->heightFactor )>> SHIFTBITS, hx_touching.w, EN_NoiseFilter);
+							TS_LOG_INFO("Screen:F:%02d Down, W:%d, N:%d\n",
+							hx_touching.loop_i+1,  hx_touching.w, EN_NoiseFilter);
 					}
 					else
 					{
-							TS_LOG_INFO("Raw:F:%02d Down, X:%d, Y:%d, W:%d, N:%d\n",
-							hx_touching.loop_i+1, hx_touching.x, hx_touching.y, hx_touching.w, EN_NoiseFilter);
+							TS_LOG_INFO("Raw:F:%02d Down, W:%d, N:%d\n",
+							hx_touching.loop_i+1, hx_touching.w, EN_NoiseFilter);
 					}
 				}
 			}
@@ -964,7 +958,6 @@ static void himax_parse_coords(int hx_touch_info_size,int hx_point_num,struct ts
 				if (!g_himax_nc_ts_data->first_pressed)
 				{
 					g_himax_nc_ts_data->first_pressed = 1;//first report
-					TS_LOG_INFO("S1@%d, %d\n", hx_touching.x, hx_touching.y);
 				}
 
 				g_himax_nc_ts_data->pre_finger_data[hx_touching.loop_i][0] = hx_touching.x;
@@ -1016,7 +1009,7 @@ static void himax_parse_coords(int hx_touch_info_size,int hx_point_num,struct ts
 			TS_LOG_INFO("All Finger leave\n");
 	}
 }
-static void himax_set_smwp_enable(uint8_t smwp_enable, bool suspended)
+static void himax_set_smwp_enable(uint8_t smwp_enable)
 {
 	uint8_t tmp_addr[4] = {0};
 	uint8_t tmp_data[4] = {0};
@@ -1035,6 +1028,7 @@ static void himax_set_smwp_enable(uint8_t smwp_enable, bool suspended)
 		{
 			himax_rw_reg_reformat_com(ADDR_SMWP_EN,(int)smwp_enable,tmp_addr,tmp_data);
 			himax_flash_write_burst( tmp_addr, tmp_data);
+			TS_LOG_INFO("smwp_disable.\n");
 		}
 		back_data[3] = tmp_data[3];
 		back_data[2] = tmp_data[2];
@@ -1044,21 +1038,7 @@ static void himax_set_smwp_enable(uint8_t smwp_enable, bool suspended)
 		retry_cnt++;
 	}while((tmp_data[3] != back_data[3] || tmp_data[2] != back_data[2] || tmp_data[1] != back_data[1]  || tmp_data[0] != back_data[0] ) && retry_cnt < MAX_RETRY_CNT);
 }
-static void himax_resend_cmd_func(bool suspended)
-{
-	struct himax_ts_data *ts;
-	ts = g_himax_nc_ts_data;
-	himax_set_smwp_enable(ts->smwp_enable,suspended);
-}
-//#ifdef HX_RESEND_CMD
-static void himax_resend_cmd_work(struct work_struct *work)
-{
-	struct himax_ts_data *ts;
-	TS_LOG_INFO(" %s in\n", __func__);
-	ts = g_himax_nc_ts_data;
-	himax_resend_cmd_func(ts->suspended);
-}
-//#endif
+
 static void gest_pt_log_coordinate(int rx,int tx)
 {
 	gest_pt_x[gest_pt_cnt] = rx*HX_NC_X_RES/255;
@@ -2095,26 +2075,6 @@ static int himax_init_chip(void)
 	ts->pdata->abs_width_max	= 200;
 	ts->suspended	= false;
 
-	if(ts->re_send_cmd_support == SUPPORT)
-	{
-		ts->himax_resend_cmd_wq = create_singlethread_workqueue("HMX_RESEND_CMD_WORK");
-		if (!ts->himax_resend_cmd_wq) {
-			TS_LOG_ERR(" allocate himax_resend_cmd_wq failed\n");
-			err = -ENOMEM;
-			goto err_resend_cmd_wq_failed;
-		}
-		INIT_DELAYED_WORK(&ts->resend_cmd_work, himax_resend_cmd_work);
-	}
-
-#ifdef  HX_TP_SYS_DIAG
-	ts->himax_diag_wq = create_singlethread_workqueue("himax_diag");
-	if (!ts->himax_diag_wq) {
-		TS_LOG_ERR("%s: create diag workqueue failed\n", __func__);
-		err = -ENOMEM;
-		goto err_create_wq_failed;
-	}
-	INIT_DELAYED_WORK(&ts->himax_diag_delay_wrok, himax_nc_ts_diag_work_func);
-#endif
 	atomic_set(&ts->suspend_mode, 0);
 
 #ifdef HX_ESD_WORKAROUND
@@ -2207,8 +2167,7 @@ static int himax_core_suspend(void)
 	if(true == ts->tskit_himax_data->ts_platform_data->feature_info.wakeup_gesture_enable_info.switch_value){
 		if(ts->tskit_himax_data->ts_platform_data->chip_data->easy_wakeup_info.sleep_mode)
 		{
-			if(ts->re_send_cmd_support == SUPPORT)
-				himax_resend_cmd_func(ts->suspended);
+			himax_set_smwp_enable(SMWP_ON);
 
 			mutex_lock(&wrong_touch_lock);
 			g_himax_nc_ts_data->tskit_himax_data->easy_wakeup_info.off_motion_on = true;
@@ -2216,6 +2175,7 @@ static int himax_core_suspend(void)
 			TS_LOG_INFO("ENABLE gesture mode\n");
 		}
 		else{
+			himax_set_smwp_enable(SMWP_OFF);
 			retval = himax_enter_sleep_mode();
 			if(retval<0){
 			   TS_LOG_ERR("[himax] %s: himax_enter_sleep_mode fail!\n", __func__);
@@ -2259,12 +2219,6 @@ static int himax_core_resume(void)
 
 	if(ts->tskit_himax_data->ts_platform_data->chip_data->easy_wakeup_info.sleep_mode)
 	{
-
-		if(ts->re_send_cmd_support == SUPPORT)
-			queue_delayed_work(ts->himax_resend_cmd_wq, &ts->resend_cmd_work, msecs_to_jiffies(1000));
-		else
-			himax_resend_cmd_func(ts->suspended);
-
 		mutex_lock(&wrong_touch_lock);
 		g_himax_nc_ts_data->tskit_himax_data->easy_wakeup_info.off_motion_on = false;
 		mutex_unlock(&wrong_touch_lock);

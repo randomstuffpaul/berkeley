@@ -1112,6 +1112,10 @@ static void tun_net_init(struct net_device *dev)
 
 		break;
 	}
+#ifdef CONFIG_MPTCP
+	if (dev)
+		dev->flags |= IFF_NOMULTIPATH;
+#endif
 }
 
 /* Character device part */

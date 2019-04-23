@@ -990,6 +990,13 @@ oal_uint32  hmac_config_add_vap_etc(mac_vap_stru *pst_vap, oal_uint16 us_len, oa
         mac_res_free_mac_vap_etc(uc_vap_id);
         return ul_ret;
     }
+#ifdef _PRE_WLAN_1103_CHR
+    /* 记录TxBASessionNumber mib值到chr全局变量中 */
+    if (IS_LEGACY_STA(&pst_hmac_vap->st_vap_base_info))
+    {
+        hmac_chr_set_ba_session_num(mac_mib_get_TxBASessionNumber(&pst_hmac_vap->st_vap_base_info));
+    }
+#endif
 #ifdef _PRE_WLAN_FEATURE_HILINK
     mac_hilink_init_vap(&(pst_hmac_vap->st_vap_base_info));
 #endif
@@ -9251,10 +9258,16 @@ oal_uint32  hmac_config_connect_etc(mac_vap_stru *pst_mac_vap, oal_uint16 us_len
     }
 
     pst_connect_param = (mac_conn_param_stru *)puc_param;
-
     if (us_len != OAL_SIZEOF(mac_conn_param_stru))
     {
         OAM_ERROR_LOG1(0, OAM_SF_ANY, "{hmac_config_connect_etc:: connect failed, unexpected param len ! [%x]!}\r\n", us_len);
+        hmac_free_connect_param_resource(pst_connect_param);
+        return OAL_ERR_CODE_INVALID_CONFIG;
+    }
+
+    if (pst_connect_param->ul_ie_len > WLAN_WPS_IE_MAX_SIZE)
+    {
+        OAM_ERROR_LOG1(0, OAM_SF_ANY, "{hmac_config_connect_etc:: connect failed, pst_connect_param ie_len[%x] error!}\r\n", pst_connect_param->ul_ie_len);
         hmac_free_connect_param_resource(pst_connect_param);
         return OAL_ERR_CODE_INVALID_CONFIG;
     }
@@ -9444,6 +9457,8 @@ oal_uint32  hmac_config_connect_etc(mac_vap_stru *pst_mac_vap, oal_uint16 us_len
     {
         hmac_config_del_p2p_ie_etc(pst_connect_param->puc_ie, &(pst_connect_param->ul_ie_len));
     }
+
+
     st_app_ie.ul_ie_len      = pst_connect_param->ul_ie_len;
     oal_memcopy(st_app_ie.auc_ie, pst_connect_param->puc_ie, st_app_ie.ul_ie_len);
     st_app_ie.en_app_ie_type = OAL_APP_ASSOC_REQ_IE;

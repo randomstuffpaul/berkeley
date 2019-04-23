@@ -21,5 +21,10 @@ void dp_factory_link_cr_or_ch_eq_fail(bool is_cr);
 bool dp_factory_is_4k_60fps(uint8_t rate, uint8_t lanes, uint16_t h_active, uint16_t v_active, uint8_t fps);
 int dp_factory_get_test_result(char *buffer, int size);
 
+bool dp_factory_need_report_event(void);
+void dp_factory_set_link_event_no(uint32_t event_no, bool cablein, char *event, int hotplug);
+void dp_factory_set_link_rate_lanes(uint8_t rate, uint8_t lanes, uint8_t sink_rate, uint8_t sink_lanes);
+void dp_factory_set_mmie_test_flag(bool test_enable);
+
 #endif // __DP_FACTORY_H__
 

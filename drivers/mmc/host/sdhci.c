@@ -910,7 +910,7 @@ static void sdhci_prepare_data(struct sdhci_host *host, struct mmc_command *cmd)
 		}
 
 		if (unlikely(length_mask | offset_mask)) {
-			for_each_sg(data->sg, sg, data->sg_len, i)/*lint !e574*/ {
+			for_each_sg(data->sg, sg, data->sg_len, i)/*lint !e574*/{
 				if (sg->length & length_mask) {
 					DBG("Reverting to PIO because of transfer size (%d)\n",
 					    sg->length);
@@ -1180,11 +1180,13 @@ static void sdhci_del_timer(struct sdhci_host *host, struct mmc_request *mrq)
 		del_timer(&host->timer);
 }
 #ifdef CONFIG_HISI_MMC
-static void sdhci_chk_busy_before_send_cmd(struct sdhci_host *host,
+static int sdhci_chk_busy_before_send_cmd(struct sdhci_host *host,
 	struct mmc_command *cmd)
 {
 	if (host->ops->check_busy_before_send_cmd)
-		host->ops->check_busy_before_send_cmd(host, cmd);
+		return host->ops->check_busy_before_send_cmd(host, cmd);
+
+	return 0;
 }
 #endif
 void sdhci_send_command(struct sdhci_host *host, struct mmc_command *cmd)
@@ -1221,7 +1223,7 @@ void sdhci_send_command(struct sdhci_host *host, struct mmc_command *cmd)
 			pr_err("%s: Controller never released inhibit bit(s).\n",
 			       mmc_hostname(host->mmc));
 			sdhci_dumpregs(host);
-			cmd->error = -EIO;/*lint !e570*/
+			cmd->error = -EIO;
 			sdhci_finish_mrq(host, cmd->mrq);
 			return;
 		}
@@ -1229,7 +1231,8 @@ void sdhci_send_command(struct sdhci_host *host, struct mmc_command *cmd)
 		mdelay(1);
 	}
 #ifdef CONFIG_HISI_MMC
-	sdhci_chk_busy_before_send_cmd(host, cmd);
+	if (sdhci_chk_busy_before_send_cmd(host, cmd))
+		return;
 #endif
 	/*we cannot use system timer for some situations*/
 	if (MMC_TIMEOUT_INVALID != cmd->busy_timeout) {
@@ -1256,7 +1259,7 @@ void sdhci_send_command(struct sdhci_host *host, struct mmc_command *cmd)
 	if ((cmd->flags & MMC_RSP_136) && (cmd->flags & MMC_RSP_BUSY)) {
 		pr_err("%s: Unsupported response type!\n",
 			mmc_hostname(host->mmc));
-		cmd->error = -EINVAL;/*lint !e570*/
+		cmd->error = -EINVAL;
 		sdhci_finish_mrq(host, cmd->mrq);
 		return;
 	}
@@ -1683,7 +1686,7 @@ static void sdhci_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	}
 
 	if (!present || host->flags & SDHCI_DEVICE_DEAD) {
-		mrq->cmd->error = -ENOMEDIUM;/*lint !e570*/
+		mrq->cmd->error = -ENOMEDIUM;
 		sdhci_finish_mrq(host, mrq);
 	} else {
 		if (mrq->sbc && !(host->flags & SDHCI_AUTO_CMD23))
@@ -2605,6 +2608,9 @@ static bool sdhci_request_done(struct sdhci_host *host)
 		}
 	}
 
+	/* if the device is timeout, it may be in error mode, we don't do retry */
+	if (mrq->cmd->error == -ENOMSG)
+		goto out;
 	/*
 	 * The controller needs a reset of internal state machines
 	 * upon error conditions.
@@ -2643,9 +2649,11 @@ static bool sdhci_request_done(struct sdhci_host *host)
 		}
 	}
 #endif
+
+out:
 	if (!sdhci_has_requests(host))
 		sdhci_led_deactivate(host);
-	host->mrqs_done[i] = NULL;/*lint !e661*/
+	host->mrqs_done[i] = NULL;/*lint !e661*/ /* [false alarm]*/
 
 #ifdef CONFIG_HUAWEI_EMMC_DSM
 	sdhci_dsm_handle(host, mrq);
@@ -2687,7 +2695,7 @@ static void sdhci_timeout_timer(unsigned long data)
 		       mmc_hostname(host->mmc));
 		sdhci_dumpregs(host);
 
-		host->cmd->error = -ETIMEDOUT;/*lint !e570*/
+		host->cmd->error = -ETIMEDOUT;
 		sdhci_finish_mrq(host, host->cmd->mrq);
 	}
 
@@ -2717,7 +2725,7 @@ static void sdhci_timeout_data_timer(unsigned long data)
 			host->data_cmd->error = -ETIMEDOUT;/*lint !e570*/
 			sdhci_finish_mrq(host, host->data_cmd->mrq);
 		} else {
-			host->cmd->error = -ETIMEDOUT;/*lint !e570*/
+			host->cmd->error = -ENOMSG;/*lint !e570*/
 			sdhci_finish_mrq(host, host->cmd->mrq);
 		}
 	}
@@ -2751,9 +2759,9 @@ static void sdhci_cmd_irq(struct sdhci_host *host, u32 intmask)
 	if (intmask & (SDHCI_INT_TIMEOUT | SDHCI_INT_CRC |
 		       SDHCI_INT_END_BIT | SDHCI_INT_INDEX)) {
 		if (intmask & SDHCI_INT_TIMEOUT)
-			host->cmd->error = -ETIMEDOUT;/*lint !e570*/
+			host->cmd->error = -ETIMEDOUT;
 		else
-			host->cmd->error = -EILSEQ;/*lint !e570*/
+			host->cmd->error = -EILSEQ;
 
 		/*
 		 * If this command initiates a data phase and a response
@@ -2851,7 +2859,7 @@ static void sdhci_data_irq(struct sdhci_host *host, u32 intmask)
 		if (data_cmd && (data_cmd->flags & MMC_RSP_BUSY)) {
 			if (intmask & SDHCI_INT_DATA_TIMEOUT) {
 				host->data_cmd = NULL;
-				data_cmd->error = -ETIMEDOUT;/*lint !e570*/
+				data_cmd->error = -ETIMEDOUT;
 				sdhci_finish_mrq(host, data_cmd->mrq);
 				return;
 			}
@@ -3951,6 +3959,10 @@ int __sdhci_add_host(struct sdhci_host *host)
 	setup_timer(&mmc->err_handle_timer, mmc_error_handle_timeout_timer, (unsigned long)mmc);
 
 
+	/* error hanlde timerout */
+	setup_timer(&mmc->err_handle_timer, mmc_error_handle_timeout_timer, (unsigned long)mmc);
+
+
 	init_waitqueue_head(&host->buf_ready_int);
 
 	sdhci_init(host, 0);
@@ -3985,11 +3997,13 @@ int __sdhci_add_host(struct sdhci_host *host)
 	if (ret)
 		goto unled;
 
+#ifdef CONFIG_HISI_DEBUG_FS
 	pr_info("%s: SDHCI controller on %s [%s] using %s\n",
 		mmc_hostname(mmc), host->hw_name, dev_name(mmc_dev(mmc)),
 		(host->flags & SDHCI_USE_ADMA) ?
 		(host->flags & SDHCI_USE_64_BIT_DMA) ? "ADMA 64-bit" : "ADMA" :
 		(host->flags & SDHCI_USE_SDMA) ? "DMA" : "PIO");
+#endif
 
 	sdhci_enable_card_detection(host);
 

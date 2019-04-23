@@ -5,7 +5,7 @@
 /*****************************************************************************
   1 其他头文件包含
 *****************************************************************************/
-
+#include <linux/if.h>
 /*****************************************************************************
   2 宏定义
 *****************************************************************************/
@@ -81,6 +81,7 @@ struct Emcom_Xengine_mpip_config{
 	uid_t     lUid; /* The uid of foreground Application */
 	uint32_t  ulType; /* The type of mpip speed up*/
 };
+
 /*****************************************************************************
   5 类定义
 *****************************************************************************/
@@ -120,6 +121,12 @@ bool Emcom_Xengine_CheckIfaceAccount(const struct sock *sk, int proto);
 bool Emcom_Xengine_SmartMpEnable(void);
 void Emcom_Xengine_SmartMpOnDK_Connect(void);
 #endif
+#ifdef CONFIG_MPTCP
+void Emcom_Xengine_MptcpSocketClosed(void *data, int len);
+void Emcom_Xengine_MptcpSocketSwitch(void *data, int len);
+void Emcom_Xengine_MptcpProxyFallback(void *data, int len);
+#endif
+
 /*****************************************************************************
   9 OTHERS定义
 *****************************************************************************/

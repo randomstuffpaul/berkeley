@@ -171,8 +171,8 @@ static SINT32 VP8HAL_CfgDnMsg(VDMHAL_HWMEM_S *pHwMem, MEM_BUFFER_S* pVdhMemMap,
 
 	/* D25 */
 	RD_MSGWORD((p32 + 25), D32);
-	if ((D32 < pVdhMemMap[VDH_SHAREFD_STREAM_BUF].u32StartPhyAddr)
-		|| (D32 > (pVdhMemMap[VDH_SHAREFD_STREAM_BUF].u32StartPhyAddr
+	if ((D32 < pVdhMemMap[VDH_SHAREFD_STREAM_BUF].startPhyAddr)
+		|| (D32 > (pVdhMemMap[VDH_SHAREFD_STREAM_BUF].startPhyAddr
 			+ pVdhMemMap[VDH_SHAREFD_STREAM_BUF].u32Size))) {
 		dprint(PRN_FATAL, "%s check D25 failed \n", __func__);
 		return VDMHAL_ERR;

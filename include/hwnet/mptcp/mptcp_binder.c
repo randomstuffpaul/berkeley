@@ -84,14 +84,14 @@ static int mptcp_get_avail_list_ipv4(struct sock *sk)
 
 sock_lsrr:
 			/* Pointer to the 2nd to last address */
-			opt_end_ptr = opt_ptr + (*(opt_ptr + 1)) - 4;
+			opt_end_ptr = opt_ptr+(*(opt_ptr+1))-4;
 
 			/* Addresses start 3 bytes after type offset */
 			opt_ptr += 3;
 			j = 0;
 
 			/* Different length lists cannot be the same */
-			if ((opt_end_ptr - opt_ptr) / 4 != mptcp_gws->len[i])
+			if ((opt_end_ptr-opt_ptr)/4 != mptcp_gws->len[i])
 				continue;
 
 			/* Iterate if we are still inside options list
@@ -203,7 +203,7 @@ static int mptcp_parse_gateway_ipv4(char *gateways)
 	struct in_addr tmp_addr;
 
 	tmp_string = kzalloc(16, GFP_KERNEL);
-	if (!tmp_string)
+	if (tmp_string == NULL)
 		return -ENOMEM;
 
 	write_lock(&mptcp_gws_lock);
@@ -234,8 +234,8 @@ static int mptcp_parse_gateway_ipv4(char *gateways)
 				mptcp_debug("mptcp_parse_gateway_list tmp: %s i: %d\n", tmp_string, i);
 
 				ret = in4_pton(tmp_string, strlen(tmp_string),
-					       (u8 *)&tmp_addr.s_addr, '\0',
-					       NULL);
+						(u8 *)&tmp_addr.s_addr, '\0',
+						NULL);
 
 				if (ret) {
 					mptcp_debug("mptcp_parse_gateway_list ret: %d s_addr: %pI4\n",
@@ -272,7 +272,7 @@ static int mptcp_parse_gateway_ipv4(char *gateways)
 	}
 
 	/* Number of flows is number of gateway lists plus master flow */
-	mptcp_binder_ndiffports = k + 1;
+	mptcp_binder_ndiffports = k+1;
 
 	write_unlock(&mptcp_gws_lock);
 	kfree(tmp_string);
@@ -384,7 +384,7 @@ static void binder_create_subflows(struct sock *meta_sk)
 }
 
 static int binder_get_local_id(sa_family_t family, union inet_addr *addr,
-			       struct net *net, bool *low_prio)
+				  struct net *net, bool *low_prio)
 {
 	return 0;
 }
@@ -403,7 +403,7 @@ static int proc_mptcp_gateways(struct ctl_table *ctl, int write,
 
 	if (write) {
 		tbl.data = kzalloc(MPTCP_GW_SYSCTL_MAX_LEN, GFP_KERNEL);
-		if (!tbl.data)
+		if (tbl.data == NULL)
 			return -ENOMEM;
 		ret = proc_dostring(&tbl, write, buffer, lenp, ppos);
 		if (ret == 0) {
@@ -414,6 +414,7 @@ static int proc_mptcp_gateways(struct ctl_table *ctl, int write,
 	} else {
 		ret = proc_dostring(ctl, write, buffer, lenp, ppos);
 	}
+
 
 	return ret;
 }
@@ -452,7 +453,7 @@ static int __init binder_register(void)
 	BUILD_BUG_ON(sizeof(struct binder_priv) > MPTCP_PM_SIZE);
 
 	mptcp_sysctl_binder = register_net_sysctl(&init_net, "net/mptcp",
-						  binder_table);
+			binder_table);
 	if (!mptcp_sysctl_binder)
 		goto sysctl_fail;
 

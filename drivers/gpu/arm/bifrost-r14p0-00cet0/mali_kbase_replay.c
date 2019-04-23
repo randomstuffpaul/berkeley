@@ -411,7 +411,7 @@ static int kbasep_replay_reset_job(struct kbase_context *kctx,
 
 	if (first_in_chain)
 		job->job_barrier = 1;
-
+/*lint -e685*/
 	if ((job->job_dependency_index_1 + hw_job_id_offset) >
 			JOB_HEADER_ID_MAX ||
 	    (job->job_dependency_index_2 + hw_job_id_offset) >
@@ -421,7 +421,7 @@ static int kbasep_replay_reset_job(struct kbase_context *kctx,
 			     "Job indicies/dependencies out of valid range\n");
 		goto out_unmap;
 	}
-
+/*lint +e685*/
 	if (job->job_dependency_index_1)
 		job->job_dependency_index_1 += hw_job_id_offset;
 	if (job->job_dependency_index_2)
@@ -941,14 +941,14 @@ static void kbase_replay_process_worker(struct work_struct *data)
 
 	kbasep_replay_reset_softjob(katom, f_katom);
 
-	need_to_try_schedule_context |= jd_submit_atom(kctx, &t_atom, t_katom);
+	need_to_try_schedule_context |= jd_submit_atom(kctx, &t_atom, t_katom);//lint !e514
 	if (t_katom->event_code == BASE_JD_EVENT_JOB_INVALID) {
 		dev_err(kctx->kbdev->dev, "Replay failed to submit atom\n");
 		kbasep_release_katom(kctx, f_atom.atom_number);
 		katom->event_code = BASE_JD_EVENT_JOB_CANCELLED;
 		goto out;
 	}
-	need_to_try_schedule_context |= jd_submit_atom(kctx, &f_atom, f_katom);
+	need_to_try_schedule_context |= jd_submit_atom(kctx, &f_atom, f_katom);//lint !e514
 	if (f_katom->event_code == BASE_JD_EVENT_JOB_INVALID) {
 		dev_err(kctx->kbdev->dev, "Replay failed to submit atom\n");
 		katom->event_code = BASE_JD_EVENT_JOB_CANCELLED;
@@ -961,7 +961,7 @@ out:
 	if (katom->event_code != BASE_JD_EVENT_DONE) {
 		kbase_disjoint_state_down(kctx->kbdev);
 
-		need_to_try_schedule_context |= jd_done_nolock(katom, NULL);
+		need_to_try_schedule_context |= jd_done_nolock(katom, NULL);//lint !e514
 	}
 
 	if (need_to_try_schedule_context)

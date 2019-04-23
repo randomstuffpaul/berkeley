@@ -34,6 +34,7 @@ typedef struct {
 	HI_U32 lowRate;
 	HI_U64 SmmuPageBaseAddr;
 	HI_U32 VencQosMode;
+	HI_U32 svsLowerRate;
 } VeduEfl_DTS_CONFIG_S;
 
 

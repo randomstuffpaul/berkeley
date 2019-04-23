@@ -21,6 +21,12 @@
 #define HISI_PMIC_DSM_MASK_STATE 0xFF
 #define HISI_PMIC_DSM_IGNORE_NUM 99
 
+#ifdef CONFIG_GCOV_KERNEL
+#define STATIC
+#else
+#define STATIC static
+#endif
+
 static PMIC_MNTN_DESC *g_pmic_mntn;
 
 static void __iomem *g_sysctrl_base;
@@ -70,12 +76,14 @@ EXPORT_SYMBOL_GPL(hisi_call_pmic_mntn_notifiers);
 #ifdef CONFIG_HISI_PMIC_DEBUG
 static int hisi_test_pmic_mntn_notifier_call(struct notifier_block *nb, unsigned long event, void *data)
 {
-	PMIC_MNTN_EXCP_INFO  ocp_ldo_msg ;
+	PMIC_MNTN_EXCP_INFO  *ocp_ldo_msg  = (PMIC_MNTN_EXCP_INFO *)(data);
+	if ( NULL == ocp_ldo_msg) {
+		pr_err("[%s] test pmic mnt ocp ldo msg is NULL!\n",__func__);
+		return -EPERM;
+	}
 
-	memset_s(&ocp_ldo_msg,sizeof(PMIC_MNTN_EXCP_INFO),0x0,sizeof(PMIC_MNTN_EXCP_INFO));
-	strncpy_s((PMIC_MNTN_EXCP_INFO *)(&ocp_ldo_msg),sizeof(PMIC_MNTN_EXCP_INFO),(PMIC_MNTN_EXCP_INFO *)(data),sizeof(PMIC_MNTN_EXCP_INFO));
 	if (event == HISI_PMIC_OCP_EVENT) {
-		pr_err("[%s] test pmic mnt %s ocp event!\n",__func__,ocp_ldo_msg.ldo_num);
+		pr_err("[%s] test pmic mnt %s ocp event!\n",__func__,ocp_ldo_msg->ldo_num);
 	}else {
 		pr_err("[%s]invalid event %d!\n", __func__,(int) (event));
 	}
@@ -238,7 +246,7 @@ static int hisi_pmic_ocp_special_handler(char *power_name, PMIC_MNTN_DESC *pmic_
 	return PMIC_OCP_NONE;
 }
 
-static void get_pmu_register_info(void)
+STATIC void get_pmu_register_info(void)
 {
 	int i;
 
@@ -1241,7 +1249,7 @@ static struct spmi_driver hisi_pmic_mntn_driver = {
 #endif
 };
 
-static int __init hisi_pmic_mntn_init(void)
+STATIC int __init hisi_pmic_mntn_init(void)
 {
 	int ret = 0;
 	pr_info("\n===============[in %s ]=============\n", __func__);

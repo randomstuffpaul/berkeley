@@ -1915,6 +1915,11 @@ static int hisi_aod_trylock(struct aod_data_t *aod_data){
 	int retry_count = 0;
 	int trylock_result = MUTEX_LOCK_FAILURE;
 
+	if (!aod_data) {
+		HISI_AOD_INFO("aod_data is NULL.\n");
+		return -1;
+	}
+
 	while (MUTEX_LOCK_FAILURE == (trylock_result = mutex_trylock(&(aod_data->aod_lock)))) {
 		mdelay(HISI_AOD_TRYLOCK_WAITTIME);
 		retry_count++;

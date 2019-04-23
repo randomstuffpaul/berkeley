@@ -23,6 +23,7 @@ struct fan54151_device_info {
 	int gpio_int;
 	int irq_int;
 	int irq_active;
+	int chip_already_init;
 };
 /*************************register part id****************************/
 #define FAN54151_MAIN_REG_TOTAL_NUM   (8)

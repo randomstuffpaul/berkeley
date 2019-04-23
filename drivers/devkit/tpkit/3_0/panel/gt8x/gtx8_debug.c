@@ -546,28 +546,6 @@ cache_exit:
 	return ret;
 }
 
-#define GTX8_TIMEOUT_ERR -1
-#define GTX8_BUS_ERR  -2
-/* 
-  * return 0 no error, < 0 bus error
-  */
-static int gtx8_wait_data_ready(struct gtx8_ts_test *ts_test)
-{
-	int i;
-	u8 buf[1] = {0x00};
-	int ret = NO_ERR;
-
-	for (i = 0; i < GTX8_RETRY_NUM_3; i++) {
-		ret = ts_test->ts->ops.i2c_read(GTP_REG_COOR, &buf[0], 1);
-		if ((ret == 0) && (buf[0] & 0x80))
-			return NO_ERR;
-		else if (ret)
-			return GTX8_BUS_ERR;
-
-		msleep(15); /* waiting for data ready */
-	}
-	return GTX8_TIMEOUT_ERR;
-}
 
 /* test noise data
 static void gtx8_test_noisedata(struct gtx8_ts_test *ts_test)
@@ -1172,7 +1150,7 @@ int gtx8_get_rawdata(struct ts_rawdata_info *info, struct ts_cmd_node *out_cmd)
 	if (ret) {
 		TS_LOG_ERR("%s: Failed parse test peremeters, exit test\n", __func__);
 		if (gtx8_ts->dev_data->rawdata_newformatflag == TS_RAWDATA_NEWFORMAT) {
-			gtx8_put_test_failed_prepare_newformat(info);
+			gtx8_put_test_failed_prepare_newformat((struct ts_rawdata_info_new *)info);
 		} else {
 			strncpy(info->result, "0F-software reason", TS_RAWDATA_RESULT_MAX -1);
 		}
@@ -1280,6 +1258,7 @@ static void gtx8_put_test_result_newformat(
 		struct gtx8_ts_test *ts_test)
 {
 	int i = 0;
+	int tmp_testresult = 0;
 	int have_bus_error = 0;
 	int have_panel_error = 0;
 	char statistics_data[STATISTICS_DATA_LEN] = {0};
@@ -1325,7 +1304,8 @@ static void gtx8_put_test_result_newformat(
 		strncpy(pts_node->statistics_data,statistics_data,sizeof(pts_node->statistics_data)-1);
 	}
 	pts_node->size = ts_test->rawdata.size;
-	pts_node->testresult = testresut[ts_test->test_result[GTP_CAP_TEST]];
+	tmp_testresult = ts_test->test_result[GTP_CAP_TEST];
+	pts_node->testresult = testresut[tmp_testresult];
 	pts_node->typeindex = GTP_CAP_TEST;
 	strncpy(pts_node->test_name,"Cap_Rawdata",sizeof(pts_node->test_name)-1);
 	list_add_tail(&pts_node->node, &info->rawdata_head);
@@ -1343,7 +1323,8 @@ static void gtx8_put_test_result_newformat(
 		return;
 	}
 	pts_node->size = 0;
-	pts_node->testresult = testresut[ts_test->test_result[GTP_DELTA_TEST]];
+	tmp_testresult = ts_test->test_result[GTP_DELTA_TEST];
+	pts_node->testresult = testresut[tmp_testresult];
 	pts_node->typeindex = GTP_DELTA_TEST;
 	strncpy(pts_node->test_name,"Trx_delta",sizeof(pts_node->test_name)-1);
 	list_add_tail(&pts_node->node, &info->rawdata_head);
@@ -1370,7 +1351,8 @@ static void gtx8_put_test_result_newformat(
 		strncpy(pts_node->statistics_data,statistics_data,sizeof(pts_node->statistics_data)-1);
 	}
 	pts_node->size = ts_test->noisedata.size;
-	pts_node->testresult = testresut[ts_test->test_result[GTP_NOISE_TEST]];
+	tmp_testresult = ts_test->test_result[GTP_NOISE_TEST];
+	pts_node->testresult = testresut[tmp_testresult];
 	pts_node->typeindex = GTP_NOISE_TEST;
 	strncpy(pts_node->test_name,"noise_delta",sizeof(pts_node->test_name)-1);
 	list_add_tail(&pts_node->node, &info->rawdata_head);
@@ -1382,7 +1364,8 @@ static void gtx8_put_test_result_newformat(
 		return;
 	}
 	pts_node->size = 0;
-	pts_node->testresult = testresut[ts_test->test_result[GTP_SHORT_TEST]];
+	tmp_testresult = ts_test->test_result[GTP_SHORT_TEST];
+	pts_node->testresult = testresut[tmp_testresult];
 	pts_node->typeindex = GTP_SHORT_TEST;
 	strncpy(pts_node->test_name,"open_test",sizeof(pts_node->test_name)-1);
 	list_add_tail(&pts_node->node, &info->rawdata_head);
@@ -1406,7 +1389,8 @@ static void gtx8_put_test_result_newformat(
 		strncpy(pts_node->statistics_data,statistics_data,sizeof(pts_node->statistics_data)-1);
 	}
 	pts_node->size = ts_test->self_rawdata.size;
-	pts_node->testresult = testresut[ts_test->test_result[GTP_SELFCAP_TEST]];
+	tmp_testresult = ts_test->test_result[GTP_SELFCAP_TEST];
+	pts_node->testresult = testresut[tmp_testresult];
 	pts_node->typeindex = GTP_SELFCAP_TEST;
 	strncpy(pts_node->test_name,"Self_Cap",sizeof(pts_node->test_name)-1);
 	list_add_tail(&pts_node->node, &info->rawdata_head);
@@ -1430,7 +1414,8 @@ static void gtx8_put_test_result_newformat(
 		strncpy(pts_node->statistics_data,statistics_data,sizeof(pts_node->statistics_data)-1);
 	}
 	pts_node->size = ts_test->self_noisedata.size;
-	pts_node->testresult = testresut[ts_test->test_result[GTP_SELFNOISE_TEST]];
+	tmp_testresult = ts_test->test_result[GTP_SELFNOISE_TEST];
+	pts_node->testresult = testresut[tmp_testresult];
 	pts_node->typeindex = GTP_SELFNOISE_TEST;
 	strncpy(pts_node->test_name,"self_noisse",sizeof(pts_node->test_name)-1);
 	list_add_tail(&pts_node->node, &info->rawdata_head);
@@ -1460,7 +1445,7 @@ static void gtx8_put_test_result(
 	char statistics_data[STATISTICS_DATA_LEN] = {0};
 
 	if (gtx8_ts->dev_data->ts_platform_data->chip_data->rawdata_newformatflag == TS_RAWDATA_NEWFORMAT){
-			gtx8_put_test_result_newformat(info,ts_test);
+			gtx8_put_test_result_newformat((struct ts_rawdata_info_new *)info,ts_test);
 			return;
 	}
 	/* save rawdata to info->buff */
@@ -1722,6 +1707,7 @@ static int gtx8_check_resistance_to_gnd(struct ts_test_params *test_params,
 	long r = 0;
 	u16 r_th = 0, avdd_value = 0;
 	u32 chn_id_tmp = 0;
+	u32 pin_num = 0;
 
 	avdd_value = test_params->avdd_value;
 	if (adc_signal == 0 || adc_signal == 0x8000)
@@ -1748,21 +1734,13 @@ static int gtx8_check_resistance_to_gnd(struct ts_test_params *test_params,
 		chn_id_tmp -= test_params->max_drv_num;
 
 	if (r < r_th) {
-		if ((adc_signal & (0x8000)) == 0) {
-			if (pos < MAX_DRV_NUM)
-				TS_LOG_ERR("Tx%d shortcircut to GND,R=%ldK,R_Threshold=%dK\n",
-					map_die2pin(test_params, chn_id_tmp), r, r_th);
-			else
-				TS_LOG_ERR("Rx%d shortcircut to GND,R=%ldK,R_Threshold=%dK\n",
-					map_die2pin(test_params, chn_id_tmp), r, r_th);
-		} else {
-			if (pos < MAX_DRV_NUM)
-				TS_LOG_ERR("Tx%d shortcircut to VDD,R=%ldK,R_Threshold=%dK\n",
-					map_die2pin(test_params, chn_id_tmp), r, r_th);
-			else
-				TS_LOG_ERR("Rx%d shortcircut to VDD,R=%ldK,R_Threshold=%dK\n",
-					map_die2pin(test_params, chn_id_tmp), r, r_th);
-		}
+		pin_num = map_die2pin(test_params, chn_id_tmp);
+		TS_LOG_ERR("%s%d shortcircut to %s,R=%ldK,R_Threshold=%dK\n",
+					(pin_num & DRV_CHANNEL_FLAG) ? "DRV" : "SEN",
+					(pin_num & ~DRV_CHANNEL_FLAG),
+					(adc_signal & 0x8000) ? "VDD" : "GND",
+					r, r_th);
+
 		return RESULT_ERR;
 	}
 	return NO_ERR;
@@ -1816,6 +1794,7 @@ static int gtx8_shortcircut_analysis(struct gtx8_ts_test *ts_test)
 	int ret = 0, err = 0;
 	u32 r_threshold = 0, short_r = 0;
 	int size = 0, i = 0, j = 0;
+	u32 master_pin_num = 0, slave_pin_num = 0;
 	u16 adc_signal = 0, data_addr = 0;
 	u8 short_flag = 0, *data_buf = NULL, short_status[3] = {0};
 	u16 self_capdata[MAX_DRV_NUM + MAX_SEN_NUM] = {0}, short_die_num = 0;
@@ -1923,11 +1902,15 @@ static int gtx8_shortcircut_analysis(struct gtx8_ts_test *ts_test)
 				short_r = gtx8_short_resistance_calc(ts_test, &temp_short_info,
 							self_capdata[short_die_num], 0);
 				if (short_r < r_threshold) {
+					master_pin_num = map_die2pin(test_params, temp_short_info.master);
+					slave_pin_num = map_die2pin(test_params, temp_short_info.slave);
 					TS_LOG_ERR("Tx/Tx short circut:R=%dK,R_Threshold=%dK\n",
 								short_r, r_threshold);
-					TS_LOG_ERR("Tx%d-Tx%d shortcircut\n",
-						map_die2pin(test_params, temp_short_info.master),
-						map_die2pin(test_params, temp_short_info.slave));
+					TS_LOG_ERR("%s%d--%s%d shortcircut\n",
+							   (master_pin_num & DRV_CHANNEL_FLAG) ? "DRV" : "SEN",
+							   (master_pin_num & ~DRV_CHANNEL_FLAG),
+							   (slave_pin_num & DRV_CHANNEL_FLAG) ? "DRV" : "SEN",
+							   (slave_pin_num & ~DRV_CHANNEL_FLAG));
 					err |= -EINVAL;
 				}
 			}
@@ -1968,11 +1951,15 @@ static int gtx8_shortcircut_analysis(struct gtx8_ts_test *ts_test)
 				short_r = gtx8_short_resistance_calc(ts_test, &temp_short_info,
 							self_capdata[short_die_num + test_params->max_drv_num], 0);
 				if (short_r < r_threshold) {
+					master_pin_num = map_die2pin(test_params, temp_short_info.master);
+					slave_pin_num = map_die2pin(test_params, temp_short_info.slave);
 					TS_LOG_ERR("Rx/Rx short circut:R=%dK,R_Threshold=%dK\n",
 								short_r, r_threshold);
-					TS_LOG_ERR("Rx%d-Rx%d shortcircut\n",
-						map_die2pin(test_params, temp_short_info.master),
-						map_die2pin(test_params, temp_short_info.slave));
+					TS_LOG_ERR("%s%d--%s%d shortcircut\n",
+							   (master_pin_num & DRV_CHANNEL_FLAG) ? "DRV" : "SEN",
+							   (master_pin_num & ~DRV_CHANNEL_FLAG),
+							   (slave_pin_num & DRV_CHANNEL_FLAG) ? "DRV" : "SEN",
+							   (slave_pin_num & ~DRV_CHANNEL_FLAG));
 					err |= -EINVAL;
 				}
 			}
@@ -2013,11 +2000,15 @@ static int gtx8_shortcircut_analysis(struct gtx8_ts_test *ts_test)
 				short_r = gtx8_short_resistance_calc(ts_test, &temp_short_info,
 							self_capdata[short_die_num + test_params->max_drv_num], 0);
 				if (short_r < r_threshold) {
+					master_pin_num = map_die2pin(test_params, temp_short_info.master);
+					slave_pin_num = map_die2pin(test_params, temp_short_info.slave);
 					TS_LOG_ERR("Rx/Tx short circut:R=%dK,R_Threshold=%dK\n",
 								short_r, r_threshold);
-					TS_LOG_ERR("Rx%d-Tx%d shortcircut\n",
-						map_die2pin(test_params, temp_short_info.master),
-						map_die2pin(test_params, temp_short_info.slave));
+					TS_LOG_ERR("%s%d--%s%d shortcircut\n",
+							   (master_pin_num & DRV_CHANNEL_FLAG) ? "DRV" : "SEN",
+							   (master_pin_num & ~DRV_CHANNEL_FLAG),
+							   (slave_pin_num & DRV_CHANNEL_FLAG) ? "DRV" : "SEN",
+							   (slave_pin_num & ~DRV_CHANNEL_FLAG));
 					err |= -EINVAL;
 				}
 			}
@@ -2030,7 +2021,7 @@ static int gtx8_shortcircut_analysis(struct gtx8_ts_test *ts_test)
 		data_buf = NULL;
 	}
 
-	return err;
+	return ( err | ret ) ? -EFAULT : NO_ERR;
 shortcircut_analysis_error:
 	if (data_buf != NULL) {
 		kfree(data_buf);

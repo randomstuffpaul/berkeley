@@ -238,6 +238,7 @@ static void batt_acr_detect_parse_dts(struct device_node *np, struct acr_device_
 		hwlog_err("get acr_rt_threshold fail, use default value\n");
 		di->acr_rt_threshold = ACR_RT_THRESHOLD_DEFAULT;
 	}
+	di->acr_rt_threshold *= 1000;//mA->uA
 	hwlog_info("acr_rt_threshold = %d\n", di->acr_rt_threshold);
 
 	ret = of_property_read_u32(np, "acr_rt_fmd_min", &(di->acr_rt_fmd_min));

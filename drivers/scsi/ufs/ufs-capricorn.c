@@ -312,26 +312,6 @@ int ufs_kirin_dme_setup_snps_asic_mphy(struct ufs_hba *hba)
 
 	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0xD0C1, 0x0), 0x1); /* Unipro VS_mphy_disable */
 
-	if (host->caps & RX_CANNOT_DISABLE) {
-		ufshcd_dme_get(hba, UIC_ARG_MIB_SEL(0x800a, 0x4), &value1);
-		ufshcd_dme_get(hba, UIC_ARG_MIB_SEL(0x800a, 0x5), &value2);
-		/* bit[5:4] = 2b'00, not do override, let the FSM control the
-		 *            RX status, normally during H8, the RX will be
-		 *            disabled to save power. CS chip will use this
-		 *            configure, which is default also.
-		 * bit[5:4] = 2b'01, do override, not disable RX in any status,
-		 *            include H8, which cause high power consume,
-		 *            ES chip need this bugfix, otherwise the RX
-		 *            will not work again if enabled after disable.
-		 * bit[5:4] = 2b'11, do override, disable RX in any status,
-		 *            link startup will fail if configured this.
-		 */
-		value1 |= BIT_RX_DISABLE_OVR_EN_WR;
-		value2 |= BIT_RX_DISABLE_OVR_EN_WR;
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x800a, 0x4), value1);
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x800a, 0x5), value2);
-	}
-
 	if (ufs_sctrl_readl(host, SCDEEPSLEEPED_OFFSET) & EFUSE_RHOLD_BIT) {
 		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x8013, 0x4), 0x2); /* MPHY RXRHOLDCTRLOPT */
 		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x8013, 0x5), 0x2); /* MPHY RXRHOLDCTRLOPT */
@@ -583,8 +563,9 @@ void ufs_kirin_pwr_change_pre_change(struct ufs_hba *hba)
 {
 	uint32_t value;
 	pr_info("%s ++\n", __func__);
-
+#ifdef CONFIG_HISI_DEBUG_FS
 	pr_info("device manufacturer_id is 0x%x\n", hba->manufacturer_id);
+#endif
 	/*ARIES platform need to set SaveConfigTime to 0x13, and change sync length to maximum value */
 	ufshcd_dme_set(hba, UIC_ARG_MIB((u32)0xD0A0), 0x13); /* VS_DebugSaveConfigTime */
 	ufshcd_dme_set(hba, UIC_ARG_MIB((u32)0x1552), 0x4f); /* g1 sync length */

@@ -15,7 +15,6 @@ struct otg_gpio_id_dev {
 	struct platform_device *pdev;
 	struct notifier_block otg_nb;
 	unsigned int otg_adc_channel;
-	bool ycable_support;
 	int gpio;
 	int irq;
 	unsigned int fpga_flag;

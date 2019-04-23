@@ -321,7 +321,7 @@ static void hwcnt_bitmap_union(u32 dst[4], u32 src[4])
 	dst[SHADER_HWCNT_BM] |= src[SHADER_HWCNT_BM];
 	dst[MMU_L2_HWCNT_BM] |= src[MMU_L2_HWCNT_BM];
 }
-
+/*lint -e647*/
 size_t kbase_vinstr_dump_size(struct kbase_device *kbdev)
 {
 	size_t dump_size;
@@ -333,7 +333,7 @@ size_t kbase_vinstr_dump_size(struct kbase_device *kbdev)
 		nr_cg = kbdev->gpu_props.num_core_groups;
 		dump_size = nr_cg * NR_CNT_BLOCKS_PER_GROUP *
 				NR_CNT_PER_BLOCK *
-				NR_BYTES_PER_CNT;
+				NR_BYTES_PER_CNT;//lint !e647
 	} else
 #endif /* CONFIG_MALI_NO_MALI */
 	{
@@ -346,10 +346,11 @@ size_t kbase_vinstr_dump_size(struct kbase_device *kbdev)
 		/* JM and tiler counter blocks are always present */
 		dump_size = (2 + nr_l2 + nr_blocks) *
 				NR_CNT_PER_BLOCK *
-				NR_BYTES_PER_CNT;
+				NR_BYTES_PER_CNT;//lint !e647
 	}
 	return dump_size;
 }
+/*lint +e647*/
 KBASE_EXPORT_TEST_API(kbase_vinstr_dump_size);
 
 static size_t kbasep_vinstr_dump_size_ctx(
@@ -434,7 +435,7 @@ static int kbasep_vinstr_create_kctx(struct kbase_vinstr_context *vinstr_ctx)
 		KBASE_TLSTREAM_TL_NEW_CTX(
 				vinstr_ctx->kctx,
 				vinstr_ctx->kctx->id,
-				(u32)(vinstr_ctx->kctx->tgid));
+				(u32)(vinstr_ctx->kctx->tgid));//lint !e648
 
 		mutex_unlock(&kbdev->kctx_list_lock);
 	} else {
@@ -465,7 +466,7 @@ static int kbasep_vinstr_create_kctx(struct kbase_vinstr_context *vinstr_ctx)
 		goto failed_kthread;
 	}
 
-	return 0;
+	return 0;//lint !e429
 
 failed_kthread:
 	disable_hwcnt(vinstr_ctx);
@@ -479,7 +480,7 @@ failed_enable:
 		list_del(&element->link);
 		kfree(element);
 		mutex_unlock(&kbdev->kctx_list_lock);
-		KBASE_TLSTREAM_TL_DEL_CTX(vinstr_ctx->kctx);
+		KBASE_TLSTREAM_TL_DEL_CTX(vinstr_ctx->kctx);//lint !e648
 	}
 failed_map:
 	kbase_destroy_context(vinstr_ctx->kctx);
@@ -533,7 +534,7 @@ static void kbasep_vinstr_destroy_kctx(struct kbase_vinstr_context *vinstr_ctx)
 	kbase_destroy_context(vinstr_ctx->kctx);
 
 	/* Inform timeline client about context destruction. */
-	KBASE_TLSTREAM_TL_DEL_CTX(vinstr_ctx->kctx);
+	KBASE_TLSTREAM_TL_DEL_CTX(vinstr_ctx->kctx);//lint !e648
 
 	vinstr_ctx->kctx = NULL;
 }
@@ -2126,7 +2127,7 @@ int kbase_vinstr_hwc_clear(struct kbase_vinstr_client *cli)
 {
 	struct kbase_vinstr_context *vinstr_ctx;
 	int                         rcode;
-	u64                         unused;
+	u64                         unused;//lint !e578
 
 	if (!cli)
 		return -EINVAL;
@@ -2229,7 +2230,7 @@ static int kbase_vinstr_is_ready(struct kbase_vinstr_context *vinstr_ctx)
 
 	return ret;
 }
-
+/*lint -e666*/
 void kbase_vinstr_suspend(struct kbase_vinstr_context *vinstr_ctx)
 {
 	wait_event(vinstr_ctx->suspend_waitq,
@@ -2241,6 +2242,7 @@ void kbase_vinstr_wait_for_ready(struct kbase_vinstr_context *vinstr_ctx)
 	wait_event(vinstr_ctx->suspend_waitq,
 			(0 == kbase_vinstr_is_ready(vinstr_ctx)));
 }
+/*lint +e666*/
 KBASE_EXPORT_TEST_API(kbase_vinstr_wait_for_ready);
 
 /**

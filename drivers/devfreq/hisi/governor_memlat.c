@@ -56,6 +56,7 @@ struct memlat_node {
 	/*cpufreq notifier*/
 	unsigned int min_core_freq;
 
+	bool governor_started;
 	bool monitor_paused;
 	bool pending_change;
 	unsigned int switch_on_cpufreq;
@@ -499,7 +500,7 @@ static int cpufreq_notifier_trans(struct notifier_block *nb,
 
 	d = container_of(nb, struct memlat_node, notifier_trans_block);
 	/* device hasn't been initilzed yet */
-	if (!d->monitor_enable || !d->mon_started)
+	if (!d->monitor_enable || !d->governor_started)
 		return NOTIFY_OK;
 
 	/*
@@ -702,6 +703,7 @@ static int gov_start(struct devfreq *df)
 	if (ret)
 		goto err_sysfs;
 
+	node->governor_started = true;
 	return 0;
 
 err_sysfs:
@@ -719,6 +721,7 @@ static void gov_stop(struct devfreq *df)
 	struct memlat_node *node = df->data;
 	struct memlat_hwmon *hw = node->hw;
 
+	node->governor_started = false;
 	sysfs_remove_group(&df->dev.kobj, node->attr_grp);
 	mutex_lock(&node->mon_mutex_lock);
 	stop_monitor(df);
@@ -949,6 +952,7 @@ int register_memlat(struct device *dev, struct memlat_hwmon *hw)
 	node->new_cpufreq = 0;
 	node->monitor_paused = false;
 	node->pending_change = false;
+	node->governor_started = false;
 	node->min_core_freq = INT_MAX;
 	mutex_init(&node->cpufreq_mutex_lock);
 	mutex_init(&node->mon_mutex_lock);

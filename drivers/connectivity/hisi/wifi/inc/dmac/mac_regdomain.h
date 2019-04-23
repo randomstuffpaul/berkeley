@@ -184,7 +184,8 @@ typedef struct
     oal_int8                            ac_country[WLAN_COUNTRY_STR_LEN];       /* 国家字符串 */
     mac_dfs_domain_enum_uint8           en_dfs_domain;                          /* DFS 雷达标准 */
     oal_uint8                           uc_regclass_num;                        /* 管制类个数 */
-    oal_uint8                           auc_resv[3];
+    oal_uint8                           uc_regdomain_type;                      /* 管制域法规类型*/
+    oal_uint8                           auc_resv[2];
     mac_regclass_info_stru              ast_regclass[WLAN_MAX_RC_NUM];          /* 管制域包含的管制类信息，注意 此成员只能放在最后一项! */
 }mac_regdomain_info_stru;
 

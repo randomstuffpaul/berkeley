@@ -782,165 +782,7 @@ struct rdr_exception_info_s g_mbb_exc_info[] =
         .e_desc             = "modem reset by bus error",
     },
 };
-DUMP_MOD_ID g_dump_cp_mod_id[] ={
-    {RDR_MODEM_CP_DRV_MOD_ID_START,RDR_MODEM_CP_DRV_MOD_ID_END,RDR_MODEM_CP_DRV_MOD_ID},
-    {RDR_MODEM_CP_OSA_MOD_ID_START,RDR_MODEM_CP_OSA_MOD_ID_END,RDR_MODEM_CP_OSA_MOD_ID},
-    {RDR_MODEM_CP_OAM_MOD_ID_START,RDR_MODEM_CP_OAM_MOD_ID_END,RDR_MODEM_CP_OAM_MOD_ID},
-    {RDR_MODEM_CP_GUL2_MOD_ID_START,RDR_MODEM_CP_GUL2_MOD_ID_END,RDR_MODEM_CP_GUL2_MOD_ID},
-    {RDR_MODEM_CP_CTTF_MOD_ID_START,RDR_MODEM_CP_CTTF_MOD_ID_END,RDR_MODEM_CP_CTTF_MOD_ID},
-    {RDR_MODEM_CP_GUWAS_MOD_ID_START,RDR_MODEM_CP_GUWAS_MOD_ID_END,RDR_MODEM_CP_GUWAS_MOD_ID},
-    {RDR_MODEM_CP_CAS_MOD_ID_START,RDR_MODEM_CP_CAS_MOD_ID_END,RDR_MODEM_CP_CAS_MOD_ID},
-    {RDR_MODEM_CP_CPROC_MOD_ID_START,RDR_MODEM_CP_CPROC_MOD_ID_END,RDR_MODEM_CP_CPROC_MOD_ID},
-    {RDR_MODEM_CP_GUGAS_MOD_ID_START,RDR_MODEM_CP_GUGAS_MOD_ID_END,RDR_MODEM_CP_GUGAS_MOD_ID},
-    {RDR_MODEM_CP_GUCNAS_MOD_ID_START,RDR_MODEM_CP_GUCNAS_MOD_ID_END,RDR_MODEM_CP_GUCNAS_MOD_ID},
-    {RDR_MODEM_CP_GUDSP_MOD_ID_START,RDR_MODEM_CP_GUDSP_MOD_ID_END,RDR_MODEM_CP_GUDSP_MOD_ID},
-    {RDR_MODEM_CP_LPS_MOD_ID_START,RDR_MODEM_CP_LPS_MOD_ID_END,RDR_MODEM_CP_LPS_MOD_ID},
-    {RDR_MODEM_CP_LMSP_MOD_ID_START,RDR_MODEM_CP_LMSP_MOD_ID_END,RDR_MODEM_CP_LMSP_MOD_ID},
-    {RDR_MODEM_CP_TLDSP_MOD_ID_START,RDR_MODEM_CP_TLDSP_MOD_ID_END,RDR_MODEM_CP_TLDSP_MOD_ID},
-    {RDR_MODEM_CP_CPHY_MOD_ID_START,RDR_MODEM_CP_CPHY_MOD_ID_END,RDR_MODEM_CP_CPHY_MOD_ID},
-    {RDR_MODEM_CP_IMS_MOD_ID_START,RDR_MODEM_CP_IMS_MOD_ID_END,RDR_MODEM_CP_IMS_MOD_ID},
-};
 
-/*****************************************************************************
-* 函 数 名  : dump_convert_id_mdmcp2rdr
-* 功能描述  : 转换mdmcp与rdr之间的错误码
-*
-* 输入参数  :
-* 输出参数  :
-
-* 返 回 值  :
-
-*
-* 修改记录  : 2016年1月4日17:05:33   lixiaofan  creat
-*
-*****************************************************************************/
-
-u32 dump_convert_id_mdmcp2rdr(u32 mdmcp_mod_id)
-{
-    u32 i = 0;
-    u32 rdr_id = (u32)RDR_MODEM_CP_DRV_MOD_ID;
-    for(i = 0; i < sizeof(g_dump_cp_mod_id)/sizeof(g_dump_cp_mod_id[0]);i++)
-    {
-        if(mdmcp_mod_id >= g_dump_cp_mod_id[i].mdm_id_start 
-            && mdmcp_mod_id <= g_dump_cp_mod_id[i].mdm_id_end)
-        {
-            rdr_id =  g_dump_cp_mod_id[i].rdr_id;
-        }
-    }
-    return rdr_id;
-}
-
-/*****************************************************************************
-* 函 数 名  : dump_save_balong_rdr_info
-* 功能描述  : 在手机平台上更新rdr的global 头
-*
-* 输入参数  :
-* 输出参数  :
-
-* 返 回 值  :
-
-*
-* 修改记录  : 2016年1月4日17:05:33   lixiaofan  creat
-*
-*****************************************************************************/
-void dump_save_balong_rdr_info(u32 mod_id)
-{
-    struct timex txc = {0,};
-    struct rtc_time tm = {0,};
-    char temp[32] = {0};
-    struct dump_global_base_info_s* global_base_info = NULL;
-    struct rdr_exception_info_s* rdr_exc_info = NULL;
-    u32 i = 0;
-    dump_reboot_cpu_t core = DUMP_CPU_BUTTON;
-
-    dump_get_reboot_contex((u32*)&core,NULL);
-
-    do_gettimeofday(&(txc.time));
-    rtc_time_to_tm((unsigned long)(txc.time.tv_sec), &tm);
-    snprintf(temp, (sizeof(temp)-1), "%04d-%02d-%02d %02d:%02d:%02d", tm.tm_year+1900, tm.tm_mon+1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
-
-    global_base_info = (struct dump_global_base_info_s*)dump_get_global_baseinfo();
-    if(global_base_info == NULL)
-    {
-        dump_fetal("get global_base_info error\n");
-        return;
-    }
-
-    for(i = 0; i < (sizeof(g_phone_exc_info)/sizeof(g_phone_exc_info[0]));i++)
-    {
-       if(g_phone_exc_info[i].e_modid == mod_id)
-       {
-            rdr_exc_info = &g_phone_exc_info[i];
-       }
-    }
-    if(rdr_exc_info == NULL)
-    {
-        dump_fetal("find rdr exc info error\n");
-        return;
-    }
-    global_base_info->modid = rdr_exc_info->e_modid;
-    global_base_info->arg1 = 0;
-    global_base_info->arg2 = 0;
-    /*coverity[secure_coding]*/
-    memcpy(global_base_info->e_module, rdr_exc_info->e_from_module,(unsigned long)16);
-    global_base_info->e_type = rdr_exc_info->e_exce_type;
-
-    /*这里为了hids工具显示，做了特殊处理，填充在rdr的ecore与注册给rdr的不一致*/
-    if(core  == DUMP_CPU_COMM)
-    {
-        global_base_info->e_core = RDR_CP;
-    }
-    else if(core  == DUMP_CPU_APP)
-    {
-        global_base_info->e_core = RDR_MODEMAP;
-    }
-    global_base_info->start_flag = DUMP_START_EXCH;
-    global_base_info->savefile_flag = DUMP_SAVE_FILE_END;
-
-    /*coverity[secure_coding]*/
-    memcpy((void*)(global_base_info->e_desc), rdr_exc_info->e_desc,(u32)(strlen((const char*)(rdr_exc_info->e_desc)) < 48 ? strlen((const char*)(rdr_exc_info->e_desc)): 48 ));
-    /*coverity[secure_coding]*/
-    memcpy(global_base_info->datetime,temp,(unsigned long)24);
-
-    dump_fetal("update modem rdr global info finish\n");
-
-}
-
-/*****************************************************************************
-* 函 数 名  : dump_save_modem_exc_info
-* 功能描述  : 保存rdr传递的参数
-*
-* 输入参数  :
-* 输出参数  :
-
-* 返 回 值  :
-
-*
-* 修改记录  : 2016年1月4日17:05:33   lixiaofan  creat
-*
-*****************************************************************************/
-void dump_save_rdr_exc_info(u32 modid, u32 etype, u64 coreid, char* logpath, pfn_cb_dump_done fndone)
-{
-
-    g_rdr_exc_info.modid  = modid;
-    g_rdr_exc_info.coreid = coreid;
-    g_rdr_exc_info.dump_done = fndone;
-
-    if((strlen(logpath) + strlen(RDR_DUMP_FILE_CP_PATH)) >= RDR_DUMP_FILE_PATH_LEN - 1)
-    {
-        dump_fetal("log path is too long %s\n", logpath);
-        return ;
-    }
-    /*coverity[secure_coding]*/
-    memset_s(g_rdr_exc_info.log_path,sizeof(g_rdr_exc_info.log_path),'\0',(unsigned long)(sizeof(g_rdr_exc_info.log_path)));
-    /*coverity[secure_coding]*/
-    memcpy_s(g_rdr_exc_info.log_path,sizeof(g_rdr_exc_info.log_path), logpath, strlen(logpath));
-    /*coverity[secure_coding]*/
-    memcpy_s(g_rdr_exc_info.log_path + strlen(logpath) ,(sizeof(g_rdr_exc_info.log_path)-strlen(logpath)), RDR_DUMP_FILE_CP_PATH, strlen(RDR_DUMP_FILE_CP_PATH));
-
-    dump_fetal("log path is %s\n", g_rdr_exc_info.log_path);
-
-}
 /*****************************************************************************
 * 函 数 名  : modem_error_proc
 * 功能描述  : modem异常的特殊处理，主要针对dmss和noc异常
@@ -956,38 +798,6 @@ void dump_save_rdr_exc_info(u32 modid, u32 etype, u64 coreid, char* logpath, pfn
 *****************************************************************************/
 void dump_callback_dmss_noc_proc(u32 modid)
 {
-    dump_reboot_reason_t reason ;
-
-    if(modid == RDR_MODEM_NOC_MOD_ID)
-    {
-        dump_fetal("[0x%x] modem NOC process\n", bsp_get_slice_value());
-    }
-    else if(modid == RDR_MODEM_DMSS_MOD_ID)
-    {
-        dump_fetal("[0x%x] modem DMSS process\n", bsp_get_slice_value());
-    }
-
-    if (dump_get_init_phase() < DUMP_INIT_FLAG_CP_AGENT)
-    {
-        dump_fetal("modem dump not init direct reboot\n");
-        return;
-    }
-
-    bsp_coresight_disable();
-
-    dump_set_exc_flag(true);
-
-    reason = ((modid == RDR_MODEM_NOC_MOD_ID) ?  DUMP_REASON_NOC : DUMP_REASON_DMSS);
-
-    dump_set_reboot_contex(DUMP_CPU_APP, reason);
-
-    dump_save_base_info(modid,0,0,0,0);
-
-    if(DUMP_PHONE == dump_get_product_type())
-    {
-        dump_save_modem_sysctrl();
-        dump_save_balong_rdr_info(modid);
-    }
 
 }
 
@@ -1006,32 +816,10 @@ void dump_callback_dmss_noc_proc(u32 modid)
 *****************************************************************************/
 u32 dump_callback(u32 modid, u32 etype, u64 coreid, char* logpath, pfn_cb_dump_done fndone)
 {
-    if(modid == RDR_MODEM_NOC_MOD_ID || modid == RDR_MODEM_DMSS_MOD_ID  )
+    if(fndone != NULL)
     {
-        dump_callback_dmss_noc_proc(modid);
+        fndone(modid,coreid);
     }
-    else
-    {
-        dump_fetal("enter dump callback, mod id:0x%x\n", modid);
-    }
-
-    if(bsp_reset_ccore_is_reboot() == 0)
-    {
-        dump_notify_cp(modid);
-    }
-    else
-    {
-        dump_fetal("modem is reseting now,do not notify\n");
-    }
-
-    dump_save_rdr_exc_info(modid, etype, coreid, logpath, fndone);
-
-    bsp_dump_save_self_addr();
-
-    bsp_dump_hook_callback();
-
-    dump_save_and_reboot();
-
     return BSP_OK;
 }
 
@@ -1050,35 +838,6 @@ u32 dump_callback(u32 modid, u32 etype, u64 coreid, char* logpath, pfn_cb_dump_d
 *****************************************************************************/
 void dump_reset_fail_proc(u32 rdr_modid)
 {
-    dump_reboot_reason_t reason = DUMP_REASON_RST_NOT_SUPPORT;
-    u32 fail_id = RDR_MODEM_CP_RESET_REBOOT_REQ_MOD_ID;
-    char* desc = "MDM_RST_OFF";
-
-    if(rdr_modid == RDR_MODEM_CP_RESET_REBOOT_REQ_MOD_ID)
-    {
-        dump_fetal("bsp_cp_reset is stub,reset ap\n");
-    }
-    else if(rdr_modid == RDR_MODEM_CP_RESET_FAIL_MOD_ID)
-    {
-        dump_fetal("modem signal reset fail, notify rdr\n");
-        reason = DUMP_REASON_RST_FAIL;
-        desc = "MDM_RST_FAIL";
-        fail_id =  modem_reset_fail_id_get();
-    }
-    else
-    {
-        dump_fetal("modem signal reset fail, notify rdr\n");
-        reason = DUMP_REASON_RST_FREQ;
-        desc = "MDM_RST_FREQ";
-        fail_id =  RDR_MODEM_CP_RESET_FREQUENTLY_MOD_ID; 
-    }
-
-    dump_set_reboot_contex(DUMP_CPU_APP,reason);
-
-    dump_save_momdem_reset_baseinfo(fail_id,desc);
-
-    dump_save_balong_rdr_info(rdr_modid);
-
     rdr_system_error(rdr_modid, 0, 0);
 }
 
@@ -1097,24 +856,8 @@ void dump_reset_fail_proc(u32 rdr_modid)
 *****************************************************************************/
 void dump_reset_success_proc(void)
 {
-    u32 core = DUMP_CPU_BUTTON;
 
     dump_set_exc_flag(false);
-
-    dump_get_reboot_contex(&core,NULL);
-
-    dump_fetal("core = 0x%x\n",core);
-
-    if(core == DUMP_CPU_COMM)
-    {
-        bsp_wdt_irq_enable(WDT_CCORE_ID);
-        dump_fetal("modem reset success enable cp wdt\n");
-
-    }
-
-    dump_base_info_init();
-
-    dump_set_reboot_contex(DUMP_CPU_BUTTON,DUMP_REASON_UNDEF);
 }
 
 
@@ -1284,7 +1027,10 @@ void dump_reset(u32 modid, u32 etype, u64 coreid)
 s32 dump_register_rdr_exc(void)
 {
     u32 i = 0;
-    struct rdr_module_ops_pub   soc_ops = {NULL,NULL};
+    struct rdr_module_ops_pub soc_ops = {
+    .ops_dump = NULL,
+    .ops_reset = NULL
+    };
 
     if(DUMP_PHONE == dump_get_product_type())
     {

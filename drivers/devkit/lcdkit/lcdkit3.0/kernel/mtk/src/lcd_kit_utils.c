@@ -141,9 +141,11 @@ void lcd_kit_pinfo_init(struct device_node* np, struct mtk_panel_info* pinfo)
 	OF_PROPERTY_READ_U8_DEFAULT(np, "lcd-kit,panel-esd-skip-mipi-check", &pinfo->esd_skip_mipi_check, 1);
 	OF_PROPERTY_READ_U32_DEFAULT(np, "lcd-kit,panel-ifbc-type", &pinfo->ifbc_type, 0);
 	OF_PROPERTY_READ_U32_DEFAULT(np, "lcd-kit,panel-bl-ic-ctrl-type", &pinfo->bl_ic_ctrl_mode, 0);
+	OF_PROPERTY_READ_U32_DEFAULT(np, "lcd-kit,panel-gpio-offset", &pinfo->gpio_offset, 0);
 	OF_PROPERTY_READ_U32_DEFAULT(np, "lcd-kit,panel-bl-pwm-out-div-value", &pinfo->blpwm_out_div_value, 0);
 	OF_PROPERTY_READ_U64_RETURN(np, "lcd-kit,panel-pxl-clk", &pinfo->pxl_clk_rate);
 	OF_PROPERTY_READ_U32_DEFAULT(np, "lcd-kit,panel-pxl-clk-div", &pinfo->pxl_clk_rate_div, 1);
+	OF_PROPERTY_READ_U32_DEFAULT(np, "lcd-kit,panel-data-rate", &pinfo->data_rate, 0);
 	OF_PROPERTY_READ_U32_DEFAULT(np, "lcd-kit,panel-vsyn-ctr-type", &pinfo->vsync_ctrl_type, 0);
 	OF_PROPERTY_READ_U32_DEFAULT(np, "lcd-kit,panel-bl-pwm-preci-type", &pinfo->blpwm_precision_type, 0);
 
@@ -214,6 +216,7 @@ void lcd_kit_pinfo_init(struct device_node* np, struct mtk_panel_info* pinfo)
 	OF_PROPERTY_READ_U32_DEFAULT(np, "lcd-kit,panel-vfp-lp", &pinfo->ldi.v_front_porch_forlp, 0);
 	OF_PROPERTY_READ_U32_DEFAULT(np, "lcd-kit,panel-fbk-div", &pinfo->pxl_fbk_div, 0);
 	OF_PROPERTY_READ_U32_DEFAULT(np, "lcd-kit,panel-density", &pinfo->panel_density, 0);
+	OF_PROPERTY_READ_U32_DEFAULT(np, "lcd-kit,ssc-disable", &pinfo->ssc_disable, 0);
 
 	if (common_info->esd.support) {
 		pinfo->esd_enable = 1;
@@ -274,6 +277,25 @@ void lcd_kit_parse_dt(struct device_node* np)
 	lcd_kit_parse_util(np);
 }
 
+int lcd_kit_get_bl_max_nit_from_dts(void)
+{
+	int ret = 0;
+	struct device_node* np = NULL;
+
+	if(common_info->blmaxnit.get_blmaxnit_type == GET_BLMAXNIT_FROM_DDIC)
+	{
+		np = of_find_compatible_node(NULL, NULL, DTS_COMP_LCD_KIT_PANEL_TYPE);
+		if (!np) {
+			LCD_KIT_ERR("NOT FOUND device node %s!\n", DTS_COMP_LCD_KIT_PANEL_TYPE);
+			ret = -1;
+			return ret;
+		}
+
+		OF_PROPERTY_READ_U32_RETURN(np, "panel_ddic_max_brightness", &common_info->actual_bl_max_nit);
+		LCD_KIT_INFO("max nit is  %d!\n", common_info->actual_bl_max_nit);
+	}
+	return LCD_KIT_OK;
+}
 int lcd_kit_is_enter_pt_mode(void)
 {
 	if (common_info->pt.support) {

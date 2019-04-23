@@ -497,6 +497,28 @@ static int dp_debug_factory_test_get(char *buffer, const struct kernel_param *kp
 	return dp_factory_get_test_result(buffer, DP_DEBUG_BUF_SIZE);
 }
 
+static int dp_debug_factory_test_set(const char *val, const struct kernel_param *kp)
+{
+	dp_debug_priv_t *priv = g_dp_debug_priv;
+	int test_enable = 0;
+	int ret = 0;
+
+	UNUSED(kp);
+	if ((NULL == priv) || (NULL == val)) {
+		hwlog_err("%s: priv or val is NULL!!!\n", __func__);
+		return -EINVAL;
+	}
+
+	ret = sscanf(val, "%d", &test_enable);
+	if (ret != 1) {
+		hwlog_err("%s: invalid params num %d!!!\n", __func__, ret);
+		return -EINVAL;
+	}
+
+	dp_factory_set_mmie_test_flag(test_enable);
+	return 0;
+}
+
 static struct kernel_param_ops dp_debug_pd_event_ops = {
 	.get = dp_debug_pd_event_get,
 };
@@ -539,6 +561,7 @@ static struct kernel_param_ops dp_debug_factory_mode_ops = {
 
 static struct kernel_param_ops dp_debug_factory_test_ops = {
 	.get = dp_debug_factory_test_get,
+	.set = dp_debug_factory_test_set,
 };
 
 // dp connnect info
@@ -555,7 +578,7 @@ module_param_cb(preemphasis_swing, &dp_debug_preemphasis_swing_ops, NULL, 0644);
 
 // factory test
 module_param_cb(factory_mode, &dp_debug_factory_mode_ops, NULL, 0444);
-module_param_cb(factory_test, &dp_debug_factory_test_ops, NULL, 0444);
+module_param_cb(factory_test, &dp_debug_factory_test_ops, NULL, 0644);
 
 static void dp_debug_release(dp_debug_priv_t *priv)
 {

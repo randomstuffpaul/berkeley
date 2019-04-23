@@ -97,7 +97,9 @@ char *wakelock_name[]={
     "HRPD",
     "MSP",
     "VOWIFI",
-    "DSFLOW1"
+    "DSFLOW1",
+    "LTEV",
+    "TTF"
 };
 /*lint --e{64,528}*//*64:list_for_each_entry, 528 for not referenced referenced*/
 void pm_om_wakeup_log(void)

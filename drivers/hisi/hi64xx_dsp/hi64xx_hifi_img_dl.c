@@ -52,7 +52,7 @@
 #define HI6402_DMA_WIDTH 16
 #define DMA_IMG_DL_CH 10
 
-#define SLIMBUS_PORT4_ADDR                 0xe8051100
+#define SLIMBUS_PORT4_ADDR                 (SOC_ACPU_SLIMBUS_BASE_ADDR + 0x1100)
 #define HI6402_DSP_IF2                	   0x20012000
 #define HI6402_SC_S2_IF_L                  (HI64xx_CODE_CORE_BASE + 0x02)
 #define HI6402_SC_FS_S2_CTRL_L             (HI64xx_CODE_CORE_BASE + 0xB0)

@@ -30,6 +30,7 @@
 #define STR_MOD                                    0x40      // STR enable bit. 0 = software enable; 1 = hardware enable.
 #define STR_POL                                     0x20      // STR signal input active polarity. 0 = active low; 1 = active high.
 #define LED1_EN                                      0x10    //LED1 current source enable bit
+#define STB_LV_POL                                   0xA0
 #define FLASH_MODE_CUR			        0x06    //Device mode setting bits flash mode
 #define TORCH_MODE_CUR		               0x04    //Device mode setting bits torch mode
 #define FS_SD                                          0x03    // Disable switching frequency stretching down from 1Mhz if VIN is close to VOUT
@@ -368,7 +369,7 @@ static int hw_mp3331_off(struct hw_flash_ctrl_t *flash_ctrl)
             return rc;
 	}
 
-	if(i2c_func->i2c_write(i2c_client, REG_MODE_SET, STB_LV) < 0){
+	if(i2c_func->i2c_write(i2c_client, REG_MODE_SET, STB_LV_POL) < 0){
 		cam_err("%s %d", __func__, __LINE__);
 	}
 

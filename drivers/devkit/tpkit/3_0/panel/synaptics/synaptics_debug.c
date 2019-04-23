@@ -1696,6 +1696,8 @@ static void set_report_size(void)
 /* when the report type is  3 or 9, we call this function to  to find open
 * transmitter electrodes, open receiver electrodes, transmitter-to-ground
 * shorts, receiver-to-ground shorts, and transmitter-to-receiver shorts. */
+
+#if 0
 static int f54_rawimage_report(void)
 {
 	short Rawimage;
@@ -1854,7 +1856,7 @@ error_release_mem:
 	}
 	return 0;
 }
-
+#endif
 static int test_wait_for_command_completion(void)
 {
 	int retval = 0;
@@ -2290,7 +2292,6 @@ test_fail:
 static void check_forcekey_cap_value(void)
 {
 	int i = 0;
-	int index = 0;
 	char file_path[100] = {0};
 	char file_name[64] = {0};
 	int result = 0;
@@ -2445,6 +2446,7 @@ static int td43xx_ee_short_normalize_data(signed short * image)
 	char buf[MAX_CAP_DATA_SIZE_FOR_EESHORT] = {0};
 	int tx_rx_delta_size = 0;
 	int lens = 0;
+	int length = 0;
 	if (!image) {
 		TS_LOG_ERR("%s(%d), td43xx_ee_short_data image is NULL\n", __func__, __LINE__);
 		return -ENOMEM;
@@ -2521,7 +2523,7 @@ static int td43xx_ee_short_normalize_data(signed short * image)
 		} else {
 			tx_rx_delta_size = (TX_RX_BUF_MAX<=(tx_num*rx_num*MAX_CAP_DATA_SIZE))?TX_RX_BUF_MAX:(tx_num*rx_num*MAX_CAP_DATA_SIZE);
 		}
-		snprintf(g_td43xx_rt95_part_two, PART_ONE_LIMIT_LENGTH, "%s\n", "part_two:");
+		snprintf((char *)g_td43xx_rt95_part_two, PART_ONE_LIMIT_LENGTH, "%s\n", "part_two:");
 		lens += PART_ONE_LIMIT_LENGTH;
 	} else {
 		retval = -ENOMEM;
@@ -2540,7 +2542,8 @@ static int td43xx_ee_short_normalize_data(signed short * image)
 					TS_LOG_ERR("%s(%d), lens is %d larger than buffer\n", __func__, __LINE__,lens);
 					goto exit;
 				}
-				strncat(g_td43xx_rt95_part_two, buf ,sizeof(buf));
+				length = MIN(mmi_buf_size * sizeof(int) - (strlen((char *)g_td43xx_rt95_part_two)+1),sizeof(buf));
+ 				strncat((char *)g_td43xx_rt95_part_two, buf, length);
 				if (!((j+EESHORT_PRINT_SHIFT_LENGTH)%rx_num)) {
 					lens += EESHORT_PRINT_SHIFT_LENGTH;
 					if (lens > tx_rx_delta_size) {
@@ -2548,7 +2551,7 @@ static int td43xx_ee_short_normalize_data(signed short * image)
 						TS_LOG_ERR("%s(%d), lens is %d larger than buffer\n", __func__, __LINE__,lens);
 						goto exit;
 					}
-					strncat(g_td43xx_rt95_part_two, "\n", EESHORT_PRINT_SHIFT_LENGTH);
+					strncat((char *)g_td43xx_rt95_part_two, "\n", EESHORT_PRINT_SHIFT_LENGTH);
 				}
 			}
 			else {
@@ -2561,7 +2564,8 @@ static int td43xx_ee_short_normalize_data(signed short * image)
 					TS_LOG_ERR("%s(%d), lens is %d larger than buffer\n", __func__, __LINE__,lens);
 					goto exit;
 				}
-				strncat(g_td43xx_rt95_part_two, buf ,sizeof(buf));
+				length = MIN(mmi_buf_size * sizeof(int) - (strlen((char *)g_td43xx_rt95_part_two)+1),sizeof(buf));
+				strncat((char *)g_td43xx_rt95_part_two, buf, length);
 				if (!((j+EESHORT_PRINT_SHIFT_LENGTH)%rx_num)) {
 					lens += EESHORT_PRINT_SHIFT_LENGTH;
 					if (lens > tx_rx_delta_size) {
@@ -2569,7 +2573,7 @@ static int td43xx_ee_short_normalize_data(signed short * image)
 						TS_LOG_ERR("%s(%d), lens is %d larger than buffer\n", __func__, __LINE__,lens);
 						goto exit;
 					}
-					strncat(g_td43xx_rt95_part_two, "\n", EESHORT_PRINT_SHIFT_LENGTH);
+					strncat((char *)g_td43xx_rt95_part_two, "\n", EESHORT_PRINT_SHIFT_LENGTH);
 				}
 			}
 			if (temp < part_two_limit) {
@@ -2612,6 +2616,7 @@ static int td43xx_ee_short_report(void)
 	char buf[MAX_CAP_DATA_SIZE_FOR_EESHORT] = {0};
 	int tx_rx_delta_size = 0;
 	int lens = 0;
+	int length = 0;
 	if (!buffer) {
 		TS_LOG_ERR("mmi_buf data is NULL\n");
 		return TEST_FAIL;
@@ -2676,7 +2681,7 @@ static int td43xx_ee_short_report(void)
 		} else {
 			tx_rx_delta_size = (TX_RX_BUF_MAX<=(tx_num*rx_num*MAX_CAP_DATA_SIZE))?TX_RX_BUF_MAX:(tx_num*rx_num*MAX_CAP_DATA_SIZE);
 		}
-		snprintf(g_td43xx_rt95_part_one, PART_ONE_LIMIT_LENGTH, "%s\n", "part_one:");
+		snprintf((char *)g_td43xx_rt95_part_one, PART_ONE_LIMIT_LENGTH, "%s\n", "part_one:");
 		lens += PART_ONE_LIMIT_LENGTH;
 	} else {
 		TestResult = TEST_FAIL;
@@ -2693,7 +2698,8 @@ static int td43xx_ee_short_report(void)
 			TS_LOG_ERR("%s(%d), lens is %d larger than buffer\n", __func__, __LINE__,lens);
 			goto exit;
 		}
-		strncat(g_td43xx_rt95_part_one, buf ,sizeof(buf));
+		length = MIN(mmi_buf_size * sizeof(int) - (strlen((char *)g_td43xx_rt95_part_one)+1),sizeof(buf));
+		strncat((char *)g_td43xx_rt95_part_one, buf, length);
 		if (!((i+EESHORT_PRINT_SHIFT_LENGTH)%rx_num)) {
 			lens += EESHORT_PRINT_SHIFT_LENGTH;
 			if (lens > tx_rx_delta_size) {
@@ -2701,7 +2707,7 @@ static int td43xx_ee_short_report(void)
 				TS_LOG_ERR("%s(%d), lens is %d larger than buffer\n", __func__, __LINE__,lens);
 				goto exit;
 			}
-			strncat(g_td43xx_rt95_part_one, "\n", EESHORT_PRINT_SHIFT_LENGTH);
+			strncat((char *)g_td43xx_rt95_part_one, "\n", EESHORT_PRINT_SHIFT_LENGTH);
 		}
 		td43xx_rt95_part_one[i] = (td43xx_rt95_part_one[i] > part_one_limit) ? EE_SHORT_TEST_FAIL : EE_SHORT_TEST_PASS;
 		k += NORMAL_NUM_TWO;
@@ -2849,6 +2855,7 @@ static void mmi_td43xx_ee_short_report(void)
 
 	return;
 }
+#if 0
 static int f54_delta_rx_report(void)
 {
 	short Rawimage_rx = 0;
@@ -2952,6 +2959,7 @@ static int f54_delta_tx_report(void)
 		return 0;
 	}
 }
+#endif 
 static int synaptics_get_threshold_from_csvfile(int columns, int rows, char* target_name, int32_t *data)
 {
 	char file_path[100] = {0};
@@ -3018,6 +3026,7 @@ static int f54_delta_rx2_report(void)
 	int rows_size = f54->rmi4_data->num_of_tx;
 	int columns_size = f54->rmi4_data->num_of_rx;
 	int *abs_rxdelt_cap_limit = NULL;
+	int length = 0;
 
 	TS_LOG_INFO("%s called\n", __func__);
 
@@ -3063,14 +3072,15 @@ static int f54_delta_rx2_report(void)
 			}
 		}
 	} else {
-		snprintf(rx_delta_buf, MAX_CAP_DATA_SIZE, "%s\n", "RX:");
+		snprintf((char *)rx_delta_buf, MAX_CAP_DATA_SIZE, "%s\n", "RX:");
 		for ( i = 0; i < mmi_buf_size; i+=2)
 		{
 			Rawimage_rx1 = (f54->mmi_buf[i]) | (f54->mmi_buf[i+1] << SHIFT_ONE_BYTE);
 			Rawimage_rx2 = (f54->mmi_buf[i+2]) | (f54->mmi_buf[i+3] << SHIFT_ONE_BYTE);
 			Rawimage_rx = abs(Rawimage_rx2 - Rawimage_rx1);
 			snprintf(buf, sizeof(buf),"%3d,", Rawimage_rx);
-			strncat(rx_delta_buf, buf ,sizeof(buf));
+			length = MIN(mmi_buf_size * sizeof(int) - (strlen((char *)rx_delta_buf)+1),sizeof(buf));
+			strncat((char *)rx_delta_buf, buf, length);
 			rxdelt_cap_abslimit = abs_rxdelt_cap_limit[i/2 - step];
 			if (Rawimage_rx <= rxdelt_cap_abslimit){
 				Result++;
@@ -3083,7 +3093,7 @@ static int f54_delta_rx2_report(void)
 				i += 2;
 				j = 0;
 				step += 1;
-				strncat(rx_delta_buf, "\n", 1);
+				strncat((char *)rx_delta_buf, "\n", 1);
 			}
 		}
 	}
@@ -3125,7 +3135,7 @@ static int f54_delta_tx2_report(void)
 	int *abs_txdelt_cap_limit =NULL;
 	short *Rawimage_tx = NULL;
 	int tx_rx_delta_size = 0;
-
+	int length = 0;
 	TS_LOG_INFO("%s called\n", __func__);
 
 	if (!g_ts_kit_platform_data.chip_data->tx_num || !g_ts_kit_platform_data.chip_data->rx_num) {
@@ -3187,7 +3197,7 @@ static int f54_delta_tx2_report(void)
 
 	}else{
 
-		snprintf(tx_delta_buf, MAX_CAP_DATA_SIZE, "\n%s\n", "TX:");
+		snprintf((char *)tx_delta_buf, MAX_CAP_DATA_SIZE, "\n%s\n", "TX:");
 		for ( i = 0, j = 0; i < mmi_buf_size; i+=2, j++)
 			Rawimage_tx[j] = (f54->mmi_buf[i]) | (f54->mmi_buf[i+1] << SHIFT_ONE_BYTE);
 
@@ -3199,7 +3209,8 @@ static int f54_delta_tx2_report(void)
 				Rawimage_delta_tx = abs(Rawimage_tx[(tx_n+1)*columns_size+rx_n]
 					- Rawimage_tx[tx_n*columns_size+rx_n]);
 				snprintf(buf, sizeof(buf),"%3d,", Rawimage_delta_tx);
-				strncat(tx_delta_buf, buf ,sizeof(buf));
+				length = MIN(mmi_buf_size * sizeof(int) - (strlen((char *)tx_delta_buf)+1),sizeof(buf));
+				strncat((char *)tx_delta_buf, buf, length);
 				if(Rawimage_delta_tx <= txdelt_cap_abslimit){
 					Result++;
 				}
@@ -3207,8 +3218,8 @@ static int f54_delta_tx2_report(void)
 					TS_LOG_ERR("[NO :%d, current is %d]abslimit tx is %d\n",tx_n*columns_size+rx_n,Rawimage_delta_tx,txdelt_cap_abslimit);
 				}
 			}
-			strncat(tx_delta_buf, "\n",
-					MIN((tx_rx_delta_size-strlen(tx_delta_buf)), 2));
+			strncat((char *)tx_delta_buf, "\n",
+					MIN((tx_rx_delta_size-strlen((const char *)tx_delta_buf)), 2));
 		}
 	}
 	if (Result == (mmi_buf_size/2 - columns_size)) {
@@ -3235,7 +3246,7 @@ error_release_mem:
 	}
 	return ret;
 }
-
+#if 0
 static void mmi_rawcapacitance_test(void)
 {
 	unsigned char command = 0;
@@ -3276,7 +3287,7 @@ static void mmi_rawcapacitance_test(void)
 	}
 	return;
 }
-
+#endif
 static void save_capacitance_data_to_rawdatabuf(void)
 {
 	int i = 0 , j = 0;
@@ -3941,12 +3952,13 @@ static void synaptics_change_report_rate(void)
 static int synap_strncat(char *dest, const char *src, size_t dest_sizemax, size_t src_sizemax)
 {
 	int rc = NO_ERR;
+	size_t dest_len = 0;
+	size_t dest_remain_size = 0;
 
 	if(dest == NULL || src == NULL) {
 		return -EINVAL;
 	}
-	size_t dest_len = 0;
-	size_t dest_remain_size = 0;
+	
 	dest_len = strnlen(dest, dest_sizemax);
 	dest_remain_size = dest_sizemax - dest_len;
 
@@ -4427,7 +4439,6 @@ exit:
 static int synaptics_rmi4_f54_attention_cust(void)
 {
 	int retval = 0;
-	int l = 0;
 	unsigned char report_index[2];
 	int i = 0;
 	unsigned int report_times_max = 0;

@@ -30,12 +30,17 @@
  *
  *
  */
- #include <linux/regulator/consumer.h>
+#include <linux/regulator/consumer.h>
 #include "mstar_apknode.h"
 #include "mstar_common.h"
 #include "mstar_mp.h"
 #include "mstar_dts.h"
 #include <huawei_platform/log/log_jank.h>
+#if defined(CONFIG_HUAWEI_DEVKIT_QCOM)
+#include <linux/dma-mapping.h>
+#include <linux/i2c/i2c-msm-v2.h>
+#endif
+
 
 struct mstar_core_data *tskit_mstar_data = NULL;
 
@@ -51,7 +56,7 @@ static void mstar_exit_sleep_mode(void);
 static void mstar_esd_check(void);
 static int mstar_power_on(void);
 static int mstar_power_off(void);
-
+int mstar_enable_gesture_wakeup(u32 * pMode);
 u16 mstar_get_reg_16bit(u16 nAddr)
 {
     int rc = NO_ERR;
@@ -902,7 +907,9 @@ int mstar_hw_reset(void)
 		ret = -1;
         goto out;
     }
-
+    msleep(25);
+    tskit_mstar_data->reset_touch_flag = true;
+    TS_LOG_INFO("%s: End Reset,tskit_mstar_data->reset_touch_flag=%d\n",__func__, tskit_mstar_data->reset_touch_flag);
 out:
     return ret;
 
@@ -912,15 +919,17 @@ void mstar_dev_hw_reset(void)
 {
     int ret = NO_ERR;
 
-	TS_LOG_INFO("%s: Do Reset\n",__func__);
+	TS_LOG_DEBUG("%s: Do Reset\n",__func__);
 
     ret = mstar_hw_reset();
     if(ret < 0){
         TS_LOG_ERR("%s Error\n",__func__);
+#if defined (CONFIG_HUAWEI_DSM)
+        ts_dmd_report(DSM_TP_ESD_ERROR_NO, "Mstar ESD reset fail.\n");
+#endif
 		goto out;
     }
 
-    msleep(25);
 
     if (tskit_mstar_data->mstar_chip_data->need_wd_check_status) {
         tskit_mstar_data->esd_enable = TRUE;
@@ -1191,6 +1200,9 @@ void mstar_esd_check(void)
         if (tskit_mstar_data->chip_type == CHIP_TYPE_MSG22XX || tskit_mstar_data->chip_type == CHIP_TYPE_MSG28XX
             || tskit_mstar_data->chip_type == CHIP_TYPE_MSG58XXA) {
             rc = mstar_iic_write_data(SLAVE_I2C_ID_DWI2C, &szData[0], 1);
+            if(rc < 0){
+                TS_LOG_ERR("%s: ESD check command fail\n",__func__);
+            }
         } else {
             TS_LOG_ERR("Un-recognized chip type = 0x%x\n", tskit_mstar_data->chip_type);
             break;
@@ -1206,12 +1218,6 @@ void mstar_esd_check(void)
     if (i >= count) {
         TS_LOG_ERR("%s: ESD check failed, rc = %d\n", __func__, rc);
         mstar_dev_hw_reset();
-#if defined (CONFIG_HUAWEI_DSM)
-        if (!dsm_client_ocuppy(ts_dclient)) {
-            dsm_client_record(ts_dclient, "Mstar ESD check failed\n");
-            dsm_client_notify(ts_dclient,DSM_TP_ESD_ERROR_NO);
-        }
-#endif
     }
 
 out:
@@ -1736,7 +1742,15 @@ static void mstar_read_touch_data(struct ts_fingers *info)
     static u32 nLastCount = 0;
     u8 *pPacket = NULL;
     u16 nReportPacketLength = 0;
-
+    int try = 0;
+    int delay_time = 0;
+    struct i2c_adapter* adapter = NULL;
+    bool gesture_recovery = false;
+    int i2c_retries = I2C_RW_TRIES;
+#if defined(CONFIG_HUAWEI_DEVKIT_QCOM)
+	struct i2c_msm_ctrl *ctrl = NULL;
+#endif
+    struct ts_easy_wakeup_info *gestrue_info = &tskit_mstar_data->mstar_chip_data->easy_wakeup_info;
     if (tskit_mstar_data->finger_touch_disable) {
         TS_LOG_ERR("%s: Skip finger touch for handling get firmware info or change firmware mode\n",__func__);
         return;
@@ -1746,6 +1760,41 @@ static void mstar_read_touch_data(struct ts_fingers *info)
         TS_LOG_ERR("%s:skip incorrect read during gesture suspend\n",__func__);
         return;
     }
+    if(tskit_mstar_data->reset_touch_flag)
+    {
+        TS_LOG_INFO("%s:skip finger touch for hw_reset trigger INT\n",__func__);
+        tskit_mstar_data->reset_touch_flag = false;
+        return;
+    }
+   adapter = i2c_get_adapter(tskit_mstar_data->mstar_chip_data->ts_platform_data->bops->bus_id);
+    if (!adapter)
+    {
+	TS_LOG_ERR("%s i2c_get_adapter failed\n",__func__);
+	return;
+    }
+#if defined(CONFIG_HUAWEI_DEVKIT_QCOM)
+    ctrl = (struct i2c_msm_ctrl *)adapter->dev.driver_data;
+    /*if the easy_wakeup_flag is false,status not is at sleep state;switch_value is false,gesture is no supported*/
+    if ((true == tskit_mstar_data->mstar_chip_data->ts_platform_data->feature_info.wakeup_gesture_enable_info.switch_value) &&
+        (true == tskit_mstar_data->mstar_chip_data->easy_wakeup_info.easy_wakeup_flag)){
+		do {
+			if (ctrl->pwr_state == I2C_MSM_PM_SYS_SUSPENDED) {
+				TS_LOG_INFO("%s gesture mode, waiting for i2c bus resume\n",__func__);
+				++ try;
+				msleep(I2C_WAIT_TIME);
+			} else { /*I2C_MSM_PM_RT_SUSPENDED or I2C_MSM_PM_RT_ACTIVE*/
+				delay_time = try * I2C_WAIT_TIME;
+				TS_LOG_INFO("%s i2c bus resuming or resumed,wait system resume after %d ms,try %d times\n",__func__,delay_time,try);
+				break;
+			}
+		} while (i2c_retries--);
+	    if (ctrl->pwr_state == I2C_MSM_PM_SYS_SUSPENDED) {
+		delay_time = try * I2C_WAIT_TIME;
+		TS_LOG_INFO("%s trigger gesture irq in system suspending,i2c bus can't resume, so ignore irq;wait %d ms \n",__func__,delay_time);
+		return;
+	    }
+	}
+#endif
 
     mutex_lock(&tskit_mstar_data->mutex_common);
     mutex_lock(&tskit_mstar_data->mutex_protect);
@@ -1802,7 +1851,13 @@ static void mstar_read_touch_data(struct ts_fingers *info)
             TS_LOG_ERR("%s read i2cuart packet error\n", __func__);
         }
     }
-
+    if (tskit_mstar_data->gesture_data.wakeup_flag) {
+        if(pPacket[0] == GESTURE_PACKET_HEADER)
+        {
+		    gesture_recovery = true;
+		    goto TouchHandleEnd;
+        }
+    }
     mutex_lock(&tskit_mstar_data->apk_info->debug_mutex);
     if (tskit_mstar_data->apk_info->debug_node_open) {
     	memset(tskit_mstar_data->apk_info->fw_debug_buf[tskit_mstar_data->apk_info->debug_data_frame], 0x00,
@@ -1839,6 +1894,15 @@ static void mstar_read_touch_data(struct ts_fingers *info)
 TouchHandleEnd:
     mutex_unlock(&tskit_mstar_data->mutex_protect);
     mutex_unlock(&tskit_mstar_data->mutex_common);
+    if(gesture_recovery)
+    {
+        TS_LOG_INFO("%s:Gesture Header is fail, recovery gesture mode form demo mode \n",__func__);
+        mdelay(20);
+        gestrue_info->easy_wakeup_flag = false;
+        tskit_mstar_data->reset_touch_flag = true;
+        mstar_enable_gesture_wakeup(&tskit_mstar_data->gesture_data.wakeup_mode[0]);
+        mdelay(50);
+    }
 }
 
 s32 mstar_chip_detect_init(void)
@@ -1868,7 +1932,7 @@ s32 mstar_chip_detect_init(void)
     tskit_mstar_data->chip_type = mstar_get_chip_type();
 
     if (tskit_mstar_data->chip_type == 0xbf) {
-        TS_LOG_INFO("%s: chip: MSG2836A\n",__func__);
+        TS_LOG_INFO("%s: chip: MSG28XXA\n",__func__);
     }
 
     if (tskit_mstar_data->chip_type == 0) {
@@ -2074,7 +2138,7 @@ static int mstar_get_gesture_code(u8 *pPacket, struct ts_fingers *info)
 			break;
 		}
 	} else {
-		TS_LOG_ERR("%s: gesture wakeup packet format is incorrect.\n",__func__);
+		TS_LOG_ERR("%s: gesture wakeup packet format is incorrect. pPacket[0]=%x\n",__func__,pPacket[0]);
 		ret = -1;
 		goto out;
 	}
@@ -2139,7 +2203,8 @@ static s32 mstar_mutual_parse_packet(u8 * pPacket, u16 nLength, MutualTouchInfo_
     nCheckSum = mstar_calculate_checksum(&pPacket[0], (nLength - 1));
     TS_LOG_DEBUG("%s: checksum : [%x] == [%x]? \n",__func__, pPacket[nLength - 1], nCheckSum);
 
-	if(!tskit_mstar_data->ges_self_debug) {
+	if((tskit_mstar_data->ges_self_debug == false) &&
+		(tskit_mstar_data->fw_mode != MSG28XX_FIRMWARE_MODE_DEBUG_MODE)) {
 		if (pPacket[nLength - 1] != nCheckSum) {
 			TS_LOG_ERR("%s: WRONG CHECKSUM\n",__func__);
 	#if defined (CONFIG_HUAWEI_DSM)
@@ -2161,7 +2226,7 @@ static s32 mstar_mutual_parse_packet(u8 * pPacket, u16 nLength, MutualTouchInfo_
 
     if (tskit_mstar_data->apk_info->firmware_log_enable) {
         if (tskit_mstar_data->fw_mode == MSG28XX_FIRMWARE_MODE_DEMO_MODE && pPacket[0] != 0x5A) {
-            TS_LOG_ERR("%s: WRONG DEMO MODE HEADER\n",__func__);
+            TS_LOG_ERR("%s: WRONG DEMO MODE HEADER.firmware_log_enable. pPacket[0]=%x \n",__func__,pPacket[0]);
             return -1;
         } else if (tskit_mstar_data->fw_mode == MSG28XX_FIRMWARE_MODE_DEBUG_MODE
                && (pPacket[0] != 0xA7 && pPacket[3] != PACKET_TYPE_TOOTH_PATTERN && pPacket[3] != PACKET_TYPE_CSUB_PATTERN
@@ -2171,7 +2236,7 @@ static s32 mstar_mutual_parse_packet(u8 * pPacket, u16 nLength, MutualTouchInfo_
         }
     } else {
         if (pPacket[0] != 0x5A) {
-            TS_LOG_ERR("%s: WRONG DEMO MODE HEADER\n",__func__);
+            TS_LOG_ERR("%s: WRONG DEMO MODE HEADER. pPacket[0]=%x \n",__func__,pPacket[0]);
             return -1;
         }
     }
@@ -2196,11 +2261,6 @@ static s32 mstar_mutual_parse_packet(u8 * pPacket, u16 nLength, MutualTouchInfo_
             info->fingers[i].x = nX * tskit_mstar_data->mstar_chip_data->x_max / TPD_WIDTH;
             info->fingers[i].y = nY * tskit_mstar_data->mstar_chip_data->y_max / TPD_HEIGHT;
             info->fingers[i].pressure = pPacket[4 * (i + 1)];
-
-            TS_LOG_DEBUG("%s: [x,y]=[%d,%d]\n",__func__, nX, nY);
-            TS_LOG_DEBUG("%s: point[%d] : (%d,%d) = %d\n",__func__, pInfo->tPoint[pInfo->nCount].nId,
-                    pInfo->tPoint[pInfo->nCount].nX, pInfo->tPoint[pInfo->nCount].nY,
-                    pInfo->tPoint[pInfo->nCount].nP);
 
             pInfo->nCount++;
             touch_count = i + 1;
@@ -2252,10 +2312,6 @@ static s32 mstar_mutual_parse_packet(u8 * pPacket, u16 nLength, MutualTouchInfo_
             info->fingers[i].y = nY * tskit_mstar_data->mstar_chip_data->y_max / TPD_HEIGHT;
             info->fingers[i].pressure = pPacket[4 * (i + 1)];
             touch_count = i + 1;
-            TS_LOG_DEBUG("%s: [x,y]=[%d,%d]\n",__func__, nX, nY);
-            TS_LOG_DEBUG("%s: point[%d] : (%d,%d) = %d\n",__func__, pInfo->tPoint[pInfo->nCount].nId,
-                    pInfo->tPoint[pInfo->nCount].nX, pInfo->tPoint[pInfo->nCount].nY,
-                    pInfo->tPoint[pInfo->nCount].nP);
 
             pInfo->nCount++;
 
@@ -2445,7 +2501,6 @@ static void mstar_gesture_convert_coordinate(u8 * pRawData, u32 * pTranX, u32 * 
     nX = (((pRawData[0] & 0xF0) << 4) | pRawData[1]);   // parse the packet to coordinate
     nY = (((pRawData[0] & 0x0F) << 8) | pRawData[2]);
 
-    TS_LOG_DEBUG("%s: [x,y]=[%d,%d]\n",__func__, nX, nY);
 
 #ifdef CONFIG_SWAP_X_Y
     nTempY = nX;
@@ -2474,7 +2529,6 @@ static void mstar_gesture_convert_coordinate(u8 * pRawData, u32 * pTranX, u32 * 
         /* one touch point */
         *pTranX = (nX * tskit_mstar_data->mstar_chip_data->x_max) / TPD_WIDTH;
         *pTranY = (nY * tskit_mstar_data->mstar_chip_data->y_max) / TPD_HEIGHT;
-        TS_LOG_INFO("%s: [x,y]=[%d,%d], point[x,y]=[%d,%d]\n", __func__, nX, nY, *pTranX, *pTranY);
     }
 }
 
@@ -2489,7 +2543,6 @@ static void mstar_easy_wakeup_gesture_report_coordinate(u32 * buf, u32 count)
                 x = (s16) (buf[i * 2 + 0]);
                 y = (s16) (buf[i * 2 + 1]);
 
-                TS_LOG_DEBUG("%s: Gesture Repot Point %d:\n" "x = %d\n" "y = %d\n", __func__, i, x, y);
                 tskit_mstar_data->mstar_chip_data->easy_wakeup_info.easywake_position[i] = x << 16 | y;
                 TS_LOG_DEBUG("easywake_position[%d] = 0x%04x\n", i,
                          tskit_mstar_data->mstar_chip_data->easy_wakeup_info.easywake_position[i]);
@@ -2499,43 +2552,31 @@ static void mstar_easy_wakeup_gesture_report_coordinate(u32 * buf, u32 count)
             x = (s16) (buf[0]);
             y = (s16) (buf[1]);
             tskit_mstar_data->mstar_chip_data->easy_wakeup_info.easywake_position[0] = x << 16 | y;
-            TS_LOG_INFO("easywake_position[1]  beginning= 0x%04x x = %d, y =%d \n",
-                    tskit_mstar_data->mstar_chip_data->easy_wakeup_info.easywake_position[0], x, y);
 
             /*2.end */
             x =  (s16)  buf[2];
             y =  (s16)  buf[3];
             tskit_mstar_data->mstar_chip_data->easy_wakeup_info.easywake_position[1] = x << 16 | y;
-            TS_LOG_INFO("easywake_position[1]  end = 0x%08x,  x= %d , y= %d \n",
-                    tskit_mstar_data->mstar_chip_data->easy_wakeup_info.easywake_position[1], x, y);
 
             /*3.top */
             x =  (s16)  buf[6];
             y =  (s16)  buf[7];
             tskit_mstar_data->mstar_chip_data->easy_wakeup_info.easywake_position[2] = x << 16 | y;
-            TS_LOG_INFO("easywake_position[2]  top = 0x%08x,  top_x= %d , top_y= %d \n",
-                    tskit_mstar_data->mstar_chip_data->easy_wakeup_info.easywake_position[2], x, y);
 
             /*4.leftmost */
             x =  (s16)  buf[8];
             y =  (s16)  buf[9];
             tskit_mstar_data->mstar_chip_data->easy_wakeup_info.easywake_position[3] = x << 16 | y;
-            TS_LOG_INFO("easywake_position[3]  leftmost = 0x%08x,  left_x= %d , left_y= %d \n",
-                    tskit_mstar_data->mstar_chip_data->easy_wakeup_info.easywake_position[3], x, y);
 
             /*5.bottom */
             x =  (s16)  buf[10];
             y =  (s16)  buf[11];
             tskit_mstar_data->mstar_chip_data->easy_wakeup_info.easywake_position[4] = x << 16 | y;
-            TS_LOG_INFO("easywake_position[4]  bottom = 0x%08x,  x= %d , y= %d \n",
-                    tskit_mstar_data->mstar_chip_data->easy_wakeup_info.easywake_position[4], x, y);
 
             /*6.rightmost */
             x =  (s16)  buf[12];
             y =  (s16)  buf[13];
             tskit_mstar_data->mstar_chip_data->easy_wakeup_info.easywake_position[5] = x << 16 | y;
-            TS_LOG_INFO("easywake_position[5]  rightmost = 0x%08x,  x= %d , y= %d \n",
-                    tskit_mstar_data->mstar_chip_data->easy_wakeup_info.easywake_position[5], x, y);
         }
     }
 

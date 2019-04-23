@@ -56,6 +56,7 @@ static char gyro_temperature_offset[GYRO_TEMP_CALI_NV_SIZE];
 int ps_sensor_offset[PS_CALIBRATE_DATA_LENGTH];
 static uint8_t tof_sensor_offset[TOF_CALIDATA_NV_SIZE];
 uint16_t als_offset[ALS_CALIBRATE_DATA_LENGTH];
+uint16_t als_dark_noise_offset = 0;
 static char str_charger[] = "charger_plug_in_out";
 static uint8_t gsensor_calibrate_data[MAX_SENSOR_CALIBRATE_DATA_LENGTH];
 static uint8_t msensor_calibrate_data[MAX_MAG_CALIBRATE_DATA_LENGTH];
@@ -600,7 +601,7 @@ void reset_calibrate_data(void)
 	} else {
 		send_calibrate_data_to_mcu(TAG_MAG, SUB_CMD_SET_OFFSET_REQ, msensor_calibrate_data, MAG_CALIBRATE_DATA_NV_SIZE, true);
 	}
-	if (txc_ps_flag == 1 || ams_tmd2620_ps_flag == 1 || avago_apds9110_ps_flag == 1 || ams_tmd3725_ps_flag == 1 
+	if (txc_ps_flag == 1 || ams_tmd2620_ps_flag == 1 || avago_apds9110_ps_flag == 1 || ams_tmd3725_ps_flag == 1
 		|| liteon_ltr582_ps_flag == 1 || apds9999_ps_flag == 1 || ams_tmd3702_ps_flag == 1 || vishay_vcnl36658_ps_flag == 1) {
 		send_calibrate_data_to_mcu(TAG_PS, SUB_CMD_SET_OFFSET_REQ, ps_sensor_calibrate_data, PS_CALIDATA_NV_SIZE, true);
 	}
@@ -608,7 +609,8 @@ void reset_calibrate_data(void)
 		send_calibrate_data_to_mcu(TAG_TOF, SUB_CMD_SET_OFFSET_REQ, tof_sensor_calibrate_data, TOF_CALIDATA_NV_SIZE, true);
 	}
 	if (rohm_rgb_flag == 1 || avago_rgb_flag == 1 || ams_tmd3725_rgb_flag == 1 || liteon_ltr582_rgb_flag == 1 || is_cali_supported == 1
-		|| apds9999_rgb_flag == 1 || ams_tmd3702_rgb_flag == 1 || apds9253_rgb_flag == 1|| vishay_vcnl36658_als_flag ==1) {
+		|| apds9999_rgb_flag == 1 || ams_tmd3702_rgb_flag == 1 || apds9253_rgb_flag == 1|| vishay_vcnl36658_als_flag ==1
+		|| tsl2591_flag == 1) {
 		send_calibrate_data_to_mcu(TAG_ALS, SUB_CMD_SET_OFFSET_REQ, als_sensor_calibrate_data, ALS_CALIDATA_NV_SIZE, true);
 	}
 	if (strlen(sensor_chip_info[GYRO])) {

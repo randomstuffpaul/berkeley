@@ -241,8 +241,10 @@ static int verity_handle_err(struct dm_verity *v, enum verity_block_type type,
 		return 0;
 
 	if (v->mode == DM_VERITY_MODE_RESTART) {
+#if defined (CONFIG_HUAWEI_DSM)
 #if defined (CONFIG_DM_VERITY_HW_RETRY)
 		ret = oem_verity_handle_err(v);
+#endif
 #endif
 
 #ifdef CONFIG_DM_VERITY_AVB
@@ -1197,7 +1199,9 @@ static int __init dm_verity_init(void)
 		DMERR("register failed %d", r);
 
 #if defined (CONFIG_OEM_DEFINE_VERITY_FEC)
+#if defined (CONFIG_HUAWEI_DSM)
 	verity_dsm_init();
+#endif
 #endif
 
 	return r;

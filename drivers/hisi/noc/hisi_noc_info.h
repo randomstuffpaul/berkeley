@@ -171,6 +171,11 @@ extern struct noc_mid_info noc_mid_PHOE_es[];
 extern struct noc_dump_reg noc_dump_reg_list_PHOE_es[];
 extern const struct noc_busid_initflow hisi_filter_initflow_PHOE_es[];
 
+extern const struct noc_bus_info noc_buses_info_PHOE[];
+extern struct noc_mid_info noc_mid_PHOE[];
+extern struct noc_dump_reg noc_dump_reg_list_PHOE[];
+extern const struct noc_busid_initflow hisi_filter_initflow_PHOE[];
+
 int noc_set_buses_info(unsigned int info_index);
 void noc_get_mid_info(unsigned int bus_id, struct noc_mid_info **pt_info,
 		      unsigned int *pt_size);
@@ -203,6 +208,8 @@ extern void hisi_noc_get_array_size_MIA(unsigned int *bus_info_size,
 extern void hisi_noc_get_array_size_ORLA(unsigned int *bus_info_size,
 		                 unsigned int *dump_list_size);
 extern void hisi_noc_get_array_size_PHOE_es(unsigned int *bus_info_size,
+					     unsigned int *dump_list_size);
+extern void hisi_noc_get_array_size_PHOE(unsigned int *bus_info_size,
 					     unsigned int *dump_list_size);
 
 extern unsigned int hisi_noc_clock_enable(struct hisi_noc_device *noc_dev,
@@ -237,4 +244,8 @@ extern unsigned int hisi_noc_clock_enable_ORLA(struct hisi_noc_device
 extern unsigned int hisi_noc_clock_enable_PHOE_es(struct hisi_noc_device
 						   *noc_dev,
 						   struct noc_node *node);
+extern unsigned int hisi_noc_clock_enable_PHOE(struct hisi_noc_device
+						   *noc_dev,
+						   struct noc_node *node);
+
 #endif

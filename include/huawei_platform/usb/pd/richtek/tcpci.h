@@ -76,6 +76,7 @@ extern void tcpci_vbus_level_init(
 		struct tcpc_device *tcpc, uint16_t power_status);
 
 extern void rt1711h_set_cc_mode(int mode);
+extern int rt1711h_get_cc_state(void);
 static inline int tcpci_check_vbus_valid(struct tcpc_device *tcpc)
 {
 	return tcpc->vbus_level >= TCPC_VBUS_VALID;

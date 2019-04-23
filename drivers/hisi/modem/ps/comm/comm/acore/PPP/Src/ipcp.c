@@ -80,17 +80,17 @@ void IpcpDecodeConfig(struct fsm *, VOS_CHAR *, VOS_CHAR *, VOS_INT32,
                              struct fsm_decode *);
 
 static struct fsm_callbacks ipcp_Callbacks = {
-  IpcpLayerUp,
-  IpcpLayerDown,
-  IpcpLayerStart,
-  IpcpLayerFinish,
-  IpcpInitRestartCounter,
-  IpcpSendConfigReq,
-  IpcpSentTerminateReq,
-  IpcpSendTerminateAck,
-  IpcpDecodeConfig,
-  fsm_NullRecvResetReq,
-  fsm_NullRecvResetAck
+    .LayerUp = IpcpLayerUp,
+    .LayerDown = IpcpLayerDown,
+    .LayerStart = IpcpLayerStart,
+    .LayerFinish = IpcpLayerFinish,
+    .InitRestartCounter = IpcpInitRestartCounter,
+    .SendConfigReq = IpcpSendConfigReq,
+    .SentTerminateReq = IpcpSentTerminateReq,
+    .SendTerminateAck = IpcpSendTerminateAck,
+    .DecodeConfig = IpcpDecodeConfig,
+    .RecvResetReq = fsm_NullRecvResetReq,
+    .RecvResetAck = fsm_NullRecvResetAck
 };
 
 const VOS_CHAR *

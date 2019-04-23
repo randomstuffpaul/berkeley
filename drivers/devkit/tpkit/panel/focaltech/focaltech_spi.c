@@ -39,7 +39,7 @@
 #define READ_CMD					0x80//0xE0
 
 #define SPI_STATUS_MASK				0x81
-
+extern struct ts_kit_platform_data g_ts_kit_platform_data;
 /*****************************************************************************
 * Private enumerations, structures and unions using typedef
 *****************************************************************************/
@@ -136,7 +136,8 @@ static bool fts_check_specail_cmd(u8 cmd, u32 *cmdlen)
 int fts_spi_write(u8 *buf, u32 len)
 {
 	int ret = 0;
-	struct spi_device *spi = g_focal_dev_data->ts_platform_data->spi; 
+	struct spi_device *spi = g_focal_dev_data->ts_platform_data->spi;
+	static enum ssp_mode temp_com_mode_w = POLLING_MODE;
 	struct spi_transfer xfer[] = {
 		{
 			.tx_buf = &buf[0],
@@ -149,8 +150,19 @@ int fts_spi_write(u8 *buf, u32 len)
 			.tx_buf = &buf[1],
 			.len = len - 1,
 		},
-	}; 
-
+	};
+	if(g_focal_pdata->use_dma_download_firmware) {
+		if(g_ts_kit_platform_data.spidev0_chip_info.com_mode != temp_com_mode_w) {
+			TS_LOG_INFO("%s: spi com_mode change to %d (0:INTERRUPT_MODE ,1:POLLING_MODE ,2:DMA_MODE).\n", __func__, g_ts_kit_platform_data.spidev0_chip_info.com_mode);
+			spi->controller_data = &g_focal_dev_data->ts_platform_data->spidev0_chip_info;
+			temp_com_mode_w = g_ts_kit_platform_data.spidev0_chip_info.com_mode;
+			ret = spi_setup(spi);
+			if (ret) {
+				TS_LOG_ERR("%s: spi_setup error, ret=%d\n", __func__, ret);
+				return ret;
+			}
+		}
+	}
 	ret = spi_sync_transfer(spi, xfer, ARRAY_SIZE(xfer));
 	if (ret) {
 		TS_LOG_ERR("%s: spi_transfer(write) error, ret=%d\n", __func__, ret);
@@ -164,6 +176,7 @@ int fts_spi_read(u8 *buf, u32 len)
 {
 	int ret = 0;
 	struct spi_device *spi = g_focal_dev_data->ts_platform_data->spi;
+	static enum ssp_mode temp_com_mode_r = POLLING_MODE;
 	struct spi_transfer xfer[] = {
 		{
 			.tx_buf = &buf[0],
@@ -179,7 +192,18 @@ int fts_spi_read(u8 *buf, u32 len)
 			.len = len - 1,
 		},
 	};
-
+	if(g_focal_pdata->use_dma_download_firmware) {
+		if(g_ts_kit_platform_data.spidev0_chip_info.com_mode != temp_com_mode_r) {
+			TS_LOG_INFO("%s: spi com_mode change to %d (0:INTERRUPT_MODE ,1:POLLING_MODE ,2:DMA_MODE).\n", __func__, g_ts_kit_platform_data.spidev0_chip_info.com_mode);
+			spi->controller_data = &g_focal_dev_data->ts_platform_data->spidev0_chip_info;
+			temp_com_mode_r = g_ts_kit_platform_data.spidev0_chip_info.com_mode;
+			ret = spi_setup(spi);
+			if (ret) {
+				TS_LOG_ERR("%s: spi_setup error, ret=%d\n", __func__, ret);
+				return ret;
+			}
+		}
+	}
 	ret = spi_sync_transfer(spi, xfer, ARRAY_SIZE(xfer));
 	if (ret) {
 		TS_LOG_ERR("%s: spi_transfer(read) error, ret=%d\n", __func__, ret);
@@ -326,7 +350,8 @@ static int fts_boot_write(u8 *cmd, u8 cmdlen, u8 *data, u32 datalen)
 		}
 
 		/* write data */
-		if (datalen > SPI_BUF_LENGTH - SPI_HEADER_LENGTH) {
+		/* spi DMA_MODE transfer don't support static stack point in KASAN test, so we neet alloc memory to transfer data. */
+		if (datalen > SPI_BUF_LENGTH - SPI_HEADER_LENGTH || g_ts_kit_platform_data.spidev0_chip_info.com_mode == DMA_MODE) {
 			txbuf = kzalloc(datalen + SPI_HEADER_LENGTH, GFP_KERNEL);
 			if (NULL == txbuf) {
 				TS_LOG_ERR("%s:txbuf kzalloc fail\n", __func__);
@@ -350,7 +375,8 @@ static int fts_boot_write(u8 *cmd, u8 cmdlen, u8 *data, u32 datalen)
 			TS_LOG_ERR("%s:data wirte fail\n", __func__);
 		}
 
-		if ((txbuf) && (datalen > SPI_BUF_LENGTH - SPI_HEADER_LENGTH)) {
+		if (((txbuf) && (datalen > SPI_BUF_LENGTH - SPI_HEADER_LENGTH)) ||
+			((txbuf) && (g_ts_kit_platform_data.spidev0_chip_info.com_mode == DMA_MODE))) {
 			kfree(txbuf);
 			txbuf = NULL;
 		}
@@ -435,7 +461,8 @@ static int fts_boot_read(u8 *cmd, u8 cmdlen, u8 *data, u32 datalen)
 		}
 	}
 	/* write data */
-	if (datalen > SPI_BUF_LENGTH - SPI_HEADER_LENGTH) {
+	/* spi DMA_MODE transfer don't support static stack point in KASAN test, so we neet alloc memory to transfer data. */
+	if (datalen > SPI_BUF_LENGTH - SPI_HEADER_LENGTH || g_ts_kit_platform_data.spidev0_chip_info.com_mode == DMA_MODE) {
 		txbuf = kzalloc(datalen + SPI_HEADER_LENGTH, GFP_KERNEL);
 		if (NULL == txbuf) {
 			TS_LOG_ERR("%s:txbuf kzalloc fail\n", __func__);
@@ -469,7 +496,8 @@ static int fts_boot_read(u8 *cmd, u8 cmdlen, u8 *data, u32 datalen)
 
 	memcpy(data, txbuf + 1, datalen);
 boot_read_err:
-	if ((txbuf) && (datalen > SPI_BUF_LENGTH - SPI_HEADER_LENGTH)) {
+	if (((txbuf) && (datalen > SPI_BUF_LENGTH - SPI_HEADER_LENGTH)) ||
+		((txbuf) && (g_ts_kit_platform_data.spidev0_chip_info.com_mode == DMA_MODE))) {
 		kfree(txbuf);
 		txbuf = NULL;
 	}

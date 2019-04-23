@@ -46,12 +46,14 @@ enum DSM_EMMC_ERR
 	DSM_EMMC_DYNCAP_NEEDED  = 928002013,                /* 20318 */
 	DSM_EMMC_SYSPOOL_EXHAUSTED  = 928002025,            /* 20319 */
 	DSM_EMMC_PACKED_FAILURE  = 928002014,               /* 20320 */
+	DSM_EMMC_DATA_CRC = 928002030,
+	DSM_EMMC_COMMAND_CRC = 928002031,
 };
 
 
 struct emmc_dsm_log {
 	char emmc_dsm_log[EMMC_DSM_BUFFER_SIZE];
-	spinlock_t lock;	/* mutex */
+	struct mutex lock;	/* mutex */
 };
 
 extern struct dsm_client *emmc_dclient;
@@ -67,13 +69,13 @@ extern int dsm_emmc_get_life_time(struct mmc_card *card);
 	do { \
 		char msg[MSG_MAX_SIZE]; \
 		snprintf(msg, MSG_MAX_SIZE-1, fmt, ## a); \
-		spin_lock(&g_emmc_dsm_log.lock); \
+		mutex_lock(&g_emmc_dsm_log.lock); \
 		if(dsm_emmc_get_log((card), (no), (msg))){ \
 			if(!dsm_client_ocuppy(emmc_dclient)) { \
 				dsm_client_copy(emmc_dclient,g_emmc_dsm_log.emmc_dsm_log, emmc_dsm_real_upload_size + 1); \
 				dsm_client_notify(emmc_dclient, no); } \
 		} \
-		spin_unlock(&g_emmc_dsm_log.lock); \
+		mutex_unlock(&g_emmc_dsm_log.lock); \
 	}while(0)
 
 #endif /* LINUX_MMC_DSM_EMMC_H */

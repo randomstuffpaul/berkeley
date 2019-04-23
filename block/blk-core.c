@@ -653,7 +653,6 @@ EXPORT_SYMBOL(blk_alloc_queue);
 int blk_queue_enter(struct request_queue *q, bool nowait)
 {
 	while (true) {
-		int ret;
 
 		if (likely(percpu_ref_tryget_live(&q->q_usage_counter)))
 			return 0;
@@ -661,13 +660,11 @@ int blk_queue_enter(struct request_queue *q, bool nowait)
 		if (nowait)
 			return -EBUSY;
 
-		ret = wait_event_interruptible(q->mq_freeze_wq,
-				!atomic_read(&q->mq_freeze_depth) ||
-				blk_queue_dying(q));/*lint !e666*/
+		wait_event(q->mq_freeze_wq,
+			   !atomic_read(&q->mq_freeze_depth) ||
+			   blk_queue_dying(q));/*lint !e666*/
 		if (blk_queue_dying(q))
 			return -ENODEV;
-		if (ret)
-			return ret;
 	}
 }
 
@@ -2390,7 +2387,7 @@ void blk_account_io_completion(struct request *req, unsigned int bytes)
 {
 #ifdef CONFIG_HISI_BLK
         hisi_blk_account_io_completion(req, bytes);
-#endif /* CONFIG_HISI_BLK_CORE */
+#endif /* CONFIG_HISI_BLK */
 
 	if (likely(blk_do_io_stat(req))) {
 		const int rw = rq_data_dir(req);

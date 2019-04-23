@@ -531,7 +531,8 @@ static void wireless_tx_iout_control(struct wireless_tx_device_info *di)
 		di->i2c_err_cnt++;
 		hwlog_err("%s: get tx vin/iin fail", __func__);
 	}
-	if (di->standard_rx == false && tx_iin <= WL_TX_IIN_LOW) {
+	if (di->standard_rx == false && tx_iin <= WL_TX_IIN_LOW &&
+		WIRED_CHANNEL_OFF == wireless_charge_get_wired_channel_state()) {
 		if (++di->tx_iin_low_cnt >= WL_TX_IIN_LOW_CNT/di->monitor_interval) {
 			di->tx_iin_low_cnt = WL_TX_IIN_LOW_CNT;
 			wireless_tx_set_tx_status(WL_TX_STATUS_CHARGE_DONE);
@@ -662,8 +663,12 @@ static void wireless_tx_event_work(struct work_struct *work)
 			di->standard_rx = true;
 			break;
 		case WL_TX_EVENT_CHARGEDONE:
-			wireless_tx_set_tx_status(WL_TX_STATUS_CHARGE_DONE);
-			di->stop_reverse_charge = true;
+			if (WIRED_CHANNEL_OFF == wireless_charge_get_wired_channel_state()) {
+				wireless_tx_set_tx_status(WL_TX_STATUS_CHARGE_DONE);
+				di->stop_reverse_charge = true;
+			} else {
+				hwlog_err("%s: wired vbus on, ignore rx charge done event\n", __func__);
+			}
 			break;
 		case WL_TX_EVENT_CEP_TIMEOUT:
 			wireless_tx_set_tx_status(WL_TX_STATUS_RX_DISCONNECT);
@@ -1024,6 +1029,9 @@ static int wireless_tx_remove(struct platform_device *pdev)
 		hwlog_err("%s: di null\n", __func__);
 		return 0;
 	}
+
+	wake_lock_destroy(&wireless_tx_wakelock);
+
 	hwlog_info("[%s]\n", __func__);
 	return 0;
 }
@@ -1072,6 +1080,7 @@ static int wireless_tx_probe(struct platform_device *pdev)
 	return 0;
 
 wireless_tx_fail_0:
+	wake_lock_destroy(&wireless_tx_wakelock);
 	di->tx_ops = NULL;
 	kfree(di);
 	di = NULL;

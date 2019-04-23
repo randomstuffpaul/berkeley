@@ -1282,6 +1282,11 @@ OAL_STATIC OAL_INLINE oal_void  hmac_scan_update_bss_list_protocol(hmac_vap_stru
     {
         pst_bss_dscr->en_is_tplink_oui = WLAN_AP_CHIP_OUI_RALINK;
     }
+    else if(OAL_PTR_NULL !=
+            mac_find_vendor_ie_etc(MAC_WLAN_CHIP_OUI_BROADCOM, MAC_WLAN_CHIP_OUI_TYPE_BROADCOM, puc_frame_body, us_frame_len))
+    {
+        pst_bss_dscr->en_is_tplink_oui = WLAN_AP_CHIP_OUI_BCM;
+    }
 
 #if 0
     if (OAL_PTR_NULL !=

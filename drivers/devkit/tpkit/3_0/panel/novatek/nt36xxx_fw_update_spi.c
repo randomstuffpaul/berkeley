@@ -466,7 +466,7 @@ static int32_t nvt_write_firmware(const u8 *fwdata, size_t fwsize)
 	char *name;
 	uint32_t BIN_addr, SRAM_addr, size;
 	uint32_t i = 0;
-	uint16_t len = 0;
+	int32_t len = 0;
 	int32_t count = 0;
 	int32_t ret = 0;
 
@@ -676,7 +676,7 @@ int32_t nvt_kit_fw_update_boot_spi(char *file_name)
 {
 	int32_t ret = 0;
 	if(nvt_ts->use_dma_download_firmware){
-		g_ts_kit_platform_data.spidev0_chip_info.com_mode = DMA_MODE;
+		g_ts_kit_platform_data.spidev0_chip_info.com_mode = (unsigned int) DMA_MODE;
 	}
 
 	ret = update_firmware_request(file_name);
@@ -720,7 +720,7 @@ download_fail:
 request_firmware_fail:
 
 	if(nvt_ts->use_dma_download_firmware){
-		g_ts_kit_platform_data.spidev0_chip_info.com_mode = POLLING_MODE;
+		g_ts_kit_platform_data.spidev0_chip_info.com_mode = (unsigned int) POLLING_MODE;
 	}
 
 	return ret;

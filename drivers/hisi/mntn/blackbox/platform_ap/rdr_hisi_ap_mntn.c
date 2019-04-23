@@ -18,6 +18,8 @@
 
 static u32 reboot_reason_flag;
 
+#include <chipset_common/bfmr/bfm/chipsets/bfm_chipsets.h>
+
 
 
 static int reentrant_exception_num = 0;
@@ -58,6 +60,7 @@ void rdr_long_press_powerkey(void)
 	set_reboot_reason(AP_S_PRESS6S);
 	if (STAGE_BOOTUP_END != get_boot_keypoint()) {
 		BB_PRINT_PN("press6s in boot\n");
+		bfm_set_valid_long_press_flag();
 		save_log_to_dfx_tempbuffer(AP_S_PRESS6S);
 		sys_sync();
 	}else {

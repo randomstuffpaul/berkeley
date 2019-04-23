@@ -9236,7 +9236,7 @@ oal_uint32  wal_regdomain_update_sta_etc(oal_uint8 uc_vap_id)
 
     oal_net_device_stru           *pst_net_dev;
     oal_int32                      l_ret;
-    oal_bool_enum_uint8            us_updata_rd_by_ie_switch;
+    oal_bool_enum_uint8            us_updata_rd_by_ie_switch = OAL_FALSE;
 
     hmac_vap_get_updata_rd_by_ie_switch_etc(uc_vap_id, &us_updata_rd_by_ie_switch);
 
@@ -22338,7 +22338,13 @@ OAL_STATIC oal_uint32  wal_hipriv_set_vendor_ie(oal_net_device_stru *pst_net_dev
     if (0 != l_temp)
     {
         pst_vendor_ie_param->ul_ie_len = (oal_uint32)(l_temp + MAC_IE_HDR_LEN);
+        if (pst_vendor_ie_param->ul_ie_len > WLAN_WPS_IE_MAX_SIZE)
+        {
+            OAM_WARNING_LOG1(0, OAM_SF_ANY, "{wal_hipriv_set_vendor_ie::invalid app ie length[%d]!}\r\n", pst_vendor_ie_param->ul_ie_len);
+            return OAL_FAIL;
+        }
     }
+
     pst_vendor_ie_param->auc_ie[0] = MAC_EID_VENDOR;
     pst_vendor_ie_param->auc_ie[1] = (oal_uint8)l_temp;
     pc_param = pc_param + ul_off_set;

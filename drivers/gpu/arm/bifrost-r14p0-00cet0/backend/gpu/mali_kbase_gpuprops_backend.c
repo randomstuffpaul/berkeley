@@ -93,7 +93,7 @@ void kbase_backend_gpuprops_get(struct kbase_device *kbdev,
 	regdump->stack_present_hi = kbase_reg_read(kbdev,
 				GPU_CONTROL_REG(STACK_PRESENT_HI));
 }
-
+/*lint -e648*/
 void kbase_backend_gpuprops_get_features(struct kbase_device *kbdev,
 					struct kbase_gpuprops_regdump *regdump)
 {
@@ -113,4 +113,4 @@ void kbase_backend_gpuprops_get_features(struct kbase_device *kbdev,
 				COHERENCY_FEATURE_BIT(COHERENCY_ACE_LITE);
 	}
 }
-
+/*lint +e648*/

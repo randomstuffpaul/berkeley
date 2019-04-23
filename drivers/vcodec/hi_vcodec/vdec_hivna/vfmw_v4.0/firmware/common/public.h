@@ -76,6 +76,22 @@ do{                                                                   \
     }    \
 }while(0)
 
+#define HW_ADDR_RSHIFT(addr)  ((addr) >> (4))
+
+#define HW_ADDR_LSHIFT(addr)  ((addr) << (4))
+
+#define ALIGN_UP(val, align)  (((val) + ((align)-1)) & ~((align)-1))
+
+#define ALIGN_DOWN_HAL(val, align)      ((val) & (~(align - 1)))
+
+/*The address is 36bit, take the high 4bits*/
+#define TAKE_HIGH_BITS(val)         (((val) >> (32)) & (0xF))
+
+/*To patch the low 32bit address and high 4bit address*/
+#define PATCH_ADDRESS(high, low)    ((((UINT64)(high) & 0xf0000000) << 4) | (low))
+
+#define  MSG_SLOT_ALIGN_BYTE    (16)
+
 #ifdef HI_ADVCA_FUNCTION_RELEASE
 #define dprint(type, fmt, arg...)  dprint_vfmw_nothing(type, fmt, ##arg)
 #else

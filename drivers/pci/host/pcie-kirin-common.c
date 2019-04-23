@@ -199,7 +199,7 @@ void kirin_pcie_config_l0sl1(u32 rc_id, enum link_aspm_state aspm_state)
 	}
 }
 
-static void enable_req_clk(struct kirin_pcie *pcie, u32 enable_flag)
+void enable_req_clk(struct kirin_pcie *pcie, u32 enable_flag)
 {
 	u32 val;
 
@@ -568,7 +568,7 @@ int kirin_pcie_phy_init(struct kirin_pcie *pcie)
 
 	/* pull down phy_test_powerdown signal */
 	reg_val = kirin_apb_phy_readl(pcie, SOC_PCIEPHY_CTRL0_ADDR);
-	reg_val &= ~(0x1 << 22);
+	reg_val &= ~PHY_TEST_POWERDOWN;
 	kirin_apb_phy_writel(pcie, reg_val, SOC_PCIEPHY_CTRL0_ADDR);
 
 	if (pcie->dtsinfo.eco)
@@ -576,7 +576,10 @@ int kirin_pcie_phy_init(struct kirin_pcie *pcie)
 
 	/* deassert controller perst_n */
 	reg_val = kirin_elb_readl(pcie, SOC_PCIECTRL_CTRL12_ADDR);
-	reg_val |= (0x1 << 2);
+	if (pcie->dtsinfo.ep_flag)
+		reg_val |= PERST_IN_EP;
+	else
+		reg_val |= PERST_IN_RC;
 	kirin_elb_writel(pcie, reg_val, SOC_PCIECTRL_CTRL12_ADDR);
 	udelay(10);
 
@@ -611,8 +614,7 @@ void kirin_pcie_natural_cfg(struct kirin_pcie *pcie)
 		/* cfg as rc */
 		val = kirin_elb_readl(pcie, SOC_PCIECTRL_CTRL0_ADDR);
 		val &= ~(PCIE_TYPE_MASK << PCIE_TYPE_SHIFT);
-		if (!pcie->dtsinfo.ep_flag)
-			val |= (PCIE_TYPE_RC << PCIE_TYPE_SHIFT);
+		val |= (PCIE_TYPE_RC << PCIE_TYPE_SHIFT);
 		kirin_elb_writel(pcie, val, SOC_PCIECTRL_CTRL0_ADDR);
 
 		/* output, pull down */
@@ -753,59 +755,52 @@ u32 show_link_state(u32 rc_id)
 }
 EXPORT_SYMBOL_GPL(show_link_state);
 
-#if defined(CONFIG_KIRIN_PCIE_APR)
-int pcie_memcpy(ulong dst, ulong src, uint32_t size)
+void pcie_memcpy(ulong dst, ulong src, uint32_t size)
 {
-	memcpy((void *)dst, (void *)src, size);
-	return 0;
-}
-#else
-int pcie_memcpy(ulong dst, ulong src, uint32_t size)
-{
-	int error = 0;
-	uint dsize;
-	uint64_t data_64 = 0;
-	uint64_t data_32 = 0;
-	uint64_t data_8 = 0;
 	ulong dst_t = dst;
 	ulong src_t = src;
+
+	if (IS_ENABLED(CONFIG_KIRIN_PCIE_MAR)) {
+		uint dsize;
+		uint64_t data_64 = 0;
+		uint64_t data_32 = 0;
+		uint64_t data_8 = 0;
 #if defined(CONFIG_64BIT)
-	bool is_64bit_unaligned = (dst_t & 0x7);
+		bool is_64bit_unaligned = (dst_t & 0x7);
 #endif
+		dsize = sizeof(uint64_t);
 
-	dsize = sizeof(uint64_t);
-
-	/* Do the transfer(s) */
-	while (size) {
-		if (size >= sizeof(uint64_t)) {
-			if (is_64bit_unaligned) {
-				data_32= pcie_rd_32((char *)src_t);
-				pcie_wr_32(data_32, (char *)dst_t);
-				size -= 4;
-				dst_t += 4;
-				src_t += 4;
-				is_64bit_unaligned = (dst_t & 0x7);
-				continue;
+		/* Do the transfer(s) */
+		while (size) {
+			if (size >= sizeof(uint64_t)) {
+				if (is_64bit_unaligned) {
+					data_32= pcie_rd_32((char *)src_t);
+					pcie_wr_32(data_32, (char *)dst_t);
+					size -= 4;
+					dst_t += 4;
+					src_t += 4;
+					is_64bit_unaligned = (dst_t & 0x7);
+					continue;
+				} else {
+					data_64= pcie_rd_64((char *)src_t);
+					pcie_wr_64(data_64, (char *)dst_t);
+				}
 			} else {
-				data_64= pcie_rd_64((char *)src_t);
-				pcie_wr_64(data_64, (char *)dst_t);
+				dsize = sizeof(uint8_t);
+				data_8= pcie_rd_8((char *)src_t);
+				pcie_wr_8(data_8, (char *)dst_t);
 			}
-		} else {
-			dsize = sizeof(uint8_t);
-			data_8= pcie_rd_8((char *)src_t);
-			pcie_wr_8(data_8, (char *)dst_t);
-		}
 
-		/* Adjust for next transfer (if any) */
-		if ((size -= dsize)) {
-			src_t += dsize;
-			dst_t += dsize;
+			/* Adjust for next transfer (if any) */
+			if ((size -= dsize)) {
+				src_t += dsize;
+				dst_t += dsize;
+			}
 		}
+	}else{
+		memcpy_s((void *)dst_t, size, (void *)src_t, size);
 	}
-
-	return error;
 }
-#endif
 
 #ifdef CONFIG_KIRIN_PCIE_TEST
 int wlan_on(u32 rc_id, int on)
@@ -969,6 +964,11 @@ int show_link_speed(u32 rc_id)
 	}
 
 	return val;
+}
+
+int limit_link_speed(struct kirin_pcie *pcie)
+{
+	return set_link_speed(pcie->rc_id, pcie->speed_limit);
 }
 
 u32 kirin_pcie_find_capability(struct pcie_port *pp, int cap)

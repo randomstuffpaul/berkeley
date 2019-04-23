@@ -16,13 +16,33 @@ enum {
 	HS_UNBLOCK_MODE,
 	HS_BLOCK_MODE,
 };
-#define DVFS_MAX_FREQ_NUM				2
-#define DVFS_MAX_VOLT_NUM				3
+
+#define LPM3_CMD_LEN			2
+
+struct hs_clk {
+	void __iomem	*pmctrl;
+	void __iomem	*sctrl;
+	void __iomem	*crgctrl;
+	void __iomem	*pmuctrl;
+	void __iomem	*pctrl;
+	void __iomem	*mediacrg;
+	void __iomem	*iomcucrg;
+	void __iomem	*media1crg;
+	void __iomem	*media2crg;
+	void __iomem	*mmc1crg;
+	void __iomem	*hsdtcrg;
+	void __iomem	*mmc0crg;
+	spinlock_t	lock;
+};
+extern struct hs_clk hs_clk;
+
+#define DVFS_MAX_VOLT				3
+#define DVFS_MAX_FREQ_NUM			3
+#define DVFS_MAX_VOLT_NUM			4
 #define DDR_HW_VOTE				1
 #define PERI_AVS_LOOP_MAX			400
 #define DDRC_MIN_CLK_ID			4
 #define DDRC_MAX_CLK_ID			5
-void __iomem *hs_clk_base(u32 ctrl);
 
 /*AVS DEFINE BEGIN*/
 enum {
@@ -55,3 +75,7 @@ enum {
 #else
 #define clk_log_dbg(fmt, ...)
 #endif
+
+/***********DEFINE END*****************/
+void __iomem *hs_clk_base(u32 ctrl);
+void __iomem __init *hs_clk_get_base(struct device_node *np);

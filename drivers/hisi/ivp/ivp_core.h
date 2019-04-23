@@ -24,7 +24,7 @@ extern u32 ivp_wdg_reg_read(unsigned int off);
 extern void ivp_wdg_reg_write(unsigned int off, u32 val);
 extern u32 ivp_smmu_reg_read(unsigned int off);
 extern u32 ivp_pctrl_reg_read(unsigned int off);
-extern int ivp_change_clk(struct ivp_device *ivp_devp);
+extern int ivp_change_clk(struct ivp_device *ivp_devp, unsigned int level);
 extern bool is_ivp_in_secmode(void);
 extern int ivp_ion_phys(struct ion_client *client, struct ion_handle *handle,dma_addr_t *addr);
 

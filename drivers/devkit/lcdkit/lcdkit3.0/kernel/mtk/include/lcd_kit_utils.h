@@ -160,10 +160,12 @@ struct mtk_panel_info {
 	u32 blpwm_in_num;
 	u32 blpwm_input_precision;
 	u32 bl_ic_ctrl_mode;
+	u32 gpio_offset;
 	u64 pxl_clk_rate;
 	u64 pxl_clk_rate_adjust;
 	u32 pxl_clk_rate_div;
- 	u32 pxl_fbk_div;   
+	u32 data_rate;
+ 	u32 pxl_fbk_div;
 	u32 vsync_ctrl_type;
 	u32 fake_external;
 	u8  reserved[3];
@@ -174,7 +176,7 @@ struct mtk_panel_info {
 	u32 ifbc_auto_sel;
 	u32 ifbc_orise_ctl;
 	u32 ifbc_orise_ctr;
-
+	u32 ssc_disable;
 	u8 sbl_support;
 	u8 sre_support;
 	u8 color_temperature_support;
@@ -377,6 +379,22 @@ struct lcd_kit_quickly_sleep_out {
 	struct timeval panel_on_record_tv;
 };
 
+enum bl_control_mode {
+	MTK_AP_MODE = 0,
+	I2C_ONLY_MODE = 1,
+	PWM_ONLY_MODE,
+	MTK_PWM_HIGH_I2C_MODE,
+	MUTI_THEN_RAMP_MODE,
+	RAMP_THEN_MUTI_MODE,
+};
+
+enum bias_control_mode {
+	MT_AP_MODE = 0,
+	PMIC_ONLY_MODE = 1,
+	GPIO_ONLY_MODE,
+	GPIO_THEN_I2C_MODE,
+};
+
 /*function declare*/
 //extern int mipi_dsi_ulps_cfg(struct hisi_fb_data_type *hisifd, int enable);
 //struct hisi_fb_data_type* dev_get_hisifd(struct device* dev);
@@ -407,6 +425,5 @@ bool lcd_kit_support(void);
 //void lcd_kit_effect_switch_ctrl(struct hisi_fb_data_type* hisifd, bool ctrl);
 //void lcd_kit_disp_on_check_delay(void);
 void lcd_kit_disp_on_record_time(void);
-//void lcd_kit_factory_init(struct hisi_panel_info* pinfo);
-//void lcd_kit_read_power_status(struct hisi_fb_data_type* hisifd);
+int lcd_kit_get_bl_max_nit_from_dts(void);
 #endif

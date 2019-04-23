@@ -126,6 +126,12 @@
 			no-map;
 		};
 
+		voiceid: voiceid {
+			reg = <0x0 0x8C500000 0x0 0x500000>;
+			compatible = "hisi-voiceid";
+			no-map;
+		};
+
 		sec_camera {
 			reg = <0x0 0x8CA00000 0x0 0xB00000>;
 			no-map;

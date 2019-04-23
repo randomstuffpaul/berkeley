@@ -85,44 +85,7 @@ struct item_bits {
 
 #define              MAX_NUM_OF_ITEM          6
 /*the order should be identical with item_info */
-static struct item_bits itembits[MAX_NUM_OF_ITEM] = {
-	//kcode
-	{
-		RS_KCODE,
-		KERNELCODEBIT,
-		D_RSOPID_KCODE,
-	},
-	//syscall
-	{
-		RS_SYS_CALL,
-		SYSTEMCALLBIT,
-		D_RSOPID_SYS_CALL,
-	},
-	//selinux
-	{
-		RS_SE_STATUS,
-		SESTATUSBIT,
-		D_RSOPID_SE_STATUS,
-	},
-	//se_hook
-	{
-		RS_SE_HOOKS,
-		SEHOOKBIT,
-		D_RSOPID_SE_HOOKS,
-	},
-	//root_proc
-	{
-		RS_RRPOCS,
-		ROOTPROCBIT,
-		D_RSOPID_RRPOCS,
-	},
-	//set_id
-	{
-		RS_SETID,
-		SETIDBIT,
-		D_RSOPID_SETID,
-	},
-};
+extern struct item_bits itembits[MAX_NUM_OF_ITEM];
 
 int rscan_dynamic_init(void);
 

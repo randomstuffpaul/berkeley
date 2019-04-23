@@ -198,7 +198,7 @@ static ssize_t nvt_flash_spi_read(struct file *file, char __user *buff, size_t c
 		goto out;
 	}
 
-#if NVT_QEEXO_EARSENSE
+#if defined(NVT_QEEXO_EARSENSE)
 	cancel_delayed_work_sync(&nvt_proximity_work);
 #endif
 

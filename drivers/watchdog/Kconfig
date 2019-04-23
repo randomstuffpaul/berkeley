@@ -217,6 +217,11 @@ config ARM_SP805_WATCHDOG
 #
 # Hisilicon Watchdog
 #
+config HISI_RESET_TIMEOUT_WATCHDOG
+	tristate "reset timeout setting"
+	depends on HISI_SP805_WATCHDOG
+	help
+	  In the case of watchdog timeout, the reset process must be fastten.
 
 config HISI_SR_AP_WATCHDOG
 	tristate "suspend and resume to be monitored by the watchdog"

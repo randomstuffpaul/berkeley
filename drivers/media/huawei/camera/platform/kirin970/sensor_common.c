@@ -835,6 +835,43 @@ fail:
 
     return rc;
 }
+
+int hw_sensor_power_up_config(struct device *dev, hwsensor_board_info_t *sensor_info)
+{
+    int rc = 0;
+    if ((NULL == dev) || (NULL == sensor_info)){
+        cam_err("%s dev or sensor_info is NULL.\n",__func__);
+        return -1;
+    }
+
+    rc = devm_regulator_bulk_get(dev, sensor_info->ldo_num, sensor_info->ldo);
+    if (rc < 0) {
+        cam_err("%s failed %d\n", __func__, __LINE__);
+        return rc;
+    }
+    cam_info("power up config the ldo end");
+    return rc;
+}
+
+void hw_sensor_power_down_config(hwsensor_board_info_t *sensor_info)
+{
+    int i;
+    if (NULL == sensor_info){
+        cam_err("%s sensor_info is NULL.\n",__func__);
+        return;
+    }
+
+    cam_info("power down config the ldo begin");
+    for(i = 0; i < sensor_info->ldo_num; i++){
+        cam_info("%s %d=%s",__func__,i,sensor_info->ldo[i].supply);
+        if(NULL != sensor_info->ldo[i].consumer){
+          devm_regulator_put(sensor_info->ldo[i].consumer);
+        }
+    }
+    cam_info("power down config the ldo end");
+    return;
+}
+
 int hw_sensor_get_dt_data(struct platform_device *pdev,
 	sensor_t *sensor)
 {

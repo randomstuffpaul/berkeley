@@ -62,6 +62,7 @@ extern void reset_logbuff(void);
 
 extern int g_iom3_state;
 extern struct completion sensorhub_rdr_completion;
+extern struct wake_lock rdr_wl;
 
 static int isSensorMcuMode;	/*mcu power mode: 0 power off;  1 power on */
 static struct notifier_block nb;
@@ -650,7 +651,10 @@ int iom3_need_recovery(int modid, exp_source_t f)
         __send_nmi();
         notify_rdr_thread();
         queue_delayed_work(iom3_rec_wq, &iom3_rec_work, 0);
-    }
+    } else if ( f == SH_FAULT_INTERNELFAULT && completion_done(&sensorhub_rdr_completion)) {
+		wake_unlock(&rdr_wl);
+		peri_used_release();
+	}
 
     return ret;
 }

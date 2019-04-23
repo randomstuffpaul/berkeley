@@ -68,6 +68,7 @@ extern void release_hisee_semphore(void);/*should be semaphore; whatever..*/
 /* this interface is defined in hisi_flash_hisee_otp.c  */
 extern bool flash_otp_task_is_started(void);
 
+
 /* set the otp1 write work status */
 void hisee_chiptest_set_otp1_status(E_RUN_STATUS status)
 {
@@ -108,7 +109,7 @@ static int otp_image_upgrade_func(void *buf, int para)
 		pr_err("%s() hisee_get_cosid failed ret=%d\n", __func__, ret);
 		set_errno_and_return(ret);
 	}
-	if (COS_IMG_ID_0 != cos_id) {
+	if (COS_IMG_ID_0 != cos_id && COS_IMG_ID_1 != cos_id) {
 		pr_err("hisee:%s() cosid=%d not support otp image upgrade now, bypass!\n", __func__, cos_id);
 		return ret;
 	}
@@ -316,7 +317,7 @@ static int hisee_apdu_test_process(hisee_cos_imgid_type cos_id)
 {
     int ret;
 
-	if (COS_IMG_ID_0 != cos_id) {
+	if (COS_IMG_ID_0 != cos_id && COS_IMG_ID_1 != cos_id) {
 		ret = wait_hisee_ready(HISEE_STATE_COS_READY, DELAY_FOR_HISEE_POWERON_BOOTING);
 		if (HISEE_OK != ret) {
 			pr_err("hisee:%s(): wait_hisee_ready failed,retcode=%d\n", __func__, ret);
@@ -371,7 +372,7 @@ static int hisee_poweron_booting_misc_process(void *buf)
 	CHECK_OK(ret);
 
 	cos_default_buf_para[1] = '0' + cos_id;
-	if (COS_IMG_ID_0 != cos_id) {
+	if (COS_IMG_ID_0 != cos_id && COS_IMG_ID_1 != cos_id) {
 		ret = hisee_poweron_booting_func((void *)cos_default_buf_para, HISEE_POWER_ON_BOOTING);
 		pr_err("hisee:%s() cosid=%d not support misc booting now, bypass!\n", __func__, cos_id);
 		CHECK_OK(ret);
@@ -389,12 +390,12 @@ static int hisee_poweron_booting_misc_process(void *buf)
     CHECK_OK(ret);
 
 
-    /* cos patch upgrade only supported in this function */
-    ret = hisee_cos_patch_read(img_type + (HISEE_MAX_MISC_IMAGE_NUMBER * cos_id));
-    CHECK_OK(ret);
+	/* cos patch upgrade only supported in this function */
+	ret = hisee_cos_patch_read(img_type + (HISEE_MAX_MISC_IMAGE_NUMBER * cos_id));
+	CHECK_OK(ret);
 
     /* misc image upgrade only supported in this function */
-    ret = misc_image_upgrade_func(NULL, cos_id);
+    ret = misc_image_upgrade_func(cos_default_buf_para, cos_id);
     CHECK_OK(ret);
 
     /* wait hisee cos ready for later process */
@@ -413,6 +414,7 @@ err_process:
     check_and_print_result();
     return ret;
 }
+
 
 /*************************************************************
 º¯ÊýÔ­ÐÍ£ºint run_hisee_nvmformat(void)

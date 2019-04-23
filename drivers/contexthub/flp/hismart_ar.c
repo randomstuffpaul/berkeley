@@ -39,7 +39,9 @@ static int ar_send_cmd_through_shmem(ar_hdr_t * head, char  *buf, size_t count)
 		return -ENOMEM;
 	}
 	memcpy_s(data, sizeof(ar_hdr_t), head, len - count);
-	memcpy_s(data + sizeof(ar_hdr_t), count, buf, len - sizeof(ar_hdr_t));
+	if (len > sizeof(ar_hdr_t))
+		memcpy_s(data + sizeof(ar_hdr_t), count, buf, len - sizeof(ar_hdr_t));
+
 #ifdef CONFIG_CONTEXTHUB_SHMEM
 	ret = shmem_send(TAG_AR, (void *)data, len);
 #else
@@ -928,24 +930,22 @@ STATE_V2_ERR:
 static int ar_state_v2_cmd(ar_port_t *ar_port, unsigned long arg)
 {
 	int ret = 0;
-#ifndef CONFIG_INPUTHUB_20
-	struct read_info rd;
-#endif
-
 	mutex_lock(&g_ar_dev.state_lock);
 	if (!(FLP_AR_DATA & ar_port->channel_type) || !(FLP_AR_DATA & g_ar_dev.service_type)) {
 		pr_err("hismart:[%s]:line[%d] channel[0x%x] service[0x%x]\n", __func__, __LINE__, ar_port->channel_type, g_ar_dev.service_type);
 		goto AR_STATE_V2_ERR;
 	}
 
-
-#ifdef CONFIG_INPUTHUB_20
 	memset_s(&g_ar_dev.activity_shemem, sizeof(ar_state_shmen_t), 0, sizeof(ar_state_shmen_t));
 	reinit_completion(&g_ar_dev.get_complete);
 
+#ifdef CONFIG_INPUTHUB_20
 	ret = ar_send_cmd_from_kernel(TAG_AR, CMD_CMN_CONFIG_REQ,
 		SUB_CMD_FLP_AR_GET_STATE_REQ, NULL, (size_t)0);
-
+#else
+	ret = ar_send_cmd_from_kernel(TAG_AR, CMD_CMN_CONFIG_REQ,
+		CMD_FLP_AR_GET_STATE_REQ, NULL, (size_t)0);
+#endif
 	if (ret) {
 		pr_err("hismart:[%s]:line[%d] ar_send_cmd_from_kernel ERR[%d]\n", __func__, __LINE__, ret);
 		ret = -EFAULT;
@@ -972,22 +972,7 @@ static int ar_state_v2_cmd(ar_port_t *ar_port, unsigned long arg)
 
 	ret = (int)g_ar_dev.activity_shemem.user_len;
 
-#else
-	memset_s((void*)&rd, sizeof(struct read_info), 0,sizeof(struct read_info));
-	ret = ar_send_cmd_from_kernel_response(TAG_AR, CMD_CMN_CONFIG_REQ,
-		CMD_FLP_AR_GET_STATE_REQ, NULL, (size_t)0, &rd);
 
-	if (ret) {
-		pr_err("hismart:[%s]:line[%d] ar_send_cmd_from_kernel_response err[%d]\n", __func__, __LINE__, rd.errno);
-		goto AR_STATE_V2_ERR;
-	}
-
-	ret = state_v2_cmd(&rd, arg);
-	if (ret < 0) {
-		pr_err("hismart:[%s]:line[%d] state_v2_cmd err[%d]\n", __func__, __LINE__, ret);
-		goto AR_STATE_V2_ERR;
-	}
-#endif
 
 AR_STATE_V2_ERR:
 	mutex_unlock(&g_ar_dev.state_lock);
@@ -1682,6 +1667,7 @@ static int __init ar_init(void)
 	register_mcu_event_notifier(TAG_AR, CMD_FLP_AR_DATA_REQ, get_ar_data_from_mcu);
 	register_mcu_event_notifier(TAG_ENVIRONMENT, CMD_ENVIRONMENT_DATA_REQ, get_env_data_from_mcu);
 	register_mcu_event_notifier(TAG_ENVIRONMENT, CMD_ENVIRONMENT_DATABASE_REQ, database_req);
+	register_mcu_event_notifier(TAG_AR, CMD_FLP_AR_GET_STATE_RESP, ar_state_shmem);
 #endif
 	register_iom3_recovery_notifier(&ar_reboot_notify);
 	return ret;
@@ -1704,6 +1690,7 @@ static void ar_exit(void)
 	ret |= unregister_mcu_event_notifier(TAG_AR, CMD_FLP_AR_DATA_REQ, get_ar_data_from_mcu);
 	ret |= unregister_mcu_event_notifier(TAG_ENVIRONMENT, CMD_ENVIRONMENT_DATA_REQ, get_env_data_from_mcu);
 	ret |= unregister_mcu_event_notifier(TAG_ENVIRONMENT, CMD_ENVIRONMENT_DATABASE_REQ, database_req);
+	ret |= unregister_mcu_event_notifier(TAG_AR, CMD_FLP_AR_GET_STATE_RESP, ar_state_shmem);
 #endif
 	if(ret) {
 		pr_err("hismart:[%s]:line[%d] ret[%d]err\n", __func__, __LINE__, ret);

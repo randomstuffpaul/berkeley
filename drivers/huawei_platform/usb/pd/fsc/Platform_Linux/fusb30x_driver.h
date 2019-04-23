@@ -53,10 +53,6 @@ static const struct i2c_device_id fusb30x_i2c_device_id[] = {
     {}
 };
 MODULE_DEVICE_TABLE(i2c, fusb30x_i2c_device_id);                                // Used to generate map files used by depmod for module dependencies
-#ifdef CONFIG_CC_ANTI_CORROSION
-void fusb30x_set_cc_mode(int mode);
-int fusb30x_get_cc_mode(void);
-#endif
 
 /*******************************************************************************
  * Driver module functions

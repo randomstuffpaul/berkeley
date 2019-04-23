@@ -5,6 +5,7 @@
 
 #include <huawei_platform/log/hw_log.h>
 
+#define EVENT_CTS_HOME	172
 #define EVENT_HOLD	28
 #define EVENT_CLICK		174
 #define EVENT_DCLICK	111
@@ -150,6 +151,7 @@ struct fp_data
     wait_queue_head_t hbm_queue;
     unsigned int irq_custom_scheme;
     fingerprint_bigdata_t fingerprint_bigdata;
+    int cts_home;
 };
 
 #ifdef CONFIG_LLT_TEST

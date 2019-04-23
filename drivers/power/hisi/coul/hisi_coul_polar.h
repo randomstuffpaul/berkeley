@@ -10,5 +10,7 @@ extern int polar_params_calculate(struct polar_calc_info* polar,
 extern int polar_ocv_params_calc(struct polar_calc_info* polar,
                                 int batt_soc_real, int temp, int cur);
 extern bool is_polar_list_ready(void);
+extern void polar_clear_flash_data(void);
+extern void clear_polar_err_b(void);
 
 #endif

@@ -1391,9 +1391,9 @@ edid_retry:
 	retval = dptx_read_edid_block(dptx, 0);
 	/*will try to read edid block again when ready edid block failed*/
 	if(retval) {
-		if(edid_try_count <= MAX_AUX_RETRY_COUNT) {
+		if(edid_try_count <= dptx->edid_try_count) {
 			HISI_FB_INFO("[DP] Read edid block failed, try %d times \n", edid_try_count);
-			mdelay(AUX_RETRY_DELAY_TIME);
+			mdelay(dptx->edid_try_delay);
 			edid_try_count += 1;
 			goto edid_retry;
 		}else{
@@ -1406,8 +1406,8 @@ edid_retry:
 	ext_blocks = dptx->edid[126];
 	if((ext_blocks > MAX_EXT_BLOCKS) || !dptx_check_edid_header(dptx)){
 		edid_try_count += 1;
-		if(edid_try_count <= MAX_AUX_RETRY_COUNT) {
-			mdelay(AUX_RETRY_DELAY_TIME);
+		if(edid_try_count <= dptx->edid_try_count) {
+			mdelay(dptx->edid_try_delay);
 			HISI_FB_INFO("[DP] Read edid data is not correct, try %d times \n", edid_try_count);
 			goto edid_retry;
 		}else{
@@ -1806,7 +1806,10 @@ int handle_hotplug(struct hisi_fb_data_type *hisifd)
 	if (dp_factory_mode_is_enable()) {
 		if (!dp_factory_is_4k_60fps(dptx->max_rate, dptx->max_lanes,
 			dptx->vparams.mdtd.h_active, dptx->vparams.mdtd.v_active, dptx->vparams.m_fps)) {
-			HISI_FB_ERR("[DP] not support hotplug when not 4k@60fps in factory mode!\n");
+			HISI_FB_ERR("[DP] can't hotplug when combinations is invalid in factory mode!\n");
+			if (dptx->edid_info.Audio.basicAudio == 0x1) {
+				switch_set_state(&dptx->dp_switch, 0);
+			}
 			return -ECONNREFUSED;
 		}
 	}

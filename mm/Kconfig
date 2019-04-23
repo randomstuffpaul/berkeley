@@ -687,6 +687,7 @@ config DEFERRED_STRUCT_PAGE_INIT
 	depends on ARCH_SUPPORTS_DEFERRED_STRUCT_PAGE_INIT
 	depends on NO_BOOTMEM && MEMORY_HOTPLUG
 	depends on !FLATMEM
+	depends on !NEED_PER_CPU_KM
 	help
 	  Ordinarily all struct pages are initialised during early boot in a
 	  single thread. On very large machines this can take a considerable
@@ -804,6 +805,12 @@ config HUAWEI_SLAB_UNRECLAIMABLE_THRESHOLD
 	  If this config is set "y", we will make system panic when
 	  slab_unreclaimable is tested larger than threshold.
 
+config HISI_EARLY_RODATA_PROTECTION
+	bool "Write protect const data as early as possible in the boot sequence"
+	default y
+	help
+	  The really constant data doesn't need to wait for completing init, to be protected.
+
 config HUAWEI_UNMOVABLE_ISOLATE
 	bool "Isolate the unmovable memory."
 	depends on ARM64
@@ -839,4 +846,23 @@ config DEBUG_VMALLOC
 	  are the PID and the name of the task requesting vmalloc.
 
 	  Disabling these can result in savings in code size.
+
+config SPECULATIVE_PAGE_FAULT
+       bool "Speculative page faults"
+       default n
+       depends on MMU && SMP
+       help
+         Try to handle user space page faults without holding the mmap_sem.
+
+	 This should allow better concurrency for massively threaded process
+	 since the page fault handler will not wait for other threads memory
+	 layout change to be done, assuming that this change is done in another
+	 part of the process's memory space. This type of page fault is named
+	 speculative page fault.
+
+	 If the speculative page fault fails because of a concurrency is
+	 detected or because underlying PMD or PTE tables are not yet
+	 allocating, it is failing its processing and a classic page fault
+	 is then tried.
+
 source "mm/hisi/Kconfig"

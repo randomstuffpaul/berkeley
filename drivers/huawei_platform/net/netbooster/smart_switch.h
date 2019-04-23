@@ -39,6 +39,10 @@
 #define NETWORK_STATUS_APP_QOE_NORMAL  4
 #define NETWORK_STATUS_APP_QOE_GENERAL_SLOW 5
 
+//define status for network_slow_chr
+#define NETWORK_STATUS_NETWORK_NORMAL  6
+#define NETWORK_STATUS_NETWORK_SLOW 7
+
 /*RTT threshold*/
 #define RTT_THRED (255)
 

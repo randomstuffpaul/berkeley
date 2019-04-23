@@ -36,6 +36,10 @@
 #define HI6403_SAVE_LOG_SIZE               (0x800)
 #define HI6403_SAVE_LOG_SIZE_ES            (0x4000)
 
+#define HI6403_OCRAM1_BASE                  0x10046340
+#define HI6403_MLIB_TO_AP_MSG_ADDR          (HI6403_OCRAM1_BASE + 0x19874)
+#define HI6403_MLIB_TO_AP_MSG_SIZE          (588)
+
 #define HI6403_RINGBUFFER_ADDR             (HI6403_OCRAM_BASE_ADDR)
 #define HI6403_AP_TO_DSP_MSG_ADDR          (HI6403_RINGBUFFER_ADDR + HI6403_RINGBUFFER_SIZE)
 #define HI6403_AP_DSP_CMD_ADDR             (HI6403_AP_TO_DSP_MSG_ADDR + HI6403_AP_TO_DSP_MSG_SIZE)
@@ -78,5 +82,8 @@
 
 #define HI6403_I2S_DSPIF_CLK_EN            (HI64xx_CFG_SUB_BASE + 0x045)
 #define HI6403_MAD_BUF_CLK_EN_BIT 6
+
+#define HI6403_DSP_S2_CTRL_L                (HI64xx_AUDIO_SUB_BASE + 0xB0)
+#define HI6403_DSP_S2_CLK_EN_BIT            (3)
 
 #endif

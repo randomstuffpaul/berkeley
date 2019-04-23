@@ -68,6 +68,7 @@ enum Box_vendor {
 	BOX_NAME_GD,
 	BOX_NAME_LC,
 	BOX_NAME_LX,
+	BOX_NAME_XW,
 	BOX_NAME_PU,
 	BOX_NAME_PD,
 	BOX_NAME_NP,
@@ -75,7 +76,7 @@ enum Box_vendor {
 	BOX_VENDOR_MAX
 };
 
-static char *boxtable[BOX_VENDOR_MAX]={"", "AAC", "GOER", "GD ", "LC ", "LX ",  "PU ", "PD ", "NP ", "QS "};
+static char *boxtable[BOX_VENDOR_MAX]={"", "AAC", "GOER", "GD ", "LC ", "LX ", "XW ", "PU ", "PD ", "NP ", "QS "};
 
 enum {
 	DEVICEBOX_ID_MODE_USE_GPIO	= 0x0,
@@ -216,6 +217,16 @@ static long deviceboxID_ioctl(struct file *file, unsigned int command,
   */
 	return deviceboxID_do_ioctl(file, command, (void __user *)arg, 0);
 }
+/*lint -restore*/
+static long deviceboxID_compat_ioctl(struct file *file, unsigned int command,
+						  unsigned long arg)
+{
+ /**
+  * The use of parameters "0" is to meet format of linux driver,
+  * it has no practical significance.
+  */
+	return deviceboxID_do_ioctl(file, command, (void __user *)compat_ptr(arg), 0);
+}
 
 /*lint -save -e528 */
 static const struct of_device_id deviceboxID_match[] = {
@@ -231,7 +242,7 @@ static const struct file_operations deviceboxID_fops = {
 	.owner          = THIS_MODULE,
 	.unlocked_ioctl = deviceboxID_ioctl,
 #ifdef CONFIG_COMPAT
-	.compat_ioctl = deviceboxID_ioctl,
+	.compat_ioctl = deviceboxID_compat_ioctl,
 #endif
 };
 

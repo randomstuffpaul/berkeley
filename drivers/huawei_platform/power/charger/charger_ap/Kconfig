@@ -31,3 +31,6 @@ config WIRELESS_CHARGER
 config WIRED_CHANNEL_SWITCH
 	bool "wired channel switch"
 	default n
+config BQ25882_CHARGER
+	bool "bq25882 charger"
+	default n

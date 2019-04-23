@@ -512,7 +512,7 @@ struct sdhci_host {
 	struct mmc_host_ops mmc_host_ops;	/* MMC host ops */
 	u64 dma_mask;		/* custom DMA mask */
 
-#if IS_ENABLED(CONFIG_LEDS_CLASS)
+#if IS_ENABLED(CONFIG_LEDS_CLASS)/*lint !e553 */
 	struct led_classdev led;	/* LED control */
 	char led_name[32];
 #endif
@@ -661,7 +661,7 @@ struct sdhci_ops {
 	int	(*tuning_move)(struct sdhci_host *host, int is_move_strobe, int flag);
 	int	(*enable_enhanced_strobe)(struct sdhci_host *host);
 	void	(*init_tuning_para)(struct sdhci_host *host);
-	void     (*check_busy_before_send_cmd)(struct sdhci_host *host,
+	int     (*check_busy_before_send_cmd)(struct sdhci_host *host,
 				struct mmc_command* cmd);
 	void (*restore_transfer_para)(struct sdhci_host *host);
 	void (*select_card_type)(struct sdhci_host *host);

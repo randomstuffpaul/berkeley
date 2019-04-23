@@ -42,10 +42,20 @@ static int g_rboost_cnt;
 static int I_bias_all = 0;
 static u32 scp_error_flag = 0;
 
+static u8 scaf_randnum_remote[SCP_ADAPTOR_RANDOM_NUM_LO_LEN];
+static u8 scaf_digest_remote_hi[SCP_ADAPTOR_DIGEST_LEN];
+
 static int hi6526_set_charge_enable(int enable);
 static int hi6526_is_support_scp(void);
 static int hi6526_fcp_adapter_reg_read(u8 * val, u8 reg);
 static int hi6526_fcp_adapter_reg_write(u8 val, u8 reg);
+static int hi6526_reset_watchdog_timer(void);
+#ifndef CONFIG_DIRECT_CHARGER
+static int dummy_ops_register1(struct smart_charge_ops* ops) {return 0;}
+static int dummy_ops_register2(struct loadswitch_ops* ops) {return 0;}
+static int dummy_ops_register3(struct batinfo_ops* ops) {return 0;}
+#endif
+
 static int g_direct_charge_mode = 0;
 static void scp_set_direct_charge_mode(int mode)
 {
@@ -67,6 +77,8 @@ struct opt_regs common_opt_regs[] = {
         REG_CFG(0x284 , 0xff,   0, 0x08, 0,    0),
         REG_CFG(0x287 , 0xff,   0, 0x1C, 0,    0),
         REG_CFG(0x280 , 0xff,   0, 0x0D, 0,    0),
+        REG_CFG(0x2ac , 0xff,   0, 0x1e, 0,    0),
+        REG_CFG(0x298 , 0xff,   0, 0x01, 0,    0),
 };
 
 struct opt_regs buck_opt_regs[] = {
@@ -112,7 +124,7 @@ struct opt_regs lvc_opt_regs[] = {
         REG_CFG(0x2c5 , 0xff,   0, 0x65, 0,    0),
         REG_CFG(0xed ,  0xff,   0, 0xFF, 0,    0),
         REG_CFG(0xee ,  0xff,   0, 0x16, 0,    0),
-        REG_CFG(0xef ,  0xff,   0, 0x1E, 0,    0),
+        REG_CFG(0xef ,  0xff,   0, 0x23, 0,    0),
         REG_CFG(0x2b2 , 0xff,   0, 0xC1, 0,    0),
         REG_CFG(0x2bc , 0xff,   0, 0x57, 0,    0),
 };
@@ -154,7 +166,7 @@ struct opt_regs sc_opt_regs[] = {
         REG_CFG(0x2bc , 0xff,   0, 0x57, 0,    0),
         REG_CFG(0xed ,  0xff,   0, 0xFF, 0,    0),
         REG_CFG(0xee ,  0xff,   0, 0x16, 0,    0),
-        REG_CFG(0xef ,  0xff,   0, 0x1E, 0,    0),
+        REG_CFG(0xef ,  0xff,   0, 0x23, 0,    0),
         REG_CFG(0x2b2 , 0xff,   0, 0xC1, 0,    0),
         REG_CFG(0x2bb , 0xff,   0, 0XD3, 0,    0),
 };
@@ -788,7 +800,7 @@ static void hi6526_set_anti_reverbst_reset(void)
 
         hi6526_write_mask(CHG_ANTI_REVERBST_REG, CHG_ANTI_REVERBST_EN_MSK, CHG_ANTI_REVERBST_EN_SHIFT, CHG_ANTI_REVERBST_DIS);
         queue_delayed_work(system_power_efficient_wq, &di->reverbst_work,
-        		      msecs_to_jiffies(REVERBST_DELAY_ON));
+        		      msecs_to_jiffies(0));
 
         return ;
 }
@@ -809,7 +821,7 @@ static int set_buck_mode_enable(int enable)
         if(enable) {
                 di->batt_ovp_cnt_30s = 0;
                 di->chg_mode = BUCK;
-        } else {
+        } else if(BUCK == di->chg_mode){
                 di->chg_mode = NONE;
         }
         hi6526_write_mask(CHG_HIZ_CTRL_REG, CHG_HIZ_ENABLE_MSK, CHG_HIZ_ENABLE_SHIFT, !enable);
@@ -1063,6 +1075,18 @@ static int hi6526_set_fast_safe_timer(u32 chg_fastchg_safe_timer)
 }
 
 /**********************************************************
+*  Function:     hi6526_set_recharge_vol()
+*  Description:  set rechg vol
+*  Parameters:  set rechg vol
+*  return value:
+*                 0-success or others-fail
+**********************************************************/
+static int hi6526_set_recharge_vol(u8 rechg)
+{
+        return hi6526_write_mask(CHG_RECHG_REG, CHG_RECHG_MSK, CHG_RECHG_SHIFT, rechg);
+}
+
+/**********************************************************
 *  Function:     hi6526_set_precharge_current()
 *  Description:  config precharge current limit
 *  Parameters:   precharge current
@@ -1252,7 +1276,6 @@ static int hi6526_config_opt_param(int vbus_vol)
 *  Parameters:   value:input current value
 *  return value:  0-success or others-fail
 **********************************************************/
-
 static int hi6526_set_input_current(int cin_limit)
 {
         u8 Iin_limit;
@@ -1271,7 +1294,19 @@ static int hi6526_set_input_current(int cin_limit)
                 max = CHG_ILIMIT_1100;
         }
 
-        if(cin_limit > max) {
+        if(di->input_limit_flag) {
+		if(di->buck_vbus_set < VBUS_VSET_9V) {
+			max = CHG_ILIMIT_1100;
+                } else if (di->buck_vbus_set < VBUS_VSET_12V) {
+			max = CHG_ILIMIT_600;
+                } else {
+			max = CHG_ILIMIT_475;
+                }
+        }
+
+	di->input_current = cin_limit;
+
+	if(cin_limit > max) {
                 SCHARGER_DBG("%s cin_limit %d, max %d, vbus set is %d \n", __func__, cin_limit, max, di->buck_vbus_set);
                 cin_limit = max;
         }
@@ -1302,9 +1337,43 @@ static int hi6526_set_input_current(int cin_limit)
                 Iin_limit = cin_limit / CHG_ILIMIT_STEP_100;
        }
         SCHARGER_DBG("%s : cin_limit %d ma, reg is set 0x%x\n", __func__, cin_limit, Iin_limit);
+        SCHARGER_DBG("%s : flag %d, buck_vbus_set %d\n", __func__, di->input_limit_flag, di->buck_vbus_set);
 
         return hi6526_write_mask(CHG_INPUT_SOURCE_REG, CHG_ILIMIT_MSK,
                                  CHG_ILIMIT_SHIFT, Iin_limit);
+}
+/**********************************************************
+*  Function:       hi6526_set_input_current_limit
+*  Description:    set the input current in charging process
+*  Parameters:   value:input current value
+*  return value:  0-success or others-fail
+**********************************************************/
+static void hi6526_set_input_current_limit(int enable)
+{
+        struct hi6526_device_info *di = g_hi6526_dev;
+        if (NULL == di) {
+                SCHARGER_ERR("%s hi6526_device_info is NULL!\n", __func__);
+                return;
+        }
+        SCHARGER_INF("%s , flag %d, input current %d, vbus vset %d, enable %d\n", __func__ ,
+                di->input_limit_flag, di->input_current, di->buck_vbus_set, enable);
+
+        di->input_limit_flag = enable;
+
+        if(enable) {
+                if(di->buck_vbus_set < VBUS_VSET_9V) {
+                        if(di->input_current > CHG_ILIMIT_1100)
+                                hi6526_set_input_current(CHG_ILIMIT_1100);
+                } else if(di->buck_vbus_set < VBUS_VSET_12V) {
+                        if(di->input_current > CHG_ILIMIT_600)
+                                hi6526_set_input_current(CHG_ILIMIT_600);
+                } else {
+                        if(di->input_current > CHG_ILIMIT_475)
+                                hi6526_set_input_current(CHG_ILIMIT_475);
+                }
+        } else {
+                hi6526_set_input_current(di->input_current);
+        }
 }
 
 /**********************************************************
@@ -1585,12 +1654,23 @@ static int hi6526_get_charge_state(unsigned int *state)
 
 static void hi6526_reverbst_delay_work(struct work_struct *work)
 {
-	struct hi6526_device_info *di = g_hi6526_dev;
+        u8 val = 0;
+        int count = 10;
+        struct hi6526_device_info *di = g_hi6526_dev;
 
-	if (NULL == di)
-		return;
+        if (NULL == di)
+                return;
 
-        hi6526_write_mask(CHG_ANTI_REVERBST_REG, CHG_ANTI_REVERBST_EN_MSK, CHG_ANTI_REVERBST_EN_SHIFT, CHG_ANTI_REVERBST_EN);
+        msleep(400);
+        do {
+                hi6526_read(CHG_BUCK_STATUS_REG, &val);
+                mdelay(5);
+        } while ((HI6526_CHG_BUCK_OK != (val & HI6526_CHG_BUCK_OK)) && count--);
+
+        if(HI6526_CHG_BUCK_OK == (val & HI6526_CHG_BUCK_OK)) {
+                mdelay(50);
+                hi6526_write_mask(CHG_ANTI_REVERBST_REG, CHG_ANTI_REVERBST_EN_MSK, CHG_ANTI_REVERBST_EN_SHIFT, CHG_ANTI_REVERBST_EN);
+        }
 }
 
 /**********************************************************
@@ -1632,13 +1712,20 @@ static int hi6526_set_terminal_current(int term_current)
 static int hi6526_set_charge_enable(int enable)
 {
         struct hi6526_device_info *di = g_hi6526_dev;
-
+        static int last_enable = 0;
         if (NULL == di)
                 return -ENOMEM;
         /*invalidate charge enable on udp board */
         if ((BAT_BOARD_UDP == di->is_board_type) && (CHG_ENABLE == enable))
                 return 0;
 
+        if(enable && !last_enable) {
+                hi6526_set_input_current_limit(0);
+        } else if(!enable && last_enable){
+                hi6526_set_input_current_limit(1);
+        }
+
+        last_enable = enable;
         return hi6526_write_mask(CHG_ENABLE_REG, CHG_EN_MSK, CHG_EN_SHIFT,
                                  enable);
 }
@@ -1677,6 +1764,20 @@ static int hi6526_set_otg_current(int value)
                                  CHG_OTG_LIM_SHIFT, reg);
 }
 
+static int hi6526_otg_switch_mode(int enable)
+{
+        struct hi6526_device_info *di = g_hi6526_dev;
+        if (NULL == di) {
+                SCHARGER_ERR("%s hi6526_device_info is NULL!\n", __func__);
+                return -ENOMEM;
+        }
+        SCHARGER_INF("%s enable %d \n", __func__, enable);
+
+        hi6526_write_mask(CHG_OTG_SWITCH_CFG_REG, CHG_OTG_SWITCH_MASK, CHG_OTG_SWITCH_SHIFT, !!enable);
+        return 0;
+}
+
+
 /**********************************************************
 *  Function:       hi6526_set_otg_enable
 *  Description:    set the otg mode enable in charging process
@@ -1685,7 +1786,6 @@ static int hi6526_set_otg_current(int value)
 **********************************************************/
 static int hi6526_set_otg_enable(int enable)
 {
-
         struct hi6526_device_info *di = g_hi6526_dev;
         if (NULL == di) {
                 SCHARGER_ERR("%s hi6526_device_info is NULL!\n", __func__);
@@ -1695,10 +1795,15 @@ static int hi6526_set_otg_enable(int enable)
         if (enable) {
                 hi6526_opt_regs_set(otg_opt_regs, ARRAY_SIZE(otg_opt_regs));
                 hi6526_set_charge_enable(CHG_DISABLE);
+        } else {
+                hi6526_otg_switch_mode(0);
         }
 
         hi6526_write_mask(CHG_OTG_CFG_REG, CHG_OTG_EN_MSK, CHG_OTG_EN_SHIFT,
                                          enable);
+        if(!enable) {
+                mdelay(50);
+        }
         hi6526_write_mask(CHG_OTG_CFG_REG_0, CHG_OTG_MODE_MSK, CHG_OTG_MODE_SHIFT,
                                          enable);
 
@@ -1848,6 +1953,54 @@ static int hi6526_get_vbus_mv2(int *vbus_mv)
         return ret;
 }
 
+/**********************************************************
+*  Function:       hi6526_get_vout
+*  Description:    get voltage of vout
+*  Parameters:   vout_mv:voltage of vout
+*  return value:  0-success or others-fail
+**********************************************************/
+static int hi6526_get_vout(int *vout_mv)
+{
+        int ret;
+        u32 result = 0;
+        struct hi6526_device_info *di = g_hi6526_dev;
+        if (NULL == di)
+                return -1;
+
+        ret = hi6526_get_adc_value(CHG_ADC_CH_VOUT, &result);
+        if (ret) {
+                SCHARGER_ERR("[%s]get vout_mv fail,ret:%d\n", __func__, ret);
+                return -1;
+        }
+
+        *vout_mv = (int)result;
+        return ret;
+}
+
+/**********************************************************
+*  Function:       hi6526_get_vusb
+*  Description:    get voltage of vusb
+*  Parameters:   vusb_mv:voltage of vout
+*  return value:  0-success or others-fail
+**********************************************************/
+static int hi6526_get_vusb(int *vusb_mv)
+{
+        int ret;
+        u32 result = 0;
+        struct hi6526_device_info *di = g_hi6526_dev;
+        if (NULL == di)
+                return -1;
+
+        ret = hi6526_get_adc_value(CHG_ADC_CH_VUSB, &result);
+        if (ret) {
+                SCHARGER_ERR("[%s]get vusb_mv fail,ret:%d\n", __func__, ret);
+                return -1;
+        }
+
+        *vusb_mv = (int)result;
+        return ret;
+}
+
 static int hi6526_get_dp_dm_volt(int ch)
 {
         u32 vol_mv = 0;
@@ -1913,18 +2066,6 @@ static int hi6526_get_dp_res(void)
         SCHARGER_DBG("[%s] %d\n", __func__, res);
 
         return 0;
-}
-
-/**********************************************************
-*  Function:       hi6526_reset_watchdog_timer
-*  Description:    reset watchdog timer in charging process
-*  Parameters:   NULL
-*  return value:  0-success or others-fail
-**********************************************************/
-static int hi6526_reset_watchdog_timer(void)
-{
-        return hi6526_write_mask(WATCHDOG_SOFT_RST_REG, WD_RST_N_MSK,
-                                 WATCHDOG_TIMER_SHIFT, WATCHDOG_TIMER_RST);
 }
 
 static int hi6526_get_chip_temp(int *temp)
@@ -2157,6 +2298,7 @@ static int hi6526_dump_register(char *reg_value)
         char buff[BUF_LEN] = { 0 };
         int i = 0;
         int vbus = 0, ibat = 0;
+        int vusb = 0, vout = 0, vbat = 0;
         int ret = 0;
         struct hi6526_device_info *di = g_hi6526_dev;
 
@@ -2168,6 +2310,9 @@ static int hi6526_dump_register(char *reg_value)
 
         ret =  hi6526_get_vbus_mv((unsigned int *)&vbus);
         ret |= hi6526_get_ibat(&ibat);
+        ret |= hi6526_get_vusb(&vusb);
+        ret |= hi6526_get_vout(&vout);
+        vbat = hi6526_get_vbat();
         if (ret){
                 SCHARGER_ERR("%s hi6526_get_vbus_mv failed!\n", __func__);
         }
@@ -2179,12 +2324,17 @@ static int hi6526_dump_register(char *reg_value)
                 snprintf_s(buff, BUF_LEN, 26, "BUCK   ");
 
         strncat_s(reg_value, CHARGELOG_SIZE, buff, strlen(buff));
-
         snprintf_s(buff, BUF_LEN, 26, "%-8.2d", hi6526_get_ibus_ma());
         strncat_s(reg_value, CHARGELOG_SIZE, buff, strlen(buff));
         snprintf_s(buff, (unsigned long)BUF_LEN, 26,"%-8.2d", vbus);
         strncat_s(reg_value, CHARGELOG_SIZE, buff, strlen(buff));
         snprintf_s(buff, BUF_LEN, 26,"%-8.2d", ibat);
+        strncat_s(reg_value, CHARGELOG_SIZE, buff, strlen(buff));
+        snprintf_s(buff, (unsigned long)BUF_LEN, 26, "%-8.2d", vusb);
+        strncat_s(reg_value, CHARGELOG_SIZE, buff, strlen(buff));
+        snprintf_s(buff, (unsigned long)BUF_LEN, 26, "%-8.2d", vout);
+        strncat_s(reg_value, CHARGELOG_SIZE, buff, strlen(buff));
+        snprintf_s(buff, (unsigned long)BUF_LEN, 26, "%-8.2d", vbat);
         strncat_s(reg_value, CHARGELOG_SIZE, buff, strlen(buff));
         snprintf_s(buff, (unsigned long)BUF_LEN, 26, "%-8.2d", I_bias_all);
         strncat_s(reg_value, CHARGELOG_SIZE, buff, strlen(buff));
@@ -2227,6 +2377,13 @@ static int hi6526_get_register_head(char *reg_head)
         strncat_s(reg_head, CHARGELOG_SIZE, buff, strlen(buff));
         snprintf_s(buff, (unsigned long)BUF_LEN, 26, "Ibat    ");
         strncat_s(reg_head, CHARGELOG_SIZE, buff, strlen(buff));
+        snprintf_s(buff, (unsigned long)BUF_LEN, 26, "Vusb    ");
+        strncat_s(reg_head, CHARGELOG_SIZE, buff, strlen(buff));
+        snprintf_s(buff, (unsigned long)BUF_LEN, 26, "Vout    ");
+        strncat_s(reg_head, CHARGELOG_SIZE, buff, strlen(buff));
+        snprintf_s(buff, (unsigned long)BUF_LEN, 26, "Vbat    ");
+        strncat_s(reg_head, CHARGELOG_SIZE, buff, strlen(buff));
+
         snprintf_s(buff, (unsigned long)BUF_LEN, 26, "Ibias   ");
         strncat_s(reg_head, CHARGELOG_SIZE, buff, strlen(buff));
         for (i = 0; i < (PAGE0_NUM); i++) {
@@ -2286,6 +2443,7 @@ static int hi6526_set_watchdog_timer(int value)
         }
         SCHARGER_DBG(" watch dog timer is %d ,the register value is set %u \n",
                      dog_time, val);
+        hi6526_reset_watchdog_timer();
         return hi6526_write_mask(WATCHDOG_CTRL_REG, WATCHDOG_TIMER_MSK,
                                  WATCHDOG_TIMER_SHIFT, val);
 }
@@ -2436,7 +2594,7 @@ static int hi6526_get_dieid(char *dieid, unsigned int len)
         ret |= hi6526_efuse_read(EFUSE3, EFUSE_BYTE6, &val[1]);
         ret |= hi6526_efuse_read(EFUSE3, EFUSE_BYTE7, &val[2]);
 
-        snprintf_s(dieid, len, len, "\r\nSchargerV600:0x%02x%02x%02x\r\n", val[0],val[1],val[2]);
+        snprintf_s(dieid, len, len, "\r\nHi6526:0x%02x%02x%02x\r\n", val[2],val[1],val[0]);
         return ret;
 }
 /**********************************************************
@@ -2448,49 +2606,50 @@ static int hi6526_get_dieid(char *dieid, unsigned int len)
 **********************************************************/
 static int hi6526_chip_init(struct chip_init_crit* init_crit)
 {
-	int ret = 0;
-	struct hi6526_device_info *di = g_hi6526_dev;
-	if (NULL == di ||  NULL == init_crit) {
-		SCHARGER_ERR("%s hi6526_device_info or chip_init_crit NULL!\n", __func__);
-		return -ENOMEM;
-	}
-	switch(init_crit->vbus) {
-		case ADAPTER_5V:
-			ret |= hi6526_ibat_res_sel(di->param_dts.r_coul_mohm);
-			ret |= hi6526_config_opt_param(VBUS_VSET_5V);
-			ret |= hi6526_dpm_init();
-			ret |= hi6526_set_vbus_vset(VBUS_VSET_5V);
-			charger_is_fcp = FCP_FALSE;
-			first_insert_flag = FIRST_INSERT_TRUE;
-			break;
-		case ADAPTER_9V:
-			ret |= hi6526_config_opt_param(VBUS_VSET_5V);
-			ret |= hi6526_set_vbus_uvp_ovp(VBUS_VSET_9V);
-			break;
-		default:
-			SCHARGER_ERR("%s: init mode err\n", __func__);
-			return -EINVAL;
-	}
+        int ret = 0;
+        struct hi6526_device_info *di = g_hi6526_dev;
+        if (NULL == di ||  NULL == init_crit) {
+                SCHARGER_ERR("%s hi6526_device_info or chip_init_crit NULL!\n", __func__);
+                return -ENOMEM;
+        }
+        switch(init_crit->vbus) {
+                case ADAPTER_5V:
+                        ret |= hi6526_ibat_res_sel(di->param_dts.r_coul_mohm);
+                        ret |= hi6526_config_opt_param(VBUS_VSET_5V);
+                        ret |= hi6526_dpm_init();
+                        ret |= hi6526_set_vbus_vset(VBUS_VSET_5V);
+                        charger_is_fcp = FCP_FALSE;
+                        first_insert_flag = FIRST_INSERT_TRUE;
+                        break;
+                case ADAPTER_9V:
+                        ret |= hi6526_config_opt_param(VBUS_VSET_5V);
+                        ret |= hi6526_set_vbus_uvp_ovp(VBUS_VSET_9V);
+                        break;
+                default:
+                        SCHARGER_ERR("%s: init mode err\n", __func__);
+                        return -EINVAL;
+        }
 
-	ret |= set_buck_mode_enable(CHG_ENABLE);
-	ret |= hi6526_set_charge_enable(CHG_DISABLE);
-	ret |= hi6526_set_fast_safe_timer(CHG_FASTCHG_TIMER_20H);
-	ret |= hi6526_set_term_enable(CHG_TERM_DIS);
-	ret |= hi6526_set_input_current(CHG_ILIMIT_475);
-	ret |= hi6526_set_charge_current(CHG_FAST_ICHG_500MA);
-	ret |= hi6526_set_terminal_voltage(CHG_FAST_VCHG_4400);
-	ret |= hi6526_set_terminal_current(CHG_TERM_ICHG_150MA);
-	ret |= hi6526_set_watchdog_timer(WATCHDOG_TIMER_40_S);
-	ret |= hi6526_set_precharge_current(CHG_PRG_ICHG_200MA);
-	ret |= hi6526_set_precharge_voltage(CHG_PRG_VCHG_2800);
-	ret |= hi6526_set_batfet_ctrl(CHG_BATFET_EN);
-	/*IR compensation voatge clamp ,IR compensation resistor setting */
-	ret |= hi6526_set_bat_comp(di->param_dts.bat_comp);
-	ret |= hi6526_set_vclamp(di->param_dts.vclamp);
-	ret |= hi6526_set_otg_current(BOOST_LIM_1000);
-	ret |= hi6526_set_otg_enable(OTG_DISABLE);
+        ret |= set_buck_mode_enable(CHG_ENABLE);
+        ret |= hi6526_set_charge_enable(CHG_DISABLE);
+        ret |= hi6526_set_recharge_vol(CHG_RECHG_150);
+        ret |= hi6526_set_fast_safe_timer(CHG_FASTCHG_TIMER_20H);
+        ret |= hi6526_set_term_enable(CHG_TERM_DIS);
+        ret |= hi6526_set_input_current(CHG_ILIMIT_475);
+        ret |= hi6526_set_charge_current(CHG_FAST_ICHG_500MA);
+        ret |= hi6526_set_terminal_voltage(CHG_FAST_VCHG_4400);
+        ret |= hi6526_set_terminal_current(CHG_TERM_ICHG_150MA);
+        ret |= hi6526_set_watchdog_timer(WATCHDOG_TIMER_40_S);
+        ret |= hi6526_set_precharge_current(CHG_PRG_ICHG_200MA);
+        ret |= hi6526_set_precharge_voltage(CHG_PRG_VCHG_2800);
+        ret |= hi6526_set_batfet_ctrl(CHG_BATFET_EN);
+        /*IR compensation voatge clamp ,IR compensation resistor setting */
+        ret |= hi6526_set_bat_comp(di->param_dts.bat_comp);
+        ret |= hi6526_set_vclamp(di->param_dts.vclamp);
+        ret |= hi6526_set_otg_current(BOOST_LIM_1000);
+        ret |= hi6526_set_otg_enable(OTG_DISABLE);
 
-	return ret;
+        return ret;
 }
 /**********************************************************
 *  Function:       hi6526_fcp_get_adapter_output_current
@@ -3571,7 +3730,7 @@ static int hi6526_scp_type_detect(struct hi6526_device_info *di)
                         di->adaptor_support |= SC_MODE;
                         ret = SCP_ADAPTOR_DETECT_SUCC;
                 }
-                if (val & SCP_ADP_TYPE0_B_LVC_MASK)
+                if (!(val & SCP_ADP_TYPE0_B_LVC_MASK))
                 {
                         di->adaptor_support |= LVC_MODE;
                         ret = SCP_ADAPTOR_DETECT_SUCC;
@@ -4223,12 +4382,14 @@ static void hi6526_after_direct_charger(struct hi6526_device_info *di, int enabl
 static int hi6526_lvc_enable(int enable )
 {
         struct hi6526_device_info *di = g_hi6526_dev;
+        u8 lvc_mode = 0;
          if (NULL == di) {
                 SCHARGER_ERR("%s hi6526_device_info is NULL!\n", __func__);
                 return -ENOMEM;
         }
+         hi6526_read_mask(LVC_CHG_MODE_REG, LVC_CHG_MODE_MASK,LVC_CHG_MODE_SHIFT, &lvc_mode);
 
-        if(!enable && LVC != di->chg_mode )
+        if(!enable && LVC != di->chg_mode && (!lvc_mode) )
                 return 0;
 
         SCHARGER_INF("[%s] %d \n", __func__, enable);
@@ -4253,12 +4414,14 @@ static int hi6526_lvc_enable(int enable )
 static int hi6526_sc_enable(int enable )
 {
         struct hi6526_device_info *di = g_hi6526_dev;
+        u8 sc_mode = 0;
          if (NULL == di) {
                 SCHARGER_ERR("%s hi6526_device_info is NULL!\n", __func__);
                 return -ENOMEM;
         }
+        hi6526_read_mask(SC_CHG_MODE_REG, SC_CHG_MODE_MASK,SC_CHG_MODE_SHIFT, &sc_mode);
 
-        if(!enable && SC != di->chg_mode )
+        if(!enable && SC != di->chg_mode && (!sc_mode))
                 return 0;
 
         SCHARGER_INF("[%s] %d \n", __func__, enable);
@@ -4292,7 +4455,7 @@ static int hi6526_get_switchcap_id(void)
 {
         return SWITCHCAP_SCHARGERV600;
 }
-
+#ifdef CONFIG_WIRED_CHANNEL_SWITCH
 static int hi6526_set_wired_channel(int flag)
 {
         return 0;
@@ -4300,7 +4463,7 @@ static int hi6526_set_wired_channel(int flag)
 static struct wired_chsw_device_ops hi6526_chsw_ops = {
 	.set_wired_channel = hi6526_set_wired_channel,
 };
-
+#endif
 static int hi6526_switch_to_buck_mode(void)
 {
         struct hi6526_device_info *di = g_hi6526_dev;
@@ -4324,6 +4487,97 @@ static int hi6526_switch_to_buck_mode(void)
         hi6526_set_terminal_current(CHG_TERM_ICHG_150MA);
         hi6526_set_watchdog_timer(WATCHDOG_TIMER_40_S);
 
+        return 0;
+}
+static int hi6526_scp_set_adaptor_encrypt_enable(int type)
+{
+        int ret = 0;
+
+        ret = scp_adapter_reg_write(type, SCP_ADAPTOR_KEY_INDEX_REG);
+        if (ret) {
+                SCHARGER_ERR("%s: scp_adapter_reg_write  SCP_ADAPTOR_KEY_INDEX_REG failed, value = %02X\n", __func__, type);
+                return HI6526_FAIL;
+        }
+
+        return 0;
+}
+
+static int hi6526_scp_get_adaptor_encrypt_enable(void)
+{
+        int ret = 0;
+        u8 val = 0;
+
+        ret = scp_adapter_reg_read(&val, SCP_ADAPTOR_ENCRYPT_INFO_REG);
+        if (ret) {
+                SCHARGER_ERR("%s: scp_adapter_reg_read SCP_ADAPTOR_ENCRYPT_INFO_REG failed\n", __func__);
+                return HI6526_FAIL;
+        }
+
+        if (!(val & SCP_ADAPTOR_ENCRYPT_ENABLE)) {
+                SCHARGER_ERR("%s: SCP_ADAPTOR_ENCRYPT_ENABLE val = %d\n", __func__, val);
+                return HI6526_FAIL;
+        }
+
+        return 0;
+}
+static int hi6526_scp_set_adaptor_random_num(char *random_local)
+{
+        int ret = 0;
+
+        ret = hi6526_fcp_adapter_reg_write_block(SCP_ADAPTOR_RANDOM_NUM_HI_BASE_REG, random_local, SCP_ADAPTOR_RANDOM_NUM_HI_LEN);
+        if (ret) {
+                SCHARGER_ERR("%s: hi6526_fcp_adapter_reg_write_block SCP_ADAPTOR_RANDOM_NUM_REG failed\n", __func__);
+                return HI6526_FAIL;
+        }
+        return 0;
+}
+
+static int hi6526_scp_get_adaptor_encrypt_completed(void)
+{
+        int ret = 0;
+        u8 val = 0;
+
+        ret = scp_adapter_reg_read(&val, SCP_ADAPTOR_ENCRYPT_INFO_REG);
+        if (ret) {
+                SCHARGER_ERR("%s : scp_adapter_reg_read  SCP_ADAPTOR_ENCRYPT_INFO_REG failed\n", __func__);
+                return HI6526_FAIL;
+        }
+
+        if( !(val & SCP_ADAPTOR_ENCRYPT_COMPLETE)) {
+                SCHARGER_ERR("%s: SCP_ADAPTOR_ENCRYPT_COMPLETE val = %d\n", __func__, val);
+                return HI6526_FAIL;
+        }
+
+        return 0;
+}
+static int hi6526_scp_get_adaptor_random_num(char *num)
+{
+        int ret = 0;
+
+        (void)memset_s(scaf_randnum_remote, SCP_ADAPTOR_RANDOM_NUM_HI_LEN, 0, SCP_ADAPTOR_RANDOM_NUM_HI_LEN);
+
+        ret = hi6526_fcp_adapter_reg_read_block(SCP_ADAPTOR_RANDOM_NUM_LO_BASE_REG, scaf_randnum_remote, SCP_ADAPTOR_RANDOM_NUM_HI_LEN);
+        if (ret) {
+                SCHARGER_ERR("%s: hi6526_fcp_adapter_reg_read_block SCP_ADAPTOR_RANDOM_NUM_LO_BASE_REG failed\n", __func__);
+                return HI6526_FAIL;
+        }
+
+        memcpy_s(num, SCP_ADAPTOR_RANDOM_NUM_HI_LEN, scaf_randnum_remote, SCP_ADAPTOR_RANDOM_NUM_HI_LEN);
+        return 0;
+}
+static int hi6526_scp_get_adaptor_encrypted_value(char *hash)
+{
+        int ret = 0;
+
+        (void)memset_s(scaf_digest_remote_hi, sizeof(scaf_digest_remote_hi), 0, sizeof(scaf_digest_remote_hi));
+
+        ret = hi6526_fcp_adapter_reg_read_block(SCP_ADAPTOR_DIGEST_BASE_REG, scaf_digest_remote_hi, SCP_ADAPTOR_DIGEST_LEN);
+        if (ret) {
+                SCHARGER_ERR("%s: hi6526_fcp_adapter_reg_read_block SCP_ADAPTOR_DIGEST_BASE_REG failed\n", __func__);
+                return HI6526_FAIL;
+        }
+
+        memcpy_s(hash, SCP_ADAPTOR_DIGEST_LEN, scaf_digest_remote_hi, SCP_ADAPTOR_DIGEST_LEN);
         return 0;
 }
 
@@ -4383,8 +4637,13 @@ struct smart_charge_ops scp_hi6526_ops = {
         .scp_get_adapter_vendor_id = hi6526_get_adapter_vendor_id,
         .scp_get_usb_port_leakage_current_info = hi6526_get_usb_port_leakage_current_info,
         .scp_set_direct_charge_mode = scp_set_direct_charge_mode,
+        .scp_set_adaptor_encrypt_enable = hi6526_scp_set_adaptor_encrypt_enable,
+        .scp_get_adaptor_encrypt_enable = hi6526_scp_get_adaptor_encrypt_enable,
+        .scp_set_adaptor_random_num = hi6526_scp_set_adaptor_random_num,
+        .scp_get_adaptor_encrypt_completed = hi6526_scp_get_adaptor_encrypt_completed,
+        .scp_get_adaptor_random_num = hi6526_scp_get_adaptor_random_num,
+        .scp_get_adaptor_encrypted_value = hi6526_scp_get_adaptor_encrypted_value,
 };
-
 struct fcp_adapter_device_ops fcp_hi6526_ops = {
         .get_adapter_output_current = hi6526_fcp_get_adapter_output_current,
         .set_adapter_output_vol = hi6526_fcp_set_adapter_output_vol,
@@ -4431,6 +4690,7 @@ struct charge_device_ops hi6526_ops = {
         .stop_charge_config = hi6526_stop_charge_config,
         .set_otg_enable = hi6526_set_otg_enable,
         .set_otg_current = hi6526_set_otg_current,
+        .set_otg_switch_mode_enable = hi6526_otg_switch_mode,
         .get_register_head = hi6526_get_register_head,
         .dump_register = hi6526_dump_register,
 };
@@ -4500,6 +4760,7 @@ static void hi6526_lvc_sc_irq2str(u32 lvc_sc_irq_state)
 
 static void hi6526_direct_dmd_report(u32 fault_type, struct nty_data * data)
 {
+#ifdef CONFIG_DIRECT_CHARGER
         struct hi6526_device_info *di = g_hi6526_dev;
         struct atomic_notifier_head *direct_charge_fault_notifier_list;
         if((NULL == di) || !(SC == di->chg_mode || LVC == di->chg_mode))
@@ -4511,6 +4772,7 @@ static void hi6526_direct_dmd_report(u32 fault_type, struct nty_data * data)
                 direct_charge_lvc_get_fault_notifier(&direct_charge_fault_notifier_list);
 
         atomic_notifier_call_chain(direct_charge_fault_notifier_list, fault_type, data);
+#endif
 }
 
 static void hi6526_direct_charge_fault_handle(u32 lvc_sc_irq_state)
@@ -4578,10 +4840,32 @@ static void hi6526_chip_overtemp_handle(void)
         hi6526_direct_dmd_report( DIRECT_CHARGE_FAULT_TDIE_OTP,data);
 }
 
-static void hi6526_buck_fault_handle(u32 buck_irq_state)
+static void hi6526_buck_vbat_ovp_handle(void)
 {
         int i = 0;
         u8 vbat_ovp_cnt = 0, irq_st0 = 0;
+
+        SCHARGER_ERR("%s : irq_vbus_ovp \n", __func__);
+        for (i = 0; i < 5; i++) {
+                hi6526_read(CHG_IRQ_STATUS0, &irq_st0);
+                if (CHG_VBAT_OVP == (irq_st0 & CHG_VBAT_OVP)) {
+                        vbat_ovp_cnt++;
+                        mdelay(2);
+                } else {
+                        vbat_ovp_cnt = 0;
+                        break;
+                }
+        }
+        if (vbat_ovp_cnt >= 5) {
+                SCHARGER_ERR("%s : CHARGE_FAULT_VBAT_OVP\n", __func__);
+                hi6526_set_input_current_limit(1);
+                atomic_notifier_call_chain(&fault_notifier_list, CHARGE_FAULT_VBAT_OVP, NULL);
+        }
+
+}
+
+static void hi6526_buck_fault_handle(u32 buck_irq_state)
+{
         unsigned long jiffies_cur = jiffies;
         struct hi6526_device_info *di = g_hi6526_dev;
 
@@ -4589,21 +4873,7 @@ static void hi6526_buck_fault_handle(u32 buck_irq_state)
                 return;
 
         if(buck_irq_state & FAULT_BUCK_VBAT_OVP) {
-                SCHARGER_ERR("%s : irq_vbus_ovp \n", __func__);
-                for (i = 0; i < 5; i++) {
-                        hi6526_read(CHG_IRQ_STATUS0, &irq_st0);
-                        if (CHG_VBAT_OVP == (irq_st0 & CHG_VBAT_OVP)) {
-                                vbat_ovp_cnt++;
-                                mdelay(2);
-                        } else {
-                                vbat_ovp_cnt = 0;
-                                break;
-                        }
-                }
-                if (vbat_ovp_cnt >= 5) {
-                        SCHARGER_ERR("%s : CHARGE_FAULT_VBAT_OVP\n", __func__);
-                        atomic_notifier_call_chain(&fault_notifier_list, CHARGE_FAULT_VBAT_OVP, NULL);
-                }
+                hi6526_buck_vbat_ovp_handle();
         }
         if(buck_irq_state & FAULT_OTG_OCP) {
                 SCHARGER_ERR("%s : CHARGE_FAULT_BOOST_OCP\n", __func__);
@@ -4625,7 +4895,12 @@ static void hi6526_buck_fault_handle(u32 buck_irq_state)
                         atomic_notifier_call_chain(&fault_notifier_list, CHARGE_FAULT_WEAKSOURCE, NULL);
                 }
         }
-
+        if(buck_irq_state & (FAULT_CHG_DONE | FAULT_CHG_FAULT)) {
+                hi6526_set_input_current_limit(1);
+        }
+        if(buck_irq_state & FAULT_RECHG) {
+                hi6526_set_input_current_limit(0);
+        }
 }
 
 /**********************************************************
@@ -4810,12 +5085,21 @@ static void hi6526_fcp_scp_ops_register(void)
         /* if chip support scp ,register scp adapter ops */
         if( 0 == hi6526_is_support_scp())
         {
+                #ifdef CONFIG_DIRECT_CHARGER
                 ret = scp_ops_register(&scp_hi6526_ops);
                 ret |= loadswitch_ops_register(&hi6526_lvc_ops);
                 ret |= sc_ops_register(&hi6526_sc_ops);
                 ret |= batinfo_sc_ops_register(&hi6526_batinfo_ops);
                 ret |= batinfo_lvc_ops_register(&hi6526_batinfo_ops);
+                #else
+                ret = dummy_ops_register1(&scp_hi6526_ops);
+                ret |= dummy_ops_register2(&hi6526_lvc_ops);
+                ret |= dummy_ops_register2(&hi6526_sc_ops);
+                ret |= dummy_ops_register3(&hi6526_batinfo_ops);
+                #endif
+                #ifdef CONFIG_WIRED_CHANNEL_SWITCH
                 ret |= wired_chsw_ops_register(&hi6526_chsw_ops);
+                #endif
                 if (ret)
                 {
                         SCHARGER_ERR("register scp adapter ops failed!\n");
@@ -4884,6 +5168,51 @@ static int hi6526_usb_notifier_call(struct notifier_block *usb_nb,
         SCHARGER_INF("%s : di->charger_type %d\n",__func__, di->charger_type);
         hi6526_plugout_check_process(di->charger_type);
         return NOTIFY_OK;
+}
+/**********************************************************
+*  Function:       hi6526_reset_watchdog_timer
+*  Description:    reset watchdog timer in charging process
+*  Parameters:   NULL
+*  return value:  0-success or others-fail
+**********************************************************/
+static int hi6526_reset_watchdog_timer(void)
+{
+        struct hi6526_device_info *di = g_hi6526_dev;
+        int ibus = 0;
+        static int ibus_abnormal_cnt = 0;
+
+        if (NULL == di || (SC != di->chg_mode && LVC != di->chg_mode)) {
+                ibus_abnormal_cnt = 0;
+                /* kick watchdog */
+                hi6526_write_mask(WATCHDOG_SOFT_RST_REG, WD_RST_N_MSK,
+                                             WATCHDOG_TIMER_SHIFT, WATCHDOG_TIMER_RST);
+                return 0;
+        }
+
+        ibus = hi6526_get_ibus_ma();
+
+        if(di->ucp_work_first_run && ibus > IBUS_OCP_START_VAL) {
+                di->ucp_work_first_run = 0;
+        }
+
+        if (ibus < IBUS_ABNORMAL_VAL && !di->ucp_work_first_run)
+                ibus_abnormal_cnt++;
+        else
+                ibus_abnormal_cnt = 0;
+
+        if (ibus_abnormal_cnt >= IBUS_ABNORMAL_CNT) {
+
+                SCHARGER_INF("%s : cnt %d, ibus %d, chg_mode %d\n",__func__, ibus_abnormal_cnt, ibus, di->chg_mode);
+                ibus_abnormal_cnt = 0;
+                di->dc_ibus_ucp_happened = 1;
+                hi6526_direct_charge_fault_handle(IRQ_IBUS_DC_UCP_MASK);
+                hi6526_lvc_enable(0);
+                hi6526_sc_enable(0);
+                return 0;
+        }
+
+        return hi6526_write_mask(WATCHDOG_SOFT_RST_REG, WD_RST_N_MSK,
+                             WATCHDOG_TIMER_SHIFT, WATCHDOG_TIMER_RST);
 }
 
 static void hi6526_dc_ucp_delay_work(struct work_struct *work)
@@ -5001,6 +5330,7 @@ fail_1:
 fail_0:
         return ret;
 }
+
 /**********************************************************
 *  Function:       hi6526_probe
 *  Description:    HI6526 module probe

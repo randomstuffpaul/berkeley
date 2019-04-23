@@ -121,6 +121,7 @@ typedef enum{
 #define ALS_CALI_C_MSG               703013004
 #define ALS_CALI_LUX_MSG             703013005
 #define ALS_CALI_CCT_MSG             703013006
+#define ALS_CALI_DARK_OFFSET_MSG     703013007
 
 #define SAR_SENSOR_OFFSET_MSG        703016001
 #define SAR_SENSOR_DIFF_MSG          703016002
@@ -130,6 +131,7 @@ typedef enum{
 #define PS_NEAR_PDATA                703018003
 
 #define PS_CALI_NAME                 "PS_CALI_XTALK"
+#define ALS_DARK_CALI_NAME           "ALS_DARK_CALI_OFFSET"
 #define CAP_PROX_OFFSET              "SAR_SENSOR_OFFSET_MSG"
 #define CAP_PROX_DIFF                "SAR_SENSOR_DIFF_MSG"
 

@@ -270,11 +270,13 @@ hisifb-objs += \
 	hisi_overlay_mediacommon.o \
 	hisi_mediacommon_panel.o \
 	hisi_fb_video_idle.o \
+	backlight/lm36923.o \
 	panel/dssv501/mipi_cmi_NT35521.o \
 	panel/dssv501/mipi_jdi_R63452.o \
 	panel/kirin970/mipi_sharp_NT36870.o \
 	panel/kirin970/mipi_lcd_external_panel.o
 
+hisifb-objs += voltage/ina231.o
 endif
 
 ifeq ($(CONFIG_HISI_FB_V320),y)

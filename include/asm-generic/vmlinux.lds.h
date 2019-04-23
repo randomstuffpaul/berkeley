@@ -275,9 +275,19 @@
  */
 #ifndef RO_AFTER_INIT_DATA
 #define RO_AFTER_INIT_DATA						\
-	__start_data_ro_after_init = .;					\
-	*(.data..ro_after_init)						\
-	__end_data_ro_after_init = .;
+	*(.data..ro_after_init)
+#endif
+
+#ifndef RO_AFTER_INIT_SECTION
+#define RO_AFTER_INIT_SECTION(align)					\
+	. = ALIGN((align));						\
+	/* RO after init data section */				\
+	.ro_after_init_data : AT(ADDR(.ro_after_init_data) - LOAD_OFFSET) { \
+		VMLINUX_SYMBOL(__start_data_ro_after_init) = .;		\
+		RO_AFTER_INIT_DATA					\
+		. = ALIGN((align));					\
+		VMLINUX_SYMBOL(__end_data_ro_after_init) = .;		\
+	}
 #endif
 
 /*
@@ -288,7 +298,6 @@
 	.rodata           : AT(ADDR(.rodata) - LOAD_OFFSET) {		\
 		VMLINUX_SYMBOL(__start_rodata) = .;			\
 		*(.rodata) *(.rodata.*)					\
-		RO_AFTER_INIT_DATA	/* Read only after init */	\
 		*(__vermagic)		/* Kernel version magic */	\
 		. = ALIGN(8);						\
 		VMLINUX_SYMBOL(__start___tracepoints_ptrs) = .;		\

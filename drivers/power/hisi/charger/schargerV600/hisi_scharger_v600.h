@@ -126,6 +126,8 @@ struct hi6526_device_info {
         unsigned int hi6526_version;
         unsigned int is_board_type;        /*0:sft 1:udp 2:asic */
         int buck_vbus_set;
+        int input_current;
+        int input_limit_flag;
         int gpio_cd;
         int gpio_int;
         int irq_int;
@@ -237,6 +239,13 @@ struct hi6526_device_info {
 #define CHG_DPM_MODE_MSK                 (1<<CHG_DPM_SEL_SHIFT)
 #define CHG_DPM_MODE_AUTO                 (1<<CHG_DPM_SEL_SHIFT)
 
+#define CHG_RECHG_REG    (SOC_SCHARGER_CHARGER_CFG_REG_9_ADDR(0))
+#define CHG_RECHG_SHIFT         (SOC_SCHARGER_CHARGER_CFG_REG_9_da_chg_vrechg_hys_START)
+#define CHG_RECHG_MSK           (0x03 << CHG_RECHG_SHIFT)
+#define CHG_RECHG_150            (0x00)
+#define CHG_RECHG_250            (0x01)
+#define CHG_RECHG_350            (0x02)
+#define CHG_RECHG_450            (0x03)
 
 #define CHG_DPM_SEL_REG                 (SOC_SCHARGER_BUCK_CFG_REG_7_ADDR(0))
 #define CHG_DPM_SEL_SHIFT               (SOC_SCHARGER_BUCK_CFG_REG_7_da_buck_dpm_sel_START)
@@ -363,6 +372,12 @@ struct hi6526_device_info {
 #define HI6526_CHG_STAT_MASK            (0x03<<HI6526_CHG_STAT_SHIFT)
 
 #define HI6526_CHG_OTG_ON               (0x01<<SOC_SCHARGER_STATUS0_otg_on_START)
+
+#define CHG_OTG_SWITCH_CFG_REG            SOC_SCHARGER_OTG_CFG_REG_6_ADDR(0)
+#define CHG_OTG_SWITCH_SHIFT              (SOC_SCHARGER_OTG_CFG_REG_6_da_otg_switch_START)
+#define CHG_OTG_SWITCH_MASK               (1 << CHG_OTG_SWITCH_SHIFT)
+
+
 
 #define CHG_STAT_ENABLE                 (1)
 #define CHG_STAT_DISABLE                (0)
@@ -853,6 +868,9 @@ flag4 bit0    ibus ocp   SC       DIRECT_CHARGE_FAULT_IBUS_OCP
 #define FAULT_BUCK_VBAT_OVP     (0x000010)
 #define FAULT_OTG_OCP     (0x008000)
 #define FAULT_REVERSBST     (0x800000)
+#define FAULT_RECHG     (0x000200)
+#define FAULT_CHG_FAULT     (0x000800)
+#define FAULT_CHG_DONE     (0x000080)
 
 #define REVERBST_RETRY          (10)
 

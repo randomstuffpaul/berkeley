@@ -30,11 +30,13 @@ void informStatus(DisplayPortStatus_t stat) //response  for DP status update req
 {
 	/* TODO: 'system' should implement this */
 	/* this function is called to inform the 'system' of the DP status of the port partner */
-    DpPpStatus.word = stat.word;
     int ret = 0;
-
 #ifdef CONFIG_CONTEXTHUB_PD
     struct pd_dpm_combphy_event event = {0};
+#endif
+    DpPpStatus.word = stat.word;
+
+#ifdef CONFIG_CONTEXTHUB_PD
     if (!support_dp) {
         return;
     }
@@ -76,8 +78,14 @@ void informStatus(DisplayPortStatus_t stat) //response  for DP status update req
 
 void informConfigResult (FSC_BOOL success)
 {
-	/* TODO: 'system' should implement this */
-	/* this function is called when a config message is either ACKd or NAKd by the other side */
+    /* TODO: 'system' should implement this */
+    /* this function is called when a config message is either ACKd or NAKd by the other side */
+#ifdef CONFIG_CONTEXTHUB_PD
+    FSC_U8 fsc_polarity = 0;
+    FSC_U32 pin_assignment = 0;
+    int ret  = 0;
+#endif
+
     if (success == FALSE){
         pr_info("\n %s,%d\n",__func__, __LINE__);
         return;
@@ -91,10 +99,6 @@ void informConfigResult (FSC_BOOL success)
         if (!support_dp) {
             return;
         }
-        FSC_U8 fsc_polarity = 0;
-        FSC_U32 pin_assignment = 0;
-        int ret  = 0;
-
         fsc_polarity = core_get_cc_orientation();
         dp_aux_switch_op(fsc_polarity);
         /* add aux uart switch*/

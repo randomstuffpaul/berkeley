@@ -44,7 +44,7 @@ static struct mutex g_rx_en_mutex;
 static int rx_iout_samples[RX_IOUT_SAMPLE_LEN];
 static int g_fop_fixed_flag = 0;
 static int g_rx_vrect_low_cnt = 0;
-static int g_rx_vrect_err_cnt = 0;
+static int g_rx_vout_err_cnt = 0;
 static int g_rx_ocp_cnt = 0;
 static int g_rx_ovp_cnt = 0;
 static int g_rx_otp_cnt = 0;
@@ -706,6 +706,7 @@ static int wireless_charge_get_rx_hash(struct wireless_charge_device_info *di)
 		recheck_tx_cert_flag = 0;
 		return AF_SRV_NO_RESPONSE;
 	}
+	return AF_SRV_NOT_READY;
 }
 static int wireless_charge_tx_certification(struct wireless_charge_device_info *di)
 {
@@ -1132,18 +1133,18 @@ static void wireless_charge_update_charge_state(struct wireless_charge_device_in
 }
 static void wireless_charge_check_voltage(struct wireless_charge_device_info *di)
 {
-	int cnt_max = RX_VRECT_ERR_CHECK_TIME/di->ctrl_interval;
-	int vrect = wireless_charge_get_rx_vrect();
-	if (vrect > 0 && vrect < di->rx_vrect_min) {
-		g_rx_vrect_err_cnt++;
-		if (g_rx_vrect_err_cnt >= cnt_max){
-			g_rx_vrect_err_cnt = cnt_max;
-			hwlog_info("[%s] vrect lower than %dmV for %dms, send ept_ocp\n",
-				__func__, di->rx_vrect_min, RX_VRECT_ERR_CHECK_TIME);
-			wireless_charge_send_ept(di, WIRELESS_EPT_ERR_VRECT);
+	int cnt_max = RX_VOUT_ERR_CHECK_TIME/di->monitor_interval;
+	int vout_reg = wireless_charge_get_rx_vout_reg();
+	int vout = wireless_charge_get_rx_vout();
+	if (vout > 0 && vout < vout_reg*di->rx_vout_err_ratio/PERCENT) {
+		if (++g_rx_vout_err_cnt >= cnt_max){
+			g_rx_vout_err_cnt = cnt_max;
+			hwlog_info("[%s] vout lower than %d*%d%%mV for %dms, send EPT_ERR_VOUT\n",
+				__func__, vout_reg, di->rx_vout_err_ratio, RX_VOUT_ERR_CHECK_TIME);
+			wireless_charge_send_ept(di, WIRELESS_EPT_ERR_VOUT);
 		}
 	} else {
-		g_rx_vrect_err_cnt = 0;
+		g_rx_vout_err_cnt = 0;
 	}
 }
 static void wireless_charge_update_status(struct wireless_charge_device_info *di)
@@ -1414,7 +1415,7 @@ static void wireless_charge_para_init(struct wireless_charge_device_info *di)
 	di->curr_icon_type = 0;
 	di->curr_power_time_out = 0;
 	g_rx_vrect_low_cnt = 0;
-	g_rx_vrect_err_cnt = 0;
+	g_rx_vout_err_cnt = 0;
 	g_rx_ocp_cnt = 0;
 	g_rx_ovp_cnt = 0;
 	g_rx_otp_cnt = 0;
@@ -2307,12 +2308,12 @@ static int wireless_charge_parse_dts(struct device_node *np, struct wireless_cha
 		di->standard_tx_adaptor = WIRELESS_UNKOWN;
 	}
 	hwlog_info("[%s] standard_tx_adaptor  = %d.\n", __func__, di->standard_tx_adaptor);
-	ret = of_property_read_u32(np, "rx_vrect_min", &di->rx_vrect_min);
+	ret = of_property_read_u32(np, "rx_vout_err_ratio", &di->rx_vout_err_ratio);
 	if (ret) {
-		hwlog_err("%s: get rx_vrect_min failed\n", __func__);
-		di->rx_vrect_min = RX_VRECT_MIN;
+		hwlog_err("%s: get rx_vout_err_ratio failed\n", __func__);
+		di->rx_vout_err_ratio = RX_VOUT_ERR_RATIO;
 	}
-	hwlog_info("[%s] rx_vrect_min  = %dmV.\n", __func__, di->rx_vrect_min);
+	hwlog_info("[%s] rx_vout_err_ratio  = %d%%.\n", __func__, di->rx_vout_err_ratio);
 	ret = of_property_read_u32(np, "rx_iout_min", &di->rx_iout_min);
 	if (ret) {
 		hwlog_err("%s: get rx_iout_min failed\n", __func__);
@@ -2767,6 +2768,7 @@ static int wireless_charge_remove(struct platform_device *pdev)
 		return 0;
 	}
 
+	wake_lock_destroy(&g_rx_con_wakelock);
 	hwlog_info("%s --\n", __func__);
 
 	return 0;
@@ -2856,6 +2858,7 @@ static int wireless_charge_probe(struct platform_device *pdev)
 wireless_charge_fail_1:
 	blocking_notifier_chain_unregister(&rx_event_nh, &di->rx_event_nb);
 wireless_charge_fail_0:
+	wake_lock_destroy(&g_rx_con_wakelock);
 	di->ops = NULL;
 	wireless_charge_device_info_free(di);
 	platform_set_drvdata(pdev, NULL);

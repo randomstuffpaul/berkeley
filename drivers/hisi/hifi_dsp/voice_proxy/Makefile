@@ -14,7 +14,7 @@ endif
 EXTRA_CFLAGS += -Idrivers/hisi/hifi_mailbox/mailbox
 EXTRA_CFLAGS += -Idrivers/hisi/hifi_mailbox/ipcm
 
-ifneq ($(TARGET_BUILD_VARIANT),user)
+ifeq ($(CONFIG_HISI_AUDIO_DEBUG),y)
 EXTRA_CFLAGS += -DENABLE_HIFI_DEBUG
 endif
 

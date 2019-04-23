@@ -188,8 +188,16 @@ static void get_nfcc_on_gpio_type(struct device_node *np,
 	} else {
 		if (!strncasecmp(nfc_on_str, "gpio", strlen("gpio"))) {
 			p_nfc_data->ven_on_gpio_type = NFCC_ON_BY_GPIO;
-		} else if (!strncasecmp(nfc_on_str, "pmu_hi6421v600", strlen("pmu_hi6421v600"))) {
+		} else if (!strncasecmp(nfc_on_str, "hisi_pmic", strlen("hisi_pmic"))) {
+			p_nfc_data->ven_on_gpio_type = NFCC_ON_BY_HISI_PMIC;
+		} else if (!strncasecmp(nfc_on_str, "hi6421v600_pmic", strlen("hi6421v600_pmic"))) {
 			p_nfc_data->ven_on_gpio_type = NFCC_ON_BY_HI6421V600_PMIC;
+		} else if (!strncasecmp(nfc_on_str, "hi6421v700_pmic", strlen("hi6421v700_pmic"))) {
+			p_nfc_data->ven_on_gpio_type = NFCC_ON_BY_HI6421V700_PMIC;
+		} else if (!strncasecmp(nfc_on_str, "hi6555v110_pmic", strlen("hi6555v110_pmic"))) {
+			p_nfc_data->ven_on_gpio_type = NFCC_ON_BY_HI6555V110_PMIC;
+		} else if (!strncasecmp(nfc_on_str, "regulator_bulk", strlen("regulator_bulk"))) {
+			p_nfc_data->ven_on_gpio_type = NFCC_ON_BY_REGULATOR_BULK;
 		} else {
 			p_nfc_data->ven_on_gpio_type = NFCC_ON_BY_GPIO;
 		}
@@ -415,7 +423,7 @@ static ssize_t nfc_fwupdate_store(struct device *dev, struct device_attribute *a
 		hwlog_err("%s: para s_p_nfc_data is NULL\n", __func__);
 		return -EINVAL;
 	}
-	if ('1' == buf[0]) {
+	if ((buf !=NULL) && ('1' == buf[0])) {
 		s_p_nfc_data->fw_update = 1;
 		hwlog_info("%s:firmware update success\n", __func__);
 	}

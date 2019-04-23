@@ -239,7 +239,7 @@ void kbasep_js_ctx_attr_runpool_retain_ctx(struct kbase_device *kbdev, struct kb
 		}
 	}
 }
-
+/*lint -e514*/
 bool kbasep_js_ctx_attr_runpool_release_ctx(struct kbase_device *kbdev, struct kbase_context *kctx)
 {
 	bool runpool_state_changed = false;
@@ -304,3 +304,4 @@ bool kbasep_js_ctx_attr_ctx_release_atom(struct kbase_device *kbdev, struct kbas
 
 	return runpool_state_changed;
 }
+/*lint +e514*/

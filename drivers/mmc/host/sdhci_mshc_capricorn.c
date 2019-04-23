@@ -554,7 +554,7 @@ static void sdhci_mshc_hw_reset(struct sdhci_host *host)
 	sdhci_mshc->need_delay_measure = true;
 }
 
-void sdhci_chk_busy_before_send_cmd(struct sdhci_host *host,
+int sdhci_chk_busy_before_send_cmd(struct sdhci_host *host,
 	struct mmc_command* cmd)
 {
 	unsigned long timeout;
@@ -567,15 +567,15 @@ void sdhci_chk_busy_before_send_cmd(struct sdhci_host *host,
 			if (timeout == 0) {
 				pr_err("%s: wait busy 10s time out.\n", mmc_hostname(host->mmc));
 				sdhci_dumpregs(host);
-				cmd->error = -EIO;
+				cmd->error = -ENOMSG;
 				tasklet_schedule(&host->finish_tasklet);
-				return;
+				return -ENOMSG;
 			}
 			timeout--;
 			mdelay(1);
 		}
 	}
-	return;
+	return 0;
 }
 
 void sdhci_mshc_set_version(struct sdhci_host *host)
@@ -1052,13 +1052,6 @@ int sdhci_mshc_soft_tuning(struct sdhci_host *host, u32 opcode, bool set)
 		sdhci_mshc_set_tuning_phase(host, hw_tuning_phase);
 		sdhci_mshc->tuning_phase_best = hw_tuning_phase;
 	}
-	/* FPGA set 63 as default tuning phase */
-	if (host->quirks2 & SDHCI_QUIRK2_HISI_COMBO_PHY_TC) {
-		sdhci_mshc->tuning_phase_best = 63;
-		sdhci_mshc_set_tuning_phase(host, 63);
-		pr_err("set tuning phase 63\n");
-	}
-
 
 err:
 	reg_val = sdhci_readw(host, SDHCI_AT_CTRL_R);

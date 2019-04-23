@@ -393,7 +393,6 @@ struct otg_dev {
 	int bc_again_flag;
 	int bc_unknown_again_flag;
 	unsigned int bc_again_delay_time;
-	struct notifier_block conndone_nb;
 	struct delayed_work bc_again_work;
 
 	unsigned int vdp_src_enable;

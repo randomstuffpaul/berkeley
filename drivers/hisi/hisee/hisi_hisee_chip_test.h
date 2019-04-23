@@ -42,6 +42,10 @@ int hisee_chiptest_rt_stop_func(void * buf, int para);
 
 int hisee_factory_check_func(void *buf, int para);
 
+#ifdef CONFIG_HISEE_SUPPORT_OVERSEA
+int hisee_smx_misc_upgrade(void *buf);
+#endif
+
 ssize_t hisee_at_result_show(struct device *dev, struct device_attribute *attr, char *buf);
 
 /* flag to indicate running status of flash otp1 */

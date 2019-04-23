@@ -156,7 +156,7 @@ void ipa_freq_limit_reset(struct thermal_zone_device *tz)
 
 	for(i = 0; i < IPA_ACTOR_MAX; i++) {
 		if(g_ipa_soc_freq_limit[i] != 0 && g_ipa_board_freq_limit[i] !=0 )
-			g_ipa_freq_limit[i] = min(g_ipa_soc_freq_limit[i], g_ipa_board_freq_limit[i]);
+			g_ipa_freq_limit[i] = min(g_ipa_soc_freq_limit[i], g_ipa_board_freq_limit[i]);/*lint !e1058*/
 		else if (g_ipa_soc_freq_limit[i] == 0)
 			g_ipa_freq_limit[i] = g_ipa_board_freq_limit[i];
 		else if (g_ipa_board_freq_limit[i] ==0)
@@ -186,12 +186,12 @@ unsigned int ipa_freq_limit(enum ipa_actor actor, unsigned int target_freq)
 		pr_err("actor[%d]target_freq[%u]IPA:[%u][%u][%u][%u]min[%u]\n",
 			actor,target_freq, g_ipa_freq_limit[IPA_CLUSTER0],
 			g_ipa_freq_limit[IPA_CLUSTER1], g_ipa_freq_limit[IPA_CLUSTER2],
-			g_ipa_freq_limit[IPA_GPU], min(target_freq, g_ipa_freq_limit[actor]));
+			g_ipa_freq_limit[IPA_GPU], min(target_freq, g_ipa_freq_limit[actor]));/*lint !e1058*/
 #else
 		pr_err("actor[%d]target_freq[%u]IPA:[%u][%u][%u]min[%u]\n",
 			  actor,target_freq, g_ipa_freq_limit[IPA_CLUSTER0],
 			  g_ipa_freq_limit[IPA_CLUSTER1], g_ipa_freq_limit[IPA_GPU],
-			  min(target_freq, g_ipa_freq_limit[actor]));
+			  min(target_freq, g_ipa_freq_limit[actor]));/*lint !e1058*/
 #endif
 
 #ifdef CONFIG_HISI_THERMAL_SPM
@@ -209,7 +209,7 @@ unsigned int ipa_freq_limit(enum ipa_actor actor, unsigned int target_freq)
 	}
 #endif
 
-	return min(target_freq, g_ipa_freq_limit[actor]);
+	return min(target_freq, g_ipa_freq_limit[actor]);/*lint !e1058*/
 }
 EXPORT_SYMBOL(ipa_freq_limit);
 #endif
@@ -1127,7 +1127,7 @@ trip_point_temp_store(struct device *dev, struct device_attribute *attr,
 {
 	struct thermal_zone_device *tz = to_thermal_zone(dev);
 	int trip, ret;
-	unsigned long temperature;
+	int temperature;
 
 	if (!tz->ops->set_trip_temp)
 		return -EPERM;
@@ -2422,7 +2422,7 @@ struct thermal_zone_device *thermal_zone_device_register(const char *type,
 	struct thermal_zone_device_ops *ops,
 	struct thermal_zone_params *tzp,
 	int passive_delay, int polling_delay)
-{
+{/*lint !e18*/
 	struct thermal_zone_device *tz;
 	enum thermal_trip_type trip_type;
 	int trip_temp;

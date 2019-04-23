@@ -23,23 +23,20 @@
 
 #include "slimbus_types.h"
 
-extern int create_hi6403_slimbus_device(slimbus_device_info_t **device, slimbus_hi6403_type_t hi6403_type);
-
-extern int release_hi6403_slimbus_device(slimbus_device_info_t *device);
+extern int create_hi6403_slimbus_device(slimbus_device_info_t **device);
 
 extern void slimbus_hi6403_param_init(slimbus_device_info_t *dev);
 
-extern int slimbus_hi6403_param_set(
-				slimbus_device_info_t *dev,
-				slimbus_track_type_t   track_type,
-				slimbus_track_param_t *params);
-
 extern void slimbus_hi6403_param_update(
-				slimbus_device_info_t *dev,
-				slimbus_track_type_t   track_type,
-				slimbus_track_param_t *params);
+			slimbus_device_info_t *dev,
+			uint32_t track_type,
+			slimbus_track_param_t *params);
+
+extern int slimbus_hi6403_param_set(
+			slimbus_device_info_t *dev,
+			uint32_t track_type,
+			slimbus_track_param_t *params);
 
 extern void slimbus_hi6403_get_st_params(slimbus_sound_trigger_params_t *params);
-
 #endif
 

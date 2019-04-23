@@ -41,6 +41,7 @@
         ispsmmu-init-byap   = <1>;          /* Switch 10 for Whether Smmu Init by AP or Not */
         isp-mdc-flag        = <0>;          /* Switch 11 for Whether Use MDC or Not */
         isp-efuse-flag      = <0>;          /* Switch 12 for Whether Use efuse_deskew or Not */
+        useloadbin          = <0>;          /* Switch 13 for Whether Use load binary image or Not */
 
         /* Misc Items */
         isp-names           = "ISPCPU";     /* Name of MPU */
@@ -49,6 +50,7 @@
         mailbox-names       = "isp_mailbox";/* Name of IPC */
         isp-remap-addr      = <0x00000000>; /* Base Address for MPU Remap */
         isp-ipc-addr        = <0xC2020000>; /* Base Address for IPC Buffers(VA) */
+        isp-seckthread-nice = <10>;         /* ISP sec kthread nice value*/
 
         /* Isp Cpu Cfg */
         isp_local_timer     = <19200000>;   /* Isp Cpu Local Timer */
@@ -64,6 +66,7 @@
                               <&clk_gate_ispi2c>;                                               	/* Clock Gate 03 for ispi2c */
         clock-names         = "ispcpu", "ispfunc", "ispi2c";                                       	/* Clock Names */
         clock-value         = <960000000 480000000 107000000>;                                     	/* Clock Values for CLKLVL_TURBO */
+        clkdis-need-div     = <000000000 000000000 000000000>;                                   	/* Clock Values for CLKLVL_DISCLKDN, Control by usepowerdn_clockdn_need_div */
         clkdis-dvfs         = <400000000 267000000 107000000>;                                     	/* Clock Values for CLKLVL_NORMINAL, Control by usedvfs */
         ispa7-default-clk   = <800000000>;                                                          /* Default isp Clock */
 

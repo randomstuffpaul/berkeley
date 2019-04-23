@@ -63,7 +63,6 @@ static int Venc_Enable_Iommu(void)
 		HI_FATAL_VENC("iommu domain phy_pgd_base is NULL\n");
 		return -1;
 	}
-	HI_INFO_VENC("pgd base phy addr is %pK\n", (void *)(uintptr_t)phy_pgd_base);
 
 	g_hisi_mmu_domain = hisi_domain;
 
@@ -82,10 +81,11 @@ static int Venc_Disable_Iommu(void)
 
 static HI_S32 Venc_GetDtsConfigInfo(struct platform_device *pdev, VeduEfl_DTS_CONFIG_S *pDtsConfig)
 {
-	HI_U32 rate_h = 0;
-	HI_U32 rate_n = 0;
-	HI_U32 rate_l = 0;
-	HI_S32 ret    = HI_FAILURE;
+	HI_U32 rate_h     = 0;
+	HI_U32 rate_n     = 0;
+	HI_U32 rate_l     = 0;
+	HI_U32 rate_lower = 0;
+	HI_S32 ret        = HI_FAILURE;
 	struct resource res;
 	struct clk *pvenc_clk    = HI_NULL;
 	struct device_node *np   = NULL;
@@ -144,14 +144,17 @@ static HI_S32 Venc_GetDtsConfigInfo(struct platform_device *pdev, VeduEfl_DTS_CO
 	ret = of_property_read_u32_index(np, VENC_CLK_RATE, 0, &rate_h);
 	ret += of_property_read_u32_index(np, VENC_CLK_RATE, 1, &rate_n);
 	ret += of_property_read_u32_index(np, VENC_CLK_RATE, 2, &rate_l);
+#ifdef HIVCODECV500
+	ret += of_property_read_u32_index(np, VENC_CLK_RATE, 3, &rate_lower);
+#endif
 	if (ret) {
 		HI_FATAL_VENC("can not get venc rate, return %d\n", ret);
 		return HI_FAILURE;
 	}
-	pDtsConfig->highRate   = rate_h;
-	pDtsConfig->normalRate = rate_n;
-	pDtsConfig->lowRate    = rate_l;
-
+	pDtsConfig->highRate     = rate_h;
+	pDtsConfig->normalRate   = rate_n;
+	pDtsConfig->lowRate      = rate_l;
+	pDtsConfig->svsLowerRate = rate_lower;
 #ifdef CONFIG_ES_VENC_LOW_FREQ
 	pDtsConfig->highRate   = g_VencLowFreq;
 #endif
@@ -384,12 +387,21 @@ HI_S32 Venc_Regulator_Disable(HI_VOID)
 		HI_ERR_VENC("disable regulator failed\n");
 	}
 
+#ifdef HIVCODECV500
+	ret = clk_set_rate(g_PvencClk, g_VencDtsConfig.svsLowerRate);
+	if(ret != 0) {
+		HI_ERR_VENC("set clk lowrate:%u failed\n", g_VencDtsConfig.svsLowerRate);
+		//return HI_FAILURE;//continue, no need return
+	}
+	HI_INFO_VENC("set clk lowRate:%u\n", g_VencDtsConfig.svsLowerRate);
+#else
 	ret = clk_set_rate(g_PvencClk, g_VencDtsConfig.lowRate);
 	if(ret != 0) {
 		HI_ERR_VENC("set clk lowrate:%u failed\n", g_VencDtsConfig.lowRate);
 		//return HI_FAILURE;//continue, no need return
 	}
 	HI_INFO_VENC("set clk lowRate:%u\n", g_VencDtsConfig.lowRate);
+#endif
 	g_currClk = VENC_CLK_RATE_LOW;
 
 	clk_disable_unprepare(g_PvencClk);

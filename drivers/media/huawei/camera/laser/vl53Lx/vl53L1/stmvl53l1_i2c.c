@@ -106,8 +106,8 @@ static uint32_t tv_elapsed_ms(struct timeval *tv)
 	struct timeval now;
 
 	do_gettimeofday(&now);
-	return (unsigned int)(now.tv_sec - tv->tv_sec) * 1000 +
-		(unsigned int)(now.tv_usec - tv->tv_usec) / 1000; /*[false alarm]: Type Mismatch: Signed to Unsigned*/
+	return (uint32_t)((now.tv_sec - tv->tv_sec) * 1000 +
+		(now.tv_usec - tv->tv_usec) / 1000); /*[false alarm]: Type Mismatch: Signed to Unsigned*/
 }
 
 static int cci_write(struct stmvl53l1_data *dev, int index,

@@ -1811,7 +1811,9 @@ void ufshcd_fsr_dump_handler(struct work_struct *work)
 		dev_err(hba->dev, "[%s]READ FSR FAILED\n", __func__);
 		return;
 	}
+#ifdef CONFIG_HISI_DEBUG_FS
 	dev_err(hba->dev, "===============UFS HI1861 FSR INFO===============\n");
+#endif
 	/*lint -save -e661 -e662*/
 	for (i = 0 ; i < HI1861_FSR_INFO_SIZE; i = i + 16) {
 		dev_err(hba->dev, "0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x\n",
@@ -5449,6 +5451,7 @@ static void ufshcd_exception_event_handler(struct work_struct *work)
 		goto out;
 	}
 
+	scsi_block_requests(hba->host);
 	err = ufshcd_get_ee_status(hba, &status);
 	if (err) {
 		dev_err(hba->dev, "%s: failed to get exception status %d\n",
@@ -5462,6 +5465,7 @@ static void ufshcd_exception_event_handler(struct work_struct *work)
 		ufshcd_bkops_exception_event_handler(hba);
 
 out:
+	scsi_unblock_requests(hba->host);
 	pm_runtime_put_sync(hba->dev);
 	return;
 }

@@ -82,7 +82,7 @@ typedef struct tag_hmac_chr_connect_fail_report_stru
 {
     oal_int32    ul_snr;
     oal_int32    ul_noise;           /* 底噪 */
-    oal_int32    ul_chload;          /* 信道繁忙程度*/ 
+    oal_int32    ul_chload;          /* 信道繁忙程度*/
     oal_int8     c_signal;
     oal_uint8    uc_distance;        /*算法的tpc距离，对应dmac_alg_tpc_user_distance_enum*/
     oal_uint8    uc_cca_intr;        /*算法的cca_intr干扰，对应alg_cca_opt_intf_enum*/
@@ -130,6 +130,7 @@ oal_void hmac_chr_set_disasoc_reason(oal_uint16 user_id, oal_uint16 reason_id);
 oal_void hmac_chr_get_disasoc_reason(hmac_chr_disasoc_reason_stru *pst_disasoc_reason);
 oal_void hmac_chr_set_del_ba_info(oal_uint8 uc_tid, oal_uint16 reason_id);
 oal_void hmac_chr_get_del_ba_info(mac_vap_stru *pst_mac_vap, hmac_chr_del_ba_info_stru *pst_del_ba_reason);
+oal_void hmac_chr_set_ba_session_num(oal_uint8 uc_ba_num);
 oal_void hmac_chr_set_connect_code(oal_uint16 connect_code);
 oal_void hmac_chr_get_connect_code(oal_uint16 *pus_connect_code);
 oal_void hmac_chr_get_vap_info(mac_vap_stru *pst_mac_vap, hmac_chr_vap_info_stru *pst_vap_info);

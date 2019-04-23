@@ -339,7 +339,7 @@ void FUSB3601_PDDisable(struct Port *port);
 void FUSB3601_PDEnable(struct Port *port, FSC_BOOL is_source);
 
 void FUSB3601_ResetProtocolLayer(struct Port *port);
-
+int FUSB3601_GetStateCC(struct Port *port);
 /* Policy helpers */
 void FUSB3601_set_policy_state(struct Port *port, PolicyState_t state);
 void FUSB3601_f_set_policy_state(struct Port *port, void (*f)(struct Port *));

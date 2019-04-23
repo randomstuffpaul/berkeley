@@ -160,34 +160,35 @@ enum pll_state {
 	PLL_RST,
 };
 
-enum HI6402_HIFI_PCM_SAMPLE_RATE {
-	HI6402_HIFI_PCM_SAMPLE_RATE_8K = 0,
-	HI6402_HIFI_PCM_SAMPLE_RATE_16K,
-	HI6402_HIFI_PCM_SAMPLE_RATE_32K,
-	HI6402_HIFI_PCM_SAMPLE_RATE_RESERVED0,
-	HI6402_HIFI_PCM_SAMPLE_RATE_48K,
-	HI6402_HIFI_PCM_SAMPLE_RATE_96K,
-	HI6402_HIFI_PCM_SAMPLE_RATE_192K,
-	HI6402_HIFI_PCM_SAMPLE_RATE_RESERVED1,
+enum HI64XX_HIFI_PCM_SAMPLE_RATE {
+	HI64XX_HIFI_PCM_SAMPLE_RATE_8K = 0,
+	HI64XX_HIFI_PCM_SAMPLE_RATE_16K,
+	HI64XX_HIFI_PCM_SAMPLE_RATE_32K,
+	HI64XX_HIFI_PCM_SAMPLE_RATE_RESERVED0,
+	HI64XX_HIFI_PCM_SAMPLE_RATE_48K,
+	HI64XX_HIFI_PCM_SAMPLE_RATE_96K,
+	HI64XX_HIFI_PCM_SAMPLE_RATE_192K,
+	HI64XX_HIFI_PCM_SAMPLE_RATE_RESERVED1,
 };
 
-enum HI6402_HIFI_PCM_DIRECT {
-	HI6402_HIFI_PCM_IN = 0,
-	HI6402_HIFI_PCM_OUT,
-	HI6402_HIFI_PCM_DIRECT_BUTT,
+enum HI64XX_HIFI_PCM_DIRECT {
+	HI64XX_HIFI_PCM_IN = 0,
+	HI64XX_HIFI_PCM_OUT,
+	HI64XX_HIFI_PCM_DIRECT_BUTT,
 };
 
-enum HI6402_HIFI_DSP_IF_PORT {
-	HI6402_HIFI_DSP_IF_PORT_0 = 0,
-	HI6402_HIFI_DSP_IF_PORT_1,
-	HI6402_HIFI_DSP_IF_PORT_2,
-	HI6402_HIFI_DSP_IF_PORT_3,
-	HI6402_HIFI_DSP_IF_PORT_4,
-	HI6402_HIFI_DSP_IF_PORT_5,
-	HI6402_HIFI_DSP_IF_PORT_6,
-	HI6402_HIFI_DSP_IF_PORT_7,
-	HI6402_HIFI_DSP_IF_PORT_8,
-	HI6402_HIFI_DSP_IF_PORT_BUTT,
+enum HI64XX_HIFI_DSP_IF_PORT {
+	HI64XX_HIFI_DSP_IF_PORT_0 = 0,
+	HI64XX_HIFI_DSP_IF_PORT_1,
+	HI64XX_HIFI_DSP_IF_PORT_2,
+	HI64XX_HIFI_DSP_IF_PORT_3,
+	HI64XX_HIFI_DSP_IF_PORT_4,
+	HI64XX_HIFI_DSP_IF_PORT_5,
+	HI64XX_HIFI_DSP_IF_PORT_6,
+	HI64XX_HIFI_DSP_IF_PORT_7,
+	HI64XX_HIFI_DSP_IF_PORT_8,
+	HI64XX_HIFI_DSP_IF_PORT_9,
+	HI64XX_HIFI_DSP_IF_PORT_BUTT,
 };
 
 enum HI64xx_HIFI_DSP_MSG_STATE {
@@ -202,12 +203,6 @@ enum HI64xx_HIFI_DSP_MSG_STATE {
 	HI64xx_HIFI_DSP_SEND_PWRON_CNF,
 	HI64xx_HIFI_AP_RECEIVE_PWRON_CNF,
 	HI64xx_HIFI_MSG_STATE_BUTT
-};
-
-enum {
-	HI64XX_CODEC_TYPE_6402,
-	HI64XX_CODEC_TYPE_6403,
-	HI64XX_CODEC_TYPE_BUTT,
 };
 
 struct krn_param_io_buf {
@@ -249,6 +244,10 @@ struct hi64xx_dsp_ops {
 	void (*mad_disable)(void);
 	/*ir path*/
 	void (*ir_path_clean)(void);
+	bool (*check_dp_clk)(void);
+	bool (*check_i2s2_clk)(void);
+	int (*set_sample_rate)(unsigned int dsp_if_id, unsigned int sample_rate_in, unsigned int sample_rate_out);
+	void (*config_usb_low_power)(void);
 };
 
 struct hi64xx_dsp_config {
@@ -277,6 +276,8 @@ struct hi64xx_dsp_config {
 	unsigned int itcm_size;
 	unsigned int dtcm_start_addr;
 	unsigned int dtcm_size;
+	unsigned int mlib_to_ap_msg_addr;
+	unsigned int mlib_to_ap_msg_size;
 	enum bustype_select bus_sel;
 };
 
@@ -337,5 +338,6 @@ unsigned int hi64xx_misc_get_itcm_size(void);
 unsigned int hi64xx_misc_get_dtcm_start_addr(void);
 unsigned int hi64xx_misc_get_dtcm_size(void);
 void hi64xx_soundtrigger_close_codec_dma(void);
-
+bool hi64xx_check_i2s2_clk(void);
+bool hi64xx_get_sample_rate_index(unsigned int sample_rate, unsigned char *sel);
 #endif/*__HI6402_DSP_H__*/

@@ -106,102 +106,10 @@
 #include "dump_config.h"
 #include "dump_exc_ctrl.h"
 
-
-
-/*****************************************************************************
-* 函 数 名  : dump_show_stack
-* 功能描述  : 打印调用栈，用于非arm异常
-*
-* 输入参数  :
-* 输出参数  :
-
-* 返 回 值  :
-
-*
-* 修改记录  : 2016年1月4日17:05:33   lixiaofan  creat
-*
-*****************************************************************************/
-
-void dump_show_stack(u32 modid,u32 reason)
-{
-    if (!(AP_DUMP_REASON_ARM == reason))
-    {
-        dump_fetal("###########show mem and current task stack start##############!\n");
-
-        show_mem(0);
-
-        if(DUMP_T_TASK_ERROR(modid))
-        {
-            dump_fetal("not current task exc\n");
-            show_stack(find_task_by_vpid(reason),NULL);
-        }
-        else
-        {
-            show_stack(current, NULL);
-        }
-
-        dump_fetal("###########show mem and current task stack end################!\n");
-    }
-}
-
-/*****************************************************************************
-* 函 数 名  : dump_save_usr_data
-* 功能描述  : 保存用户数据区
-*
-* 输入参数  :
-* 输出参数  :
-
-* 返 回 值  :
-
-*
-* 修改记录  : 2016年1月4日17:05:33   lixiaofan  creat
-*
-*****************************************************************************/
-void dump_save_usr_data(char *data, u32 length)
-{
-    u32 len =0;
-    void* addr = NULL;
-    dump_field_map_t* pfield = NULL;
-
-    if ((NULL != data) && (length))
-    {
-        pfield = (dump_field_map_t*)bsp_dump_get_field_map(DUMP_MODEMAP_USER_DATA);
-        addr = (void*)bsp_dump_get_field_addr(DUMP_MODEMAP_USER_DATA);
-        len = (length > DUMP_MODEMAP_USER_DATA_SIZE) ? DUMP_MODEMAP_USER_DATA_SIZE : length;
-
-        if(addr != NULL)
-        {
-            /*coverity[secure_coding]*/
-            memcpy_s((void *)addr, len,(const void * )(uintptr_t)data, (size_t)len);
-        }
-
-        if(pfield)
-        {
-            pfield->length = len;
-        }
-    }
-    dump_fetal("dump save usr data finish\n");
-    return;
-}
-/*****************************************************************************
-* 函 数 名  : system_error
-* 功能描述  : modem 异常函数入口
-*
-* 输入参数  :
-* 输出参数  :
-
-* 返 回 值  :
-
-*
-* 修改记录  : 2016年1月4日17:05:33   lixiaofan  creat
-*
-*****************************************************************************/
-
 void system_error(u32 mod_id, u32 arg1, u32 arg2, char *data, u32 length)
 {
     u32 rdr_mod_id;
 
-    bsp_coresight_disable();
 
     dump_fetal("[0x%x]================ modem acore enter system error! ================\n", bsp_get_slice_value());
     dump_fetal("mod_id=0x%x arg1=0x%x arg2=0x%x data=0x%p len=0x%x\n", mod_id, arg1, arg2, data, length);
@@ -220,39 +128,6 @@ void system_error(u32 mod_id, u32 arg1, u32 arg2, char *data, u32 length)
     if(true == dump_check_has_error())
     {
         return;
-    }
-
-    if (dump_get_init_phase() < DUMP_INIT_FLAG_CP_AGENT)
-    {
-        dump_fetal("modem dump has not init\n");
-        return;
-    }
-
-    dump_set_reboot_contex(DUMP_CPU_APP, DUMP_REASON_NORMAL);
-
-
-    if(mod_id == DRV_ERRNO_DUMP_CP_WDT && arg1 == DUMP_REASON_WDT)
-    {
-        dump_cp_wdt_proc();
-        dump_save_base_info(BSP_MODU_OTHER_CORE,arg1,arg2, data,length);
-    }
-    else if(mod_id == DRV_ERRNO_DLOCK && arg1 == DUMP_REASON_DLOCK)
-    {
-        dump_cp_dlock_proc();
-        dump_save_base_info(BSP_MODU_OTHER_CORE,arg1,arg2, data,length);
-    }
-    else
-    {
-        dump_save_base_info(mod_id, arg1, arg2, data, length);
-    }
-
-    dump_save_usr_data(data, length);
-
-    if(DUMP_PHONE == dump_get_product_type())
-    {
-        dump_show_stack(mod_id,arg1);
-        dump_save_modem_sysctrl();
-        dump_save_balong_rdr_info(rdr_mod_id);
     }
 
     if((RDR_MODEM_CP_RESET_RILD_MOD_ID == rdr_mod_id)
@@ -283,36 +158,11 @@ void system_error(u32 mod_id, u32 arg1, u32 arg2, char *data, u32 length)
 }
 
 
-/*****************************************************************************
-* 函 数 名  : bsp_dump_init
-* 功能描述  : modem dump 初始化函数
-*
-* 输入参数  :
-* 输出参数  :
-
-* 返 回 值  :
-
-*
-* 修改记录  : 2016年1月4日17:05:33   lixiaofan  creat
-*
-*****************************************************************************/
 s32 __init bsp_dump_init(void)
 {
     s32 ret ;
 
     dump_config_init();
-
-    dump_mdmap_field_init();
-
-    dump_set_init_phase(DUMP_INIT_FLAG_CONFIG);
-
-    ret = dump_base_info_init();
-    if(ret == BSP_ERROR)
-    {
-        dump_fetal("dump_base_info_init fail\n");
-        return BSP_ERROR;
-    }
-    dump_set_init_phase(DUMP_INIT_FLAG_BASEINFO);
 
     ret = dump_save_task_init();
     if(ret == BSP_ERROR)
@@ -320,7 +170,6 @@ s32 __init bsp_dump_init(void)
         dump_fetal("dump_save_task_init fail\n");
         return BSP_ERROR;
     }
-    dump_set_init_phase(DUMP_INIT_FLAG_SAVETASK);
 
     ret = dump_register_rdr_exc();
     if(ret == BSP_ERROR)
@@ -328,7 +177,6 @@ s32 __init bsp_dump_init(void)
         dump_fetal("dump_register_rdr_exc fail\n");
         return BSP_ERROR;
     }
-    dump_set_init_phase(DUMP_INIT_FLAG_RDR_REG);
 
     ret = dump_cp_agent_init();
     if(BSP_OK != ret)
@@ -337,20 +185,8 @@ s32 __init bsp_dump_init(void)
 
         return BSP_ERROR;
     }
-    dump_set_init_phase(DUMP_INIT_FLAG_CP_AGENT);
-
-    ret = dump_apr_init();
-    if(BSP_OK != ret)
-    {
-        dump_fetal("bsp_apr_init fail\n");
-
-        return BSP_ERROR;
-    }
-    dump_set_init_phase(DUMP_INIT_FLAG_APR);
 
     dump_set_exc_flag(false);
-
-    dump_set_init_phase(DUMP_INIT_FLAG_DONE);
 
     return BSP_OK;
 }

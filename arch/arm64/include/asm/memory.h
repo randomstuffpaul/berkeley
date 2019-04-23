@@ -98,7 +98,19 @@
 	__x & BIT(VA_BITS - 1) ? (__x & ~PAGE_OFFSET) + PHYS_OFFSET :	\
 				 (__x - kimage_voffset); })
 
+#if defined(__ASSEMBLER__) || !defined(CONFIG_HISI_LB_DEBUG)
 #define __phys_to_virt(x)	((unsigned long)((x) - PHYS_OFFSET) | PAGE_OFFSET)
+#else
+
+#if defined(CONFIG_HISI_LB_DEBUG)
+#include <linux/hisi/hisi_lb_debug.h>
+#endif
+
+#define __phys_to_virt(x) ({\
+	lb_assert_phys(x); \
+	((unsigned long)((x) - PHYS_OFFSET) | PAGE_OFFSET); \
+	})
+#endif
 #define __phys_to_kimg(x)	((unsigned long)((x) + kimage_voffset))
 
 /*

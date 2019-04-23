@@ -41,6 +41,7 @@
         ispsmmu-init-byap   = <0>;          /* Switch 10 for Whether Smmu Init by AP or Not */
         isp-mdc-flag        = <1>;          /* Switch 11 for Whether Use MDC or Not */
         isp-efuse-flag      = <1>;          /* Switch 12 for Whether Use efuse_deskew or Not */
+        useloadbin          = <0>;          /* Switch 13 for Whether Use load binary image or Not */
 
         /* Misc Items */
         isp-names           = "ISPCPU";     /* Name of MPU */
@@ -49,6 +50,7 @@
         mailbox-names       = "isp_mailbox";/* Name of IPC */
         isp-remap-addr      = <0x00000000>; /* Base Address for MPU Remap */
         isp-ipc-addr        = <0xC2020000>; /* Base Address for IPC Buffers(VA) */
+        isp-seckthread-nice = <10>;         /* ISP sec kthread nice value*/
 
         /* Isp Cpu Cfg */
         isp_local_timer     = <19200000>;   /* Isp Cpu Local Timer */
@@ -58,17 +60,17 @@
         isp-core-supply     = <&isp_srt>;   /* Regulator for Core */
 
         /* Clock Items */
-        clock-num           = <5>;                                                              	/* Clock Number */
+        clock-num           = <4>;                                                              	/* Clock Number */
         clocks              = <&clk_gate_ispcpu>,                                               	/* Clock Gate 01 for ispcpu */
                               <&clk_gate_ispfunc>,                                              	/* Clock Gate 02 for ispfunc */
                               <&clk_gate_ispi2c>,                                               	/* Clock Gate 03 for ispi2c */
-                              <&clk_gate_vivobus>,                                               	/* Clock Gate 04 for vivobus */
-                              <&clk_gate_isp_sys>;                                              	/* Clock Gate 05 for isp_sys  */
-        clock-names         = "ispcpu", "ispfunc", "ispi2c", "vivobus", "isp_sys";                      /* Clock Names */
-        clock-value         = <900000000 554000000 110670000 600000000 0>;                           	/* Clock Values for CLKLVL_TURBO */
-        clkdn-normal        = <830000000 480000000 110670000 415000000 0>;                           	/* Clock Values for CLKLVL_NORMINAL, Control by usedvfs */
-        clkdn-svs           = <600000000 300000000 110670000 300000000 0>;                           	/* Clock Values for CLKLVL_SVS, Control by usedvfs */
-        clkdis-dvfs         = <415000000 238000000 19200000  300000000 0>;                           	/* Clock Values for CLKLVL_DISCLKDN, Control by usepowerdn_clockdn_pll0 */
+                              <&clk_gate_vivobus>;                                               	/* Clock Gate 04 for vivobus */
+        clock-names         = "ispcpu", "ispfunc", "ispi2c", "vivobus";                           	/* Clock Names */
+        clock-value         = <900000000 554000000 110670000 600000000>;                           	/* Clock Values for CLKLVL_TURBO */
+        clkdn-normal        = <830000000 480000000 110670000 415000000>;                           	/* Clock Values for CLKLVL_NORMINAL, Control by usedvfs */
+        clkdn-svs           = <600000000 300000000 110670000 300000000>;                           	/* Clock Values for CLKLVL_SVS, Control by usedvfs */
+        clkdis-need-div     = <000000000 000000000 000000000 000000000>;                           	/* Clock Values for CLKLVL_DISCLKDN, Control by usepowerdn_clockdn_need_div */
+        clkdis-dvfs         = <415000000 238000000 110670000 300000000>;                           	/* Clock Values for CLKLVL_DISCLKDN, Control by usepowerdn_clockdn_pll0 */
         ispa7-default-clk   = <800000000>;                                                          /* Default isp Clock */
 
         /* Trusted ISP Items */

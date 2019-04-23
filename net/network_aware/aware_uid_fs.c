@@ -163,8 +163,6 @@ static ssize_t aware_ctrl_write(struct file *file, const char __user *buf,
     }
 
     cur = buffer;
-    s_AwareNetCtrl.enable = simple_strtol(cur, NULL, 10);
-
     pos = strchr(cur, ':');
     if (pos == NULL) {
         goto out;
@@ -172,43 +170,41 @@ static ssize_t aware_ctrl_write(struct file *file, const char __user *buf,
 
     cur = pos+1;
     s_AwareNetCtrl.mode = simple_strtol(cur, NULL, 10);
+    s_AwareNetCtrl.enable = (0 == s_AwareNetCtrl.mode) ? 0 : 1;
 
-    if (s_AwareNetCtrl.mode == 1)
-    {
-        int new_limit_ratio = 100;
-        int new_package_ratio = 100;
+    int new_limit_ratio = 100;
+    int new_package_ratio = 100;
 
-        pos = strchr(cur, ':');
-        if (pos == NULL) {
-            s_AwareNetCtrl.limit_rate = DEFAULT_LIMIT_RATE;
-            goto out;
-        }
+    pos = strchr(cur, ':');
+    if (pos == NULL) {
+        s_AwareNetCtrl.limit_rate = DEFAULT_LIMIT_RATE;
+        goto out;
+    }
 
-        cur = pos+1;
-        s_AwareNetCtrl.limit_rate = simple_strtol(cur, NULL, 10);
-        if (s_AwareNetCtrl.limit_rate < 0) {
-            s_AwareNetCtrl.limit_rate = 0;
-        }
+    cur = pos+1;
+    s_AwareNetCtrl.limit_rate = simple_strtol(cur, NULL, 10);
+    if (s_AwareNetCtrl.limit_rate < 0) {
+        s_AwareNetCtrl.limit_rate = 0;
+    }
 
-        pos = strchr(cur, ':');
-        if (pos == NULL){
-            goto out;
-        }
+    pos = strchr(cur, ':');
+    if (pos == NULL) {
+        goto out;
+    }
 
-        cur = pos+1;
-        new_limit_ratio = simple_strtol(cur, NULL, 10);
+    cur = pos+1;
+    new_limit_ratio = simple_strtol(cur, NULL, 10);
 
-        pos = strchr(cur, ':');
-        if (pos == NULL){
-            goto out_1;
-        }
+    pos = strchr(cur, ':');
+    if (pos == NULL) {
+        goto out_1;
+    }
 
-        cur = pos+1;
-        new_package_ratio = simple_strtol(cur, NULL, 10);
+    cur = pos+1;
+    new_package_ratio = simple_strtol(cur, NULL, 10);
 
 out_1:
-        reinit_ctrl_policy(new_limit_ratio, new_package_ratio);
-    }
+    reinit_ctrl_policy(new_limit_ratio, new_package_ratio);
 
 
 out:
@@ -219,14 +215,13 @@ extern void dump_aware_net_stats(struct seq_file *m);
 
 static int aware_ctrl_show(struct seq_file *m, void *v)
 {
-    if (s_AwareNetCtrl.mode == 1){
-        seq_printf(m, "aware_ctrl enable:%d limit_rate:%dk limit_ratio:%d package_ratio:%d\n", 
-            s_AwareNetCtrl.enable,
-            s_AwareNetCtrl.limit_rate,
-            s_AwareNetCtrl.limit_ratio,
-            s_AwareNetCtrl.package_ratio);
-        dump_aware_net_stats(m);
-    }
+    seq_printf(m, "aware_ctrl enable:%d mode:%d limit_rate:%dk limit_ratio:%d package_ratio:%d\n",
+        s_AwareNetCtrl.enable,
+        s_AwareNetCtrl.mode,
+        s_AwareNetCtrl.limit_rate,
+        s_AwareNetCtrl.limit_ratio,
+        s_AwareNetCtrl.package_ratio);
+    dump_aware_net_stats(m);
 
     return 0;
 }
@@ -289,6 +284,7 @@ static void __net_init aware_uids_proc_fs_init(struct proc_dir_entry *p_parent)
     if (NULL == p_temp3){
         goto out_p_temp2;
     }
+
     spin_lock_init(&(netinfo.fg_lock));
     spin_lock_init(&(netinfo.bg_lock));
 

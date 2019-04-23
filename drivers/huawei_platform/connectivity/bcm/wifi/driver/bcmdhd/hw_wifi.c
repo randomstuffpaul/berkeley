@@ -1957,5 +1957,46 @@ void hw_reset_beacon_interval(struct net_device *ndev) {
     }
 }
 #endif
+
+#ifdef HW_PATCH_FOR_HANG
+#define ASSOC_SAMPLE_NUM        (3)
+#define ASSOC_STATUS_12289      (12289)
+#define ASSOC_SAMPLE_TIME_MS    (10000)
+static unsigned long g_assoc_timestamp[ASSOC_SAMPLE_NUM] = {0};
+int hw_need_hang_with_assoc_status(int status) {
+    int i, valid = 0;
+    unsigned long tmp_jiffier = jiffies;
+    unsigned long min_jiffier = msecs_to_jiffies(ASSOC_SAMPLE_TIME_MS);
+
+    if (ASSOC_STATUS_12289 != status) {
+        return 0;
+    }
+
+    for (i = ASSOC_SAMPLE_NUM - 1; i > 0; i--) {
+        g_assoc_timestamp[i] = g_assoc_timestamp[i - 1];
+        if (tmp_jiffier - g_assoc_timestamp[i] < min_jiffier) {
+            valid++;
+        }
+    }
+    g_assoc_timestamp[0] = tmp_jiffier;
+
+    if (valid + 1 >= ASSOC_SAMPLE_NUM) {
+        memset(g_assoc_timestamp, 0, sizeof(unsigned long) * ASSOC_SAMPLE_NUM);
+        return 1;
+    }
+    return 0;
+}
+
+#define SCAN_BUSY_THRESHOLD (10)
+static int g_scanbusy_count = 0;
+int hw_need_hang_with_scanbusy(int error) {
+    if (BCME_BUSY == error) {
+        g_scanbusy_count++;
+    } else if (BCME_OK == error) {
+        g_scanbusy_count = 0;
+    }
+    return g_scanbusy_count >= SCAN_BUSY_THRESHOLD;
+}
+#endif
 ////end of file
 

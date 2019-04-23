@@ -23,7 +23,9 @@ struct __bootdevice {
 	u8 life_time_est_typ_a;
 	u8 life_time_est_typ_b;
 	unsigned int manfid;
+#ifdef CONFIG_HISI_AB_PARTITION
 	enum AB_PARTITION_TYPE ab_partition_support;
+#endif
 	u8 ptn_index;
 	/* UFS and EMMC all */
 	struct rpmb_config_info rpmb_config;
@@ -403,6 +405,7 @@ static const struct file_operations manfid_proc_fops = {
 	.release	= single_release,
 };
 
+#ifdef CONFIG_HISI_AB_PARTITION
 /*lint -save -e715 -e818*/
 static int ab_partition_support_proc_show(struct seq_file *m, void *v)
 {
@@ -462,6 +465,7 @@ static const struct file_operations ab_partition_support_proc_fops = {
 	.llseek		= seq_lseek,/*lint !e64 !e65*/ 
 	.release	= single_release,
 };
+#endif
 /*lint -restore*/
 
 static int flash_find_index_proc_show(struct seq_file *m, void *v)
@@ -546,7 +550,9 @@ static int __init proc_bootdevice_init(void)
 	proc_create("bootdevice/life_time_est_typ_b", 0, NULL,
 		&life_time_est_typ_b_proc_fops);
 	proc_create("bootdevice/manfid", 0, NULL, &manfid_proc_fops);
+#ifdef CONFIG_HISI_AB_PARTITION
 	proc_create("bootdevice/ab_partition_support", 0660, (struct proc_dir_entry *)NULL, &ab_partition_support_proc_fops);
+#endif
 	sema_init(&flash_find_index_sem, 1);
 	proc_create("bootdevice/flash_find_index", 0660, (struct proc_dir_entry *)NULL, &flash_find_index_proc_fops);
 

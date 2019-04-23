@@ -14,6 +14,7 @@
 #define IVP_MEDIA_REGULATOR           "hisi-ivp-media"
 
 #define IVP_CLK_LEVEL_DEFAULT         0
+#define IVP_CLK_LEVEL_ULTRA_LOW       4 //set ultra_low value 4 tempo, will change all macros value with camera3 together
 #define IVP_CLK_LEVEL_LOW             1
 #define IVP_CLK_LEVEL_MEDIUM          2
 #define IVP_CLK_LEVEL_HIGH            3
@@ -25,17 +26,18 @@
 #define OF_IVP_SHARE_MEM_NAME         "share_mem"
 #define OF_IVP_LOG_MEM_NAME           "log_mem"
 
-#define OF_IVP_CLK_NAME               "hisi-ivp-clk"
-#define OF_IVP_CLK_RATE_NAME          "ivp-clk-rate"
-#define OF_IVP_MIDDLE_CLK_RATE_NAME   "ivp-middle-clk-rate"
-#define OF_IVP_LOW_CLK_RATE_NAME      "ivp-low-clk-rate"
-#define OF_IVP_LOW_CLK_PU_RATE_NAME   "ivp-lowfrq-pu-clk-rate"
-#define OF_IVP_LOW_TEMP_RATE_NAME     "ivp-lowtemp-clk-rate"
-#define OF_IVP_LOWFREQ_CLK_RATE_NAME  "lowfrq-pd-clk-rate"
+#define OF_IVP_CLK_NAME                  "hisi-ivp-clk"
+#define OF_IVP_CLK_RATE_NAME             "ivp-clk-rate"
+#define OF_IVP_MIDDLE_CLK_RATE_NAME      "ivp-middle-clk-rate"
+#define OF_IVP_LOW_CLK_RATE_NAME         "ivp-low-clk-rate"
+#define OF_IVP_ULTRA_LOW_CLK_RATE_NAME   "ivp-ultra-low-clk-rate"
+#define OF_IVP_LOW_CLK_PU_RATE_NAME      "ivp-lowfrq-pu-clk-rate"
+#define OF_IVP_LOW_TEMP_RATE_NAME        "ivp-lowtemp-clk-rate"
+#define OF_IVP_LOWFREQ_CLK_RATE_NAME     "lowfrq-pd-clk-rate"
 
-#define OF_IVP_DYNAMIC_MEM            "ivp-dynamic-mem"
-#define OF_IVP_DYNAMIC_MEM_SEC_SIZE   "ivp-dynamic-mem-section-size"
-#define OF_IVP_SEC_SUPPORT            "ivp-sec-support-flag"
+#define OF_IVP_DYNAMIC_MEM               "ivp-dynamic-mem"
+#define OF_IVP_DYNAMIC_MEM_SEC_SIZE      "ivp-dynamic-mem-section-size"
+#define OF_IVP_SEC_SUPPORT               "ivp-sec-support-flag"
 
 #define IVP_IOCTL_SECTCOUNT           _IOR('v', 0x70, unsigned int)
 #define IVP_IOCTL_SECTINFO            _IOWR('v', 0x71, struct ivp_sect_info)

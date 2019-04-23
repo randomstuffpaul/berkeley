@@ -125,7 +125,7 @@
 #define FTS_FW_UPDATE_DURATION_CHECK	"fw_update_duration_check"
 #define FTS_USE_PINCTRL			"fts_use_pinctrl"
 #define FTS_READ_DEBUG_REG_AND_DIFFER	"read_debug_reg_and_differ"
-int focal_get_vendor_name_from_dts(const char *project_id,
+int focal_get_vendor_name_from_dts(char *project_id,
 	char *vendor_name, size_t size);
 
 int focal_parse_dts(struct device_node *np,

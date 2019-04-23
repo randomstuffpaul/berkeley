@@ -5,8 +5,8 @@
 #define WP_SCREEN_PWK_RELEASE 1
 #define WP_SCREEN_PWK_LONGPRESS 2
 
-#define WP_SCREEN_VDOWN_KEY 1
-#define WP_SCREEN_VUP_KEY 2
+#define WP_SCREEN_VDOWN_KEY 114
+#define WP_SCREEN_VUP_KEY 115
 
 void * hung_wp_screen_qcom_pkey_press(int type, int state);
 void hung_wp_screen_powerkey_ncb(unsigned long);

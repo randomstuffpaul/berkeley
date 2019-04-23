@@ -150,6 +150,7 @@ struct lcd_kit_debug {
 	char* dbg_dirty_region_cmds;
 	char* dbg_barcode_2d_cmds;
 	char* dbg_brightness_color_cmds;
+	char* dbg_cmds;
 	unsigned int* dbg_power_on_array;
 	unsigned int* dbg_lp_on_array;
 	unsigned int* dbg_hs_on_array;
@@ -209,6 +210,8 @@ struct lcd_kit_dbg_ops {
 	int (*barcode_2d_cmd)(char* buf, int len);
 	int (*brightness_color_cmd)(char* buf, int len);
 	int (*set_voltage)(void);
+	int (*dbg_mipi_rx)(uint8_t* out, struct lcd_kit_dsi_panel_cmds* cmds);
+	bool (*panel_power_on)(void);
 };
 
 //for extern

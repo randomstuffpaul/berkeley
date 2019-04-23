@@ -1448,7 +1448,7 @@ static int loadswitch_get_device_id(void)
 				break;
 			default:
 				dev_id = DEVICE_ID_GET_FAIL;
-				hwlog_err("%s: ls get id ERR!\n", __func__,reg);
+				hwlog_err("%s: ls get id ERR!\n", __func__);
 				break;
 		}
 		hwlog_info("%s: dev_id = %d\n", __func__,dev_id);
@@ -1456,6 +1456,28 @@ static int loadswitch_get_device_id(void)
 	}
 	hwlog_info("%s: dev_id = %d\n", __func__,di->device_id);
 	return di->device_id;
+}
+
+/**********************************************************
+*  Function:        rt9748_charge_status
+*  Discription:     return the status of cur module
+*  Parameters:    void
+*  return value:   0-sucess or others-fail
+**********************************************************/
+static int rt9748_charge_status(void)
+{
+	struct rt9748_device_info *di = g_rt9748_dev;
+
+	if (!di) {
+		hwlog_err("%s di is null\n", __func__);
+		return -1;
+	}
+
+	if (di->chip_already_init == 1)
+		return 0;
+
+	hwlog_err("%s = %d\n", __func__, di->chip_already_init);
+	return -1;
 }
 
 /*lint -save -e* */
@@ -1535,6 +1557,7 @@ static int rt9748_charge_exit(void)
 		hwlog_err("%s: di is NULL\n", __func__);
 		return -1;
 	}
+	di->chip_already_init = 0;
 	ret = rt9748_charge_enable(0);
 	if (ret)
 	{
@@ -1548,7 +1571,6 @@ static int rt9748_charge_exit(void)
 		hwlog_err("%s: reset pull down fail!\n", __func__);
 		return -1;
 	}
-	di->chip_already_init = 0;
 	rt9748_init_finish_flag = RT9748_NOT_INIT;
 	rt9748_interrupt_notify_enable_flag = RT9748_DISABLE_INTERRUPT_NOTIFY;
 	msleep(10);
@@ -1586,6 +1608,7 @@ static struct loadswitch_ops  rt9748_sysinfo_ops ={
 	.is_ls_close = rt9748_is_ls_close,
 	.get_ls_id = loadswitch_get_device_id,
 	.watchdog_config_ms = rt9748_watchdog_config,
+	.ls_status = rt9748_charge_status,
 };
 static struct batinfo_ops rt9748_batinfo_ops = {
 	.init = batinfo_init,
@@ -1723,6 +1746,7 @@ static int rt9748_probe(struct i2c_client *client, const struct i2c_device_id *i
 		return -ENOMEM;
 	}
 	g_rt9748_dev = di;
+	di->chip_already_init = 0;
 	di->dev = &client->dev;
 	np = di->dev->of_node;
 	di->client = client;

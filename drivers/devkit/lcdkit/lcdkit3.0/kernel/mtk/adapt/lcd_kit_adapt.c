@@ -19,7 +19,8 @@
 #include "lcm_drv.h"
 
 extern struct LCM_UTIL_FUNCS lcm_util_mtk;
-
+extern int do_lcm_vdo_lp_write(struct dsi_cmd_desc *write_table, unsigned int count);
+extern int do_lcm_vdo_lp_read(struct dsi_cmd_desc *cmd_tab, unsigned int count);
 #define mipi_dsi_cmds_tx(cmdq, cmds) \
 		lcm_util_mtk.mipi_dsi_cmds_tx(cmdq, cmds)
 
@@ -65,6 +66,25 @@ static int lcd_kit_cmds_to_mtk_dsi_cmds(struct lcd_kit_dsi_cmd_desc* lcd_kit_cmd
 	return LCD_KIT_OK;
 }
 
+static int lcd_kit_cmds_to_mtk_dsi_read_cmds(struct lcd_kit_dsi_cmd_desc* lcd_kit_cmds, struct dsi_cmd_desc* cmd)
+{
+	if (lcd_kit_cmds == NULL) {
+		LCD_KIT_ERR("lcd_kit_cmds is null point!\n");
+		return LCD_KIT_FAIL;
+	}
+	if (cmd == NULL) {
+		LCD_KIT_ERR("cmd is null point!\n");
+		return LCD_KIT_FAIL;
+	}
+
+	cmd->dtype = lcd_kit_cmds->payload[0];
+	cmd->vc =  lcd_kit_cmds->vc;
+	cmd->dlen =  lcd_kit_cmds->dlen;
+    cmd->link_state = 1;
+
+	return LCD_KIT_OK;
+}
+
 int mtk_mipi_dsi_cmds_tx(struct lcd_kit_dsi_cmd_desc *cmds, int cnt)
 {
 	struct lcd_kit_dsi_cmd_desc *cm = NULL;
@@ -100,6 +120,44 @@ int mtk_mipi_dsi_cmds_tx(struct lcd_kit_dsi_cmd_desc *cmds, int cnt)
 
 	return cnt;
 }
+
+int mtk_mipi_dsi_cmds_extern_tx(struct lcd_kit_dsi_cmd_desc *cmds, int cnt)
+{
+	struct lcd_kit_dsi_cmd_desc *cm = NULL;
+	struct dsi_cmd_desc dsi_cmd;
+	int i = 0;
+
+	if (NULL == cmds) {
+		LCD_KIT_ERR("cmds is NULL");
+		return -EINVAL;
+	}
+
+	cm = cmds;
+
+	for (i = 0; i < cnt; i++) {
+		lcd_kit_cmds_to_mtk_dsi_cmds(cm, &dsi_cmd);
+
+		(void)do_lcm_vdo_lp_write(&dsi_cmd, 1);
+LCD_KIT_ERR("dttype is 0x%x, len is %d, payload is 0x%x\n",dsi_cmd.dtype,dsi_cmd.dlen,*(dsi_cmd.payload));
+		if (cm->wait) {
+			if (cm->waittype == WAIT_TYPE_US)
+				udelay(cm->wait);
+			else if (cm->waittype == WAIT_TYPE_MS) {
+				if (cm->wait <= 10) {
+					mdelay(cm->wait);
+				} else {
+					msleep(cm->wait);
+				}
+			}
+			else
+				msleep(cm->wait * 1000);
+		}
+		cm++;
+	}
+
+	return cnt;
+}
+
 
 static int lcd_kit_cmd_is_write(struct lcd_kit_dsi_panel_cmds* cmd)
 {
@@ -186,6 +244,53 @@ int lcd_kit_dsi_cmds_rx(void* hld, uint8_t* out, struct lcd_kit_dsi_panel_cmds* 
     return ret;
 }
 
+int lcd_kit_dsi_cmds_extern_rx(uint8_t* out, struct lcd_kit_dsi_panel_cmds* cmds)
+{
+    int i = 0;
+	int j = 0;
+    int ret = 0;
+	struct dsi_cmd_desc dsi_cmd;
+	uint8_t buffer[4] = {0};
+
+	if ((cmds == NULL)  || (out == NULL)){
+		LCD_KIT_ERR("out or cmds is null point!\n");
+		return LCD_KIT_FAIL;
+	}
+
+	for (i = 0; i < cmds->cmd_cnt; i++) {
+		if (lcd_kit_cmd_is_write(cmds)) {
+			mtk_mipi_dsi_cmds_extern_tx(&cmds->cmds[i], 1);
+		} else {
+			memset(buffer,0,sizeof(buffer)/sizeof(uint8_t));
+			lcd_kit_cmds_to_mtk_dsi_read_cmds(&cmds->cmds[i], &dsi_cmd);
+			dsi_cmd.payload = &buffer[0];
+			ret = do_lcm_vdo_lp_read(&dsi_cmd, 1);
+			out[j] = buffer[1];
+			LCD_KIT_INFO("j is %d data0 is 0x%x  data1 is 0x%x  data2 is 0x%x  data3 is 0x%x\n",j,buffer[0],buffer[1],buffer[2],buffer[3]);
+			j++;
+		}
+	}
+
+    return ret;
+}
+
+int lcd_kit_dsi_cmds_extern_tx(struct lcd_kit_dsi_panel_cmds* cmds)
+{
+    int i;
+
+	if (cmds == NULL) {
+		LCD_KIT_ERR("lcd_kit_cmds is null point!\n");
+		return LCD_KIT_FAIL;
+	}
+
+	for (i = 0; i < cmds->cmd_cnt; i++) {
+		mtk_mipi_dsi_cmds_extern_tx(&cmds->cmds[i], 1);
+	}
+
+	return 0;
+
+}
+
 static int lcd_kit_buf_trans(const char* inbuf, int inlen, char** outbuf, int* outlen)
 {
 	char* buf;
@@ -216,7 +321,6 @@ static int lcd_kit_buf_trans(const char* inbuf, int inlen, char** outbuf, int* o
 
 static int lcd_kit_gpio_enable(u32 type)
 {
-	lcd_kit_gpio_tx(type, GPIO_REQ);
 	lcd_kit_gpio_tx(type, GPIO_HIGH);
 	return LCD_KIT_OK;
 }
@@ -224,7 +328,6 @@ static int lcd_kit_gpio_enable(u32 type)
 static int lcd_kit_gpio_disable(u32 type)
 {
 	lcd_kit_gpio_tx(type, GPIO_LOW);
-	lcd_kit_gpio_tx(type, GPIO_FREE);
 	return LCD_KIT_OK;
 }
 

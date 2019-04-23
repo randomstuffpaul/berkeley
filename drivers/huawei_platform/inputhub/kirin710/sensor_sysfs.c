@@ -1172,7 +1172,7 @@ static ssize_t attr_ps_calibrate_write(struct device *dev, struct device_attribu
 	memset(&ps_test,0,sizeof(ps_test));
 	#endif
 
-	if((txc_ps_flag != 1) && (ams_tmd2620_ps_flag != 1) &&	(avago_apds9110_ps_flag != 1) && (ams_tmd3725_ps_flag != 1) 
+	if((txc_ps_flag != 1) && (ams_tmd2620_ps_flag != 1) &&	(avago_apds9110_ps_flag != 1) && (ams_tmd3725_ps_flag != 1)
 		&& (liteon_ltr582_ps_flag != 1) && (apds9999_ps_flag != 1) && (ams_tmd3702_ps_flag != 1)
 		&& (ams_tof_flag != 1) && (sharp_tof_flag != 1) && (ltr2568_ps_flag!= 1)) {
 		hwlog_info("ps sensor is not txc_ps_224 or ams_tmd2620 or avago_apds9110 or ams_tmd3725 or liteon_ltr582 or liteon_ltr2568,no need calibrate\n");
@@ -1309,6 +1309,30 @@ int write_als_offset_to_nv(char *temp)
 	return ret;
 }
 
+static void als_dark_noise_offset_enq_notify_work(const int item_id, uint16_t value,uint16_t min_threshold,uint16_t max_threshold)
+{
+	#ifdef SENSOR_DATA_ACQUISITION
+	int ret = -1;
+	struct event als_dark_noise_offset_event;
+	memset(&als_dark_noise_offset_event, 0, sizeof(als_dark_noise_offset_event));
+
+	als_dark_noise_offset_event.item_id = item_id;
+	memcpy(als_dark_noise_offset_event.device_name,ALS_TEST_CAL,sizeof(ALS_TEST_CAL));
+	memcpy(als_dark_noise_offset_event.result,ALS_CAL_RESULT,sizeof(ALS_CAL_RESULT));
+	memcpy(als_dark_noise_offset_event.test_name,ALS_DARK_CALI_NAME,sizeof(ALS_DARK_CALI_NAME));
+	snprintf(als_dark_noise_offset_event.value,MAX_VAL_LEN,"%d",value);
+	snprintf(als_dark_noise_offset_event.min_threshold,MAX_VAL_LEN,"%u",min_threshold);
+	snprintf(als_dark_noise_offset_event.max_threshold,MAX_VAL_LEN,"%u",max_threshold);
+
+	ret = enq_msg_data_in_sensorhub_single(als_dark_noise_offset_event);
+	if(ret > 0){
+		hwlog_info("als_dark_noise_offset_enq_notify_work succ!!item_id=%d\n", als_dark_noise_offset_event.item_id);
+	}else{
+		hwlog_info("als_dark_noise_offset_enq_notify_work failed!!\n");
+	}
+	#endif
+}
+
 static int als_calibrate_save(const void *buf, int length)
 {
 	const uint16_t *poffset_data = (const uint16_t *)buf;
@@ -1337,6 +1361,8 @@ static const char * als_calibrate_param[] = {
 	ALS_CALI_R, ALS_CALI_G, ALS_CALI_B, ALS_CALI_C, ALS_CALI_LUX, ALS_CALI_CCT,
 };
 
+#define ALS_DARK_NOISE_OFFSET_MAX (10)
+#define ALS_DARK_NOISE_OFFSET_MIN (0)
 static ssize_t attr_als_calibrate_write(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
 	unsigned long val = 0;
@@ -1369,7 +1395,7 @@ static ssize_t attr_als_calibrate_write(struct device *dev, struct device_attrib
 	if (strict_strtoul(buf, 10, &val))
 		return -EINVAL;
 
-	if (1 != val)
+	if (1 != val && val != 2)
 		return count;
 
 	if (sensor_status.opened[TAG_ALS] == 0) { /*if ALS is not opened, open first*/
@@ -1403,40 +1429,48 @@ static ssize_t attr_als_calibrate_write(struct device *dev, struct device_attrib
 	if (als_calibration_res == COMMU_FAIL) {
 		return count;
 	} else if (pkg_mcu.errno == 0){
-		als_calibrate_save(pkg_mcu.data, pkg_mcu.data_length);
+	        als_calibrate_save(pkg_mcu.data, pkg_mcu.data_length);
 	}
 
 	get_test_time(date_str, sizeof(date_str));
 	als_cali_data = (const int32_t *)pkg_mcu.data;
 
-	#ifdef SENSOR_DATA_ACQUISITION
-	cali_data_u16 = (const uint16_t *)pkg_mcu.data;
-	int32_t als_cali_data_int32[ALS_CAL_NUM] = {*cali_data_u16,*(cali_data_u16 + 1),*(cali_data_u16 + 2),*(cali_data_u16 + 3),*(cali_data_u16 + 4),*(cali_data_u16 + 5)};
-	hwlog_info("als calibrate data for collect, %d %d %d %d %d %d\n",*cali_data_u16, *(cali_data_u16 + 1), *(cali_data_u16 + 2),
-		*(cali_data_u16 + 3), *(cali_data_u16 + 4), *(cali_data_u16 + 5));
+	if (2 == val){
+#ifdef SENSOR_DATA_ACQUISITION
+		cali_data_u16 = (const uint16_t *)pkg_mcu.data;
+		als_dark_noise_offset_enq_notify_work(ALS_CALI_DARK_OFFSET_MSG, *cali_data_u16,
+				ALS_DARK_NOISE_OFFSET_MIN, ALS_DARK_NOISE_OFFSET_MAX);
+#endif
+	}else{
+#ifdef SENSOR_DATA_ACQUISITION
+		cali_data_u16 = (const uint16_t *)pkg_mcu.data;
+		int32_t als_cali_data_int32[ALS_CAL_NUM] = {*cali_data_u16,*(cali_data_u16 + 1),*(cali_data_u16 + 2),*(cali_data_u16 + 3),*(cali_data_u16 + 4),*(cali_data_u16 + 5)};
+		hwlog_info("als calibrate data for collect, %d %d %d %d %d %d\n",*cali_data_u16, *(cali_data_u16 + 1), *(cali_data_u16 + 2),
+				*(cali_data_u16 + 3), *(cali_data_u16 + 4), *(cali_data_u16 + 5));
 
-	minThreshold = (const int32_t *)minThreshold_als;
-	maxThreshold = (const int32_t *)maxThreshold_als;
-	als_test.cal_value = (const int32_t *)als_cali_data_int32;
-	als_test.first_item = ALS_CALI_R_MSG;
-	als_test.value_num = ALS_CAL_NUM;
-	als_test.threshold_num = ALS_THRESHOLD_NUM;
-	als_test.min_threshold = minThreshold;
-	als_test.max_threshold = maxThreshold;
+		minThreshold = (const int32_t *)minThreshold_als;
+		maxThreshold = (const int32_t *)maxThreshold_als;
+		als_test.cal_value = (const int32_t *)als_cali_data_int32;
+		als_test.first_item = ALS_CALI_R_MSG;
+		als_test.value_num = ALS_CAL_NUM;
+		als_test.threshold_num = ALS_THRESHOLD_NUM;
+		als_test.min_threshold = minThreshold;
+		als_test.max_threshold = maxThreshold;
 
-	memcpy(als_test.name,ALS_TEST_CAL,sizeof(ALS_TEST_CAL));
-	memcpy(als_test.result,ALS_CAL_RESULT,(strlen(ALS_CAL_RESULT)+1));
-	for(pAlsTest=0; pAlsTest<ALS_CAL_NUM; pAlsTest++){
-		als_test.test_name[pAlsTest] = als_test_name[pAlsTest];
-	}
-	enq_notify_work_sensor(als_test);
-	#endif
+		memcpy(als_test.name,ALS_TEST_CAL,sizeof(ALS_TEST_CAL));
+		memcpy(als_test.result,ALS_CAL_RESULT,(strlen(ALS_CAL_RESULT)+1));
+		for(pAlsTest=0; pAlsTest<ALS_CAL_NUM; pAlsTest++){
+			als_test.test_name[pAlsTest] = als_test_name[pAlsTest];
+		}
+		enq_notify_work_sensor(als_test);
+#endif
 
-	for (i=0; i<ARRAY_SIZE(als_calibrate_param); i++) {
-		memset(&content, 0, sizeof(content));
-		snprintf(content, CLI_CONTENT_LEN_MAX, als_calibrate_param[i], *(als_cali_data),
-		 	((als_calibration_res == SUC) ? "pass" : "fail"), get_cali_error_code(als_calibration_res), date_str);
-		save_to_file(DATA_CLLCT, content);
+		for (i=0; i<ARRAY_SIZE(als_calibrate_param); i++) {
+			memset(&content, 0, sizeof(content));
+			snprintf(content, CLI_CONTENT_LEN_MAX, als_calibrate_param[i], *(als_cali_data),
+					((als_calibration_res == SUC) ? "pass" : "fail"), get_cali_error_code(als_calibration_res), date_str);
+			save_to_file(DATA_CLLCT, content);
+		}
 	}
 
 	if(als_close_after_calibrate == true) {

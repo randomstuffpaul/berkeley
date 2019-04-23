@@ -105,7 +105,7 @@ static u64 kbase_job_write_affinity(struct kbase_device *kbdev,
 
 	return affinity;
 }
-
+/*lint -e648*/
 void kbase_job_hw_submit(struct kbase_device *kbdev,
 				struct kbase_jd_atom *katom,
 				int js)
@@ -242,7 +242,7 @@ void kbase_job_hw_submit(struct kbase_device *kbdev,
 	kbase_reg_write(kbdev, JOB_SLOT_REG(js, JS_COMMAND_NEXT),
 						JS_COMMAND_START);
 }
-
+/*lint +e648*/
 /**
  * kbasep_job_slot_update_head_start_timestamp - Update timestamp
  * @kbdev: kbase device
@@ -294,7 +294,7 @@ static void kbasep_trace_tl_event_lpu_softstop(struct kbase_device *kbdev,
 					int js)
 {
 	KBASE_TLSTREAM_TL_EVENT_LPU_SOFTSTOP(
-		&kbdev->gpu_props.props.raw_props.js_features[js]);
+		&kbdev->gpu_props.props.raw_props.js_features[js]);//lint !e648
 }
 
 void kbase_job_done(struct kbase_device *kbdev, u32 done)
@@ -575,7 +575,7 @@ void kbasep_job_slot_soft_or_hard_stop_do_action(struct kbase_device *kbdev,
 		target_katom->atom_flags |= KBASE_KATOM_FLAG_BEEN_SOFT_STOPPPED;
 
 		/* Mark the point where we issue the soft-stop command */
-		KBASE_TLSTREAM_TL_EVENT_ATOM_SOFTSTOP_ISSUE(target_katom);
+		KBASE_TLSTREAM_TL_EVENT_ATOM_SOFTSTOP_ISSUE(target_katom);//lint !e648
 
 		if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8316)) {
 			int i;
@@ -811,7 +811,7 @@ void kbase_job_slot_ctx_priority_check_locked(struct kbase_context *kctx,
 		}
 	}
 }
-
+/*lint -e31*/
 void kbase_jm_wait_for_zero_jobs(struct kbase_context *kctx)
 {
 	struct kbase_device *kbdev = kctx->kbdev;
@@ -824,7 +824,7 @@ void kbase_jm_wait_for_zero_jobs(struct kbase_context *kctx)
 		timeout = wait_event_timeout(
 			kctx->jctx.sched_info.ctx.is_scheduled_wait,
 			!kbase_ctx_flag(kctx, KCTX_SCHEDULED),
-			timeout);
+			timeout);//lint !e666
 
 	/* Neither wait timed out; all done! */
 	if (timeout != 0)
@@ -840,7 +840,7 @@ void kbase_jm_wait_for_zero_jobs(struct kbase_context *kctx)
 #ifdef CONFIG_HISI_ENABLE_HPM_DATA_COLLECT
 		/*benchmark data collect */
 		if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0009)) {
-			BUG_ON(1); //lint !e730
+			BUG_ON(1);//lint !e730
 		}
 #endif
 		kbase_reset_gpu(kbdev);
@@ -865,7 +865,7 @@ exit:
 	mutex_unlock(&kctx->jctx.sched_info.ctx.jsctx_mutex);
 	mutex_unlock(&kctx->jctx.lock);
 }
-
+/*lint +e31*/
 u32 kbase_backend_get_current_flush_id(struct kbase_device *kbdev)
 {
 	u32 flush_id = 0;
@@ -1061,7 +1061,7 @@ void kbase_job_slot_hardstop(struct kbase_context *kctx, int js,
 #ifdef CONFIG_HISI_ENABLE_HPM_DATA_COLLECT
 			/*benchmark data collect */
 			if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0009)) {
-				BUG_ON(1); //lint !e730
+				BUG_ON(1);//lint !e730
 			}
 #endif
 			kbase_reset_gpu_locked(kbdev);

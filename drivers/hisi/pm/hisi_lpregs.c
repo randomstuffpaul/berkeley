@@ -156,6 +156,7 @@ void __iomem **g_cg_reg;
 int g_mg_sec_reg_num;
 int g_cg_sec_reg_num;
 
+
 char *processor_name[IPC_PROCESSOR_MAX] = {
 	"gic1",
 	"gic2",
@@ -946,7 +947,7 @@ void show_iocg_reg(unsigned int i, struct iocfg_lp *hisi_iocfg_lookups)
 }
 
 
-void show_gpio_info(unsigned int i, struct iocfg_lp *hisi_iocfg_lookups)
+void show_gpio_info(unsigned int i, struct iocfg_lp *hisi_iocfg_lookups, unsigned int gpio_id)
 {
 	void __iomem *addr = NULL;
 	void __iomem **addr1 = NULL;
@@ -955,6 +956,7 @@ void show_gpio_info(unsigned int i, struct iocfg_lp *hisi_iocfg_lookups)
 
 	if(NULL == hisi_iocfg_lookups)
 		return;
+
 
 	if (hisi_iocfg_lookups[i].iomg_val == FUNC0) {
 		addr = GPIO_DIR(sysreg_base.gpio_base[hisi_iocfg_lookups[i].gpio_group_id]);
@@ -985,7 +987,7 @@ void show_gpio_info(unsigned int i, struct iocfg_lp *hisi_iocfg_lookups)
 void dbg_io_status_show(void)
 {
 	unsigned int i = 0;
-	int gpio_id = 0;
+	unsigned int gpio_id = 0;
 	unsigned int len = 0;
 	struct iocfg_lp *hisi_iocfg_lookups = NULL;
 
@@ -1008,7 +1010,7 @@ void dbg_io_status_show(void)
 		gpio_id = ((hisi_iocfg_lookups[i].gpio_group_id << 3)
 					+ hisi_iocfg_lookups[i].ugpio_bit);
 
-		printk("gpio - %d  gpio_logic - %s\t",
+		printk("gpio - %u  gpio_logic - %s\t",
 				gpio_id, hisi_iocfg_lookups[i].gpio_logic);
 
 	/* show iomg register's value */
@@ -1018,7 +1020,7 @@ void dbg_io_status_show(void)
 	show_iocg_reg(i, hisi_iocfg_lookups);
 
 	/* if this is gpio pin*/
-	show_gpio_info(i, hisi_iocfg_lookups);
+	show_gpio_info(i, hisi_iocfg_lookups, gpio_id);
 	}
 }
 
@@ -1771,7 +1773,7 @@ err:
 	return ret;
 }
 
-static int init_sec_gpio(struct device_node *np)
+static int init_sec_io(struct device_node *np)
 {
 	int ret = 0;
 	int i = 0;
@@ -1822,7 +1824,7 @@ static int init_sec_gpio(struct device_node *np)
 		}
 	}
 
-	pr_info("%s:%d init sec GPIO success!\n", __func__, __LINE__);
+	pr_info("%s:%d init sec ioc success!\n", __func__, __LINE__);
 	return ret;
 
 err_free_iocg:
@@ -1836,6 +1838,8 @@ err:
 	return ret;
 
 }
+
+
 
 static int init_lowpm_data(void)
 {
@@ -1859,12 +1863,13 @@ static int init_lowpm_data(void)
 		goto err_put_node;
 	}
 
-	/*init sec GPIO*/
-	ret = init_sec_gpio(np);
+	/*init sec IO*/
+	ret = init_sec_io(np);
 	if (ret < 0) {
-		pr_err("%s:%d init sec GPIO failed!\n", __func__,__LINE__);
+		pr_err("%s:%d init sec IO failed!\n", __func__,__LINE__);
 		goto err_put_node;
 	}
+
 
 	/* init lpmcu irq table */
 	ret = of_property_count_strings(np, "lpmcu-irq-table");

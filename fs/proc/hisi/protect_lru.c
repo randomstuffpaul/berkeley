@@ -27,6 +27,7 @@
 #include <linux/mm.h>
 #include <linux/version.h>
 #include <linux/mm_inline.h>
+#include <linux/bug.h>
 
 #include "../../../fs/proc/internal.h"
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(4,9,0))
@@ -289,7 +290,8 @@ static int sysctl_protect_max_mbytes_handler(struct ctl_table *table, int write,
 {
 	struct zone *zone;
 	struct lruvec *lruvec;
-	unsigned long prot_pages, total_prot_pages, flags;
+	unsigned long total_prot_pages, flags;
+	unsigned long cur[PROTECT_HEAD_END], lastcur[PROTECT_HEAD_END];
 	int i, ret;
 
 	ret = proc_doulongvec_minmax(table, write, buffer, length, ppos);
@@ -303,15 +305,17 @@ static int sysctl_protect_max_mbytes_handler(struct ctl_table *table, int write,
 		/* Skip the last head, because it is non-prot head */
 		for (i = 0; i < PROTECT_HEAD_END; i++) {
 			total_prot_pages = protect_max_mbytes[i] << (20 - PAGE_SHIFT);
+
 			for_each_populated_zone(zone) {
-				prot_pages = (u64)zone->managed_pages * total_prot_pages
-						/ totalram_pages;
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(4,9,0))
-			  lruvec = &zone->zone_pgdat->lruvec;
+				lruvec = &zone->zone_pgdat->lruvec;
+				lruvec->heads[i].max_pages = total_prot_pages;
 #else
-			  lruvec = &zone->lruvec;
-#endif
+				unsigned long prot_pages = (u64)zone->managed_pages * total_prot_pages
+						/ totalram_pages;
+				lruvec = &zone->lruvec;
 				lruvec->heads[i].max_pages = prot_pages;
+#endif
 			}
 		}
 
@@ -321,16 +325,30 @@ static int sysctl_protect_max_mbytes_handler(struct ctl_table *table, int write,
 #else
 			lruvec = &zone->lruvec;
 #endif
+
+			for (i = 0; i < PROTECT_HEAD_END; i++) {
+				lastcur[i] = lruvec->heads[i].pages;
+			}
 			while (protect_file_is_full(lruvec)) {
 #if(LINUX_VERSION_CODE >= KERNEL_VERSION(4,9,0))
-		    spin_lock_irqsave(zone_lru_lock(zone),flags);
+				spin_lock_irqsave(zone_lru_lock(zone),flags);
 				shrink_protect_file(lruvec, false);
-		    spin_unlock_irqrestore(zone_lru_lock(zone),flags);
+				spin_unlock_irqrestore(zone_lru_lock(zone),flags);
 #else
-		    spin_lock_irqsave(&zone->lru_lock,flags);
+				spin_lock_irqsave(&zone->lru_lock,flags);
 				shrink_protect_file(lruvec, false);
-		    spin_unlock_irqrestore(&zone->lru_lock,flags);
+				spin_unlock_irqrestore(&zone->lru_lock,flags);
 #endif
+				for (i = 0; i < PROTECT_HEAD_END; i++) {
+					cur[i] = lruvec->heads[i].pages;
+					if(!lruvec->heads[i].max_pages && cur[i] && lastcur[i]==cur[i]){
+						WARN(true,
+							"protect_lru: %s() can not shink page, cur=%lu",
+							__FUNCTION__, cur[i]);
+						break;
+					}
+					lastcur[i] = cur[i];
+				}
 				if (signal_pending(current))
 					return ret;
 				cond_resched();
@@ -416,6 +434,7 @@ bool protect_file_is_full(struct lruvec *lruvec)
 	for (i = 0; i < PROTECT_HEAD_END; i++) {
 		cur = lruvec->heads[i].pages;
 		max = lruvec->heads[i].max_pages;
+		BUG_ON(cur > totalram_pages);
 		if (cur && cur > max)
 			return true;
 	}
@@ -482,6 +501,7 @@ static int __init protect_lru_init(void)
 			lruvec->heads[i].max_pages = prot_pages;
 		}
 	}
+	pr_err("protect_lru_init phone_total_pages:%lu",totalram_pages);
 
 	return 0;
 }

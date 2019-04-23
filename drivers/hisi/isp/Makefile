@@ -15,7 +15,7 @@ endif
 
 obj-$(CONFIG_HISI_ISP_RDR) += mntn/
 
-obj-$(CONFIG_HISI_HISTAR_ISP) += rpmsg.o nonsec.o sec.o \
+obj-$(CONFIG_HISI_HISTAR_ISP) += hisp_rpm.o nonsec.o sec.o \
                                 cma.o smc.o  qos.o \
                                 sensor.o isp.o
 

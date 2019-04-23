@@ -1425,17 +1425,10 @@ static ssize_t lcd_effect_bl_store(struct device* dev,
 
 static int lcd_check_support(int index)
 {
-	struct hisi_fb_data_type* hisifd = NULL;
-
 	if (runmode_is_factory()) {
 		return SYSFS_SUPPORT;
 	}
 
-	hisifd = hisifd_list[PRIMARY_PANEL_IDX];
-	if (hisifd == NULL) {
-		LCD_KIT_ERR("hisifd is null\n");
-		return LCD_KIT_FAIL;
-	}
 	switch (index) {
 		case LCD_MODEL_INDEX:
 			return SYSFS_SUPPORT;
@@ -1472,7 +1465,7 @@ static int lcd_check_support(int index)
 		case FRAME_UPDATE_INDEX:
 			return disp_info->vr_support;
 		case MIPI_DSI_CLK_UPT_INDEX:
-			return hisifd->panel_info.dsi_bit_clk_upt_support;
+			return SYSFS_SUPPORT;
 		case FPS_SCENCE_INDEX:
 			return disp_info->fps.support;
 		case ALPM_FUNCTION_INDEX:

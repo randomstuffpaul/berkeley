@@ -20,10 +20,6 @@
 #include <misc/app_info.h>
 #endif
 
-#ifdef CONFIG_HUAWEI_HW_DEV_DCT
-#include <linux/hw_dev_dec.h>
-#endif
-
 
 #define HX_SUPPORT 1
 static int	HX_TOUCH_INFO_POINT_CNT = 0;
@@ -45,7 +41,7 @@ static struct mutex wrong_touch_lock;
 struct dsm_dev dsm_hmx_tp = {
 	.name = "dsm_i2c_bus",	// dsm client name
 	.fops = NULL,
-	.buff_size = TP_RADAR_BUF_MAX,
+	.buff_size = 1024,//MAX_BUFF_SIZE
 };
 struct hmx_dsm_info hmx_tp_dsm_info = {0};
 struct dsm_client *hmx_tp_dclient = NULL;
@@ -94,6 +90,13 @@ char himax_product_id[HX_PROJECT_ID_LEN+1]={"999999999"};
 static u8 himax_tp_color=0xff;
 extern u8 cypress_ts_kit_color[TP_COLOR_SIZE];
 
+#define IS_PRINT_FINISH(remain_len, print_len) { \
+	if(remain_len < print_len) { \
+		TS_LOG_ERR("data print finish, remain_len:%d, print_len:%d\n", remain_len, print_len); \
+		return NO_ERR; \
+	} \
+}
+
 int himax_input_config(struct input_dev* input_dev); //himax_input_register(struct himax_ts_data *ts);
 static void himax_shutdown(void);
 static void himax_power_off_gpio_set(void);
@@ -103,7 +106,7 @@ static int himax_power_off(void);
 static int himax_core_suspend(void);
 static int himax_core_resume(void);
 static int himax_reset_device(void);
-
+static int hmx_wakeup_gesture_enable_switch(struct ts_wakeup_gesture_enable_info *info);
 static int himax_parse_dts(struct device_node *device, struct ts_kit_device_data *chip_data);
 static int himax_chip_detect(struct ts_kit_platform_data *platform_data);
 static int himax_irq_top_half(struct ts_cmd_node *cmd);
@@ -113,6 +116,9 @@ static int himax_register_algo(struct ts_kit_device_data *dev_data);
 static int himax_algo_cp(struct ts_kit_device_data *dev_data, struct ts_fingers *in_info, struct ts_fingers *out_info);
 static int himax_get_capacitance_test_type(struct ts_test_type_info *info);
 static int himax_get_rawdata(struct ts_rawdata_info *info, struct ts_cmd_node *out_cmd);
+static int himax_palm_switch(struct ts_palm_info *info);
+static void himax_chip_touch_switch(void);
+
 
 extern int get_boot_into_recovery_flag(void);
 extern int (*himax_factory_start)(struct himax_ts_data *ts,struct ts_rawdata_info *info_top);
@@ -128,6 +134,7 @@ bool g_raw_data_chk_arr[20] = {0};
 int g_test_collect_counter = 0;
 extern int hx_selftest_flag;
 
+static int himax_rawdata_proc_printf(struct seq_file *m, struct ts_rawdata_info *info,int range_size, int row_size);
 
 struct ts_device_ops ts_kit_himax_ops = {
 	.chip_parse_config =  himax_parse_dts,
@@ -146,7 +153,144 @@ struct ts_device_ops ts_kit_himax_ops = {
 	.chip_get_rawdata = himax_get_rawdata,
 	.chip_get_capacitance_test_type = himax_get_capacitance_test_type,
 	.chip_shutdown = himax_shutdown,/*NOT tested*/
- };
+	.chip_wakeup_gesture_enable_switch = hmx_wakeup_gesture_enable_switch,
+	.chip_palm_switch = himax_palm_switch,
+	.chip_special_rawdata_proc_printf = himax_rawdata_proc_printf,
+	.chip_touch_switch = himax_chip_touch_switch,
+};
+
+
+static int himax_palm_switch(struct ts_palm_info *info)
+{
+	return NO_ERR;
+}
+
+static int hmx_wakeup_gesture_enable_switch(
+        struct ts_wakeup_gesture_enable_info *info)
+{
+
+	return NO_ERR;
+}
+
+static void himax_rawdata_proc_printf_mutual_data(struct seq_file *m,
+		struct ts_rawdata_info *info, int tx_num, int rx_num, int *valid_data_len, int *offset)
+{
+	int i = 0, j = 0;
+	for (i = 0; i < tx_num; i++) {
+		for (j = 0; j < rx_num; j++) {
+			seq_printf(m, "%4d", info->buff[*offset + rx_num * i + j]);	/*print oneline*/
+		}
+		seq_printf(m, "\n ");
+	}
+	*valid_data_len -= tx_num * rx_num;
+	*offset += tx_num * rx_num;
+	return;
+}
+
+static void himax_rawdata_proc_printf_self_data(struct seq_file *m,
+		struct ts_rawdata_info *info, int tx_num, int rx_num, int *valid_data_len, int *offset)
+{
+	int i = 0, j = 0;
+	for (i = 0; i < tx_num + rx_num; i++) {
+		seq_printf(m, "%4d", info->buff[*offset + i]);	/*print oneline*/
+		if(i == rx_num - 1) {
+			seq_printf(m, "\n ");
+		}
+	}
+	seq_printf(m, "\n ");
+	*valid_data_len -= tx_num + rx_num;
+	*offset += tx_num + rx_num;
+	return;
+}
+
+static int himax_rawdata_proc_printf(struct seq_file *m, struct ts_rawdata_info *info,
+					int range_size, int row_size)
+{
+	int rx_num = 0;
+	int tx_num = 0;
+	int i = 0, j = 0;
+	int offset = 0;
+	int mutual_data_size = 0;
+	int self_data_size = 0;
+	int valid_data_len = 0;
+
+	if((0 == range_size) || (0 == row_size) || !info) {
+		TS_LOG_ERR("%s  range_size OR row_size is 0\n", __func__);
+		return -EINVAL;
+	}
+
+	valid_data_len = info->used_size;
+	IS_PRINT_FINISH(valid_data_len, 2);//offset rx,tx
+	rx_num = info->buff[0];
+	tx_num = info->buff[1];
+	mutual_data_size = tx_num * rx_num;
+	self_data_size = tx_num + rx_num;
+	valid_data_len -= 2;//offset rx,tx
+	offset += 2;//offset rx,tx
+
+	seq_printf(m, "mutual Bank Start:\n");
+	IS_PRINT_FINISH(valid_data_len, mutual_data_size);
+	himax_rawdata_proc_printf_mutual_data(m, info, tx_num, rx_num, &valid_data_len, &offset);
+	seq_printf(m, "mutual Bank End:\n");
+
+	seq_printf(m, "self Bank Start:\n");
+	IS_PRINT_FINISH(valid_data_len, self_data_size);
+	himax_rawdata_proc_printf_self_data(m, info, tx_num, rx_num, &valid_data_len, &offset);
+	seq_printf(m, "self Bank End:\n");
+
+	seq_printf(m, "Tx Delta Start:\n");
+	IS_PRINT_FINISH(valid_data_len, (tx_num - 1) * rx_num);
+	himax_rawdata_proc_printf_mutual_data(m, info, tx_num - 1, rx_num, &valid_data_len, &offset);
+	seq_printf(m, "Tx Delta End:\n");
+
+	seq_printf(m, "Rx delta Start:\n");
+	IS_PRINT_FINISH(valid_data_len, tx_num * (rx_num) - 1);
+	himax_rawdata_proc_printf_mutual_data(m, info, tx_num, rx_num - 1, &valid_data_len, &offset);
+	seq_printf(m, "Rx delta End:\n");
+
+	seq_printf(m, "mutual IIR Start:\n");
+	IS_PRINT_FINISH(valid_data_len, mutual_data_size);
+	himax_rawdata_proc_printf_mutual_data(m, info, tx_num, rx_num, &valid_data_len, &offset);
+	seq_printf(m, "mutual IIR End:\n");
+
+	seq_printf(m, "self IIRStart:\n");
+	IS_PRINT_FINISH(valid_data_len, self_data_size);
+	himax_rawdata_proc_printf_self_data(m, info, tx_num, rx_num, &valid_data_len, &offset);
+	seq_printf(m, "self IIR End:\n");
+
+	seq_printf(m, "mutual BASEC Start:\n");
+	IS_PRINT_FINISH(valid_data_len, mutual_data_size);
+	himax_rawdata_proc_printf_mutual_data(m, info, tx_num, rx_num, &valid_data_len, &offset);
+	seq_printf(m, "mutual BASEC Start End:\n");
+
+	seq_printf(m, "self BASEC Start:\n");
+	IS_PRINT_FINISH(valid_data_len, self_data_size);
+	himax_rawdata_proc_printf_self_data(m, info, tx_num, rx_num, &valid_data_len, &offset);
+	seq_printf(m, "self BASEC End:\n");
+
+	seq_printf(m, "mutual DC Start:\n");
+	IS_PRINT_FINISH(valid_data_len, mutual_data_size);
+	himax_rawdata_proc_printf_mutual_data(m, info, tx_num, rx_num, &valid_data_len, &offset);
+	seq_printf(m, "mutual DC End:\n");
+
+	seq_printf(m, "self DC Start:\n");
+	IS_PRINT_FINISH(valid_data_len, self_data_size);
+	himax_rawdata_proc_printf_self_data(m, info, tx_num, rx_num, &valid_data_len, &offset);
+	seq_printf(m, "self DC End:\n");
+
+	seq_printf(m, "mutual GOLDEN_BASEC Start:\n");
+	IS_PRINT_FINISH(valid_data_len, mutual_data_size);
+	himax_rawdata_proc_printf_mutual_data(m, info, tx_num, rx_num, &valid_data_len, &offset);
+	seq_printf(m, "mutual GOLDEN_BASEC End:\n");
+
+	seq_printf(m, "self GOLDEN_BASEC Start:\n");
+	IS_PRINT_FINISH(valid_data_len, self_data_size);
+	himax_rawdata_proc_printf_self_data(m, info, tx_num, rx_num, &valid_data_len, &offset);
+	seq_printf(m, "self GOLDEN_BASEC End:\n");
+
+	return 0;
+}
+
 
 static int himax_get_rawdata(struct ts_rawdata_info *info, struct ts_cmd_node *out_cmd)
 {
@@ -169,7 +313,7 @@ static int himax_get_capacitance_test_type(struct ts_test_type_info *info)
 		return INFO_FAIL;
 	}
 	strncpy(info->tp_test_type, g_himax_ts_data->tskit_himax_data
-		->ts_platform_data->chip_data->tp_test_type, TS_CAP_TEST_TYPE_LEN);
+		->ts_platform_data->chip_data->tp_test_type, TS_CAP_TEST_TYPE_LEN - 1);
 	TS_LOG_INFO("%s:test_type=%s\n", __func__, info->tp_test_type);
 	return NO_ERR;
 }
@@ -255,6 +399,7 @@ int himax_input_config(struct input_dev* input_dev)//himax_input_register(struct
 	set_bit(EV_ABS, input_dev->evbit);
 	set_bit(EV_KEY, input_dev->evbit);
 	set_bit(BTN_TOUCH, input_dev->keybit);
+	set_bit(TS_DOUBLE_CLICK, input_dev->keybit);
 	set_bit(INPUT_PROP_DIRECT, input_dev->propbit);
 
 	TS_LOG_INFO("input_set_abs_params: min_x %d, max_x %d, min_y %d, max_y %d\n",
@@ -581,6 +726,7 @@ static void himax_get_information(void)
 /*loadconfig:  after reset, load config or not.*/
 void himax_HW_reset(bool loadconfig,bool int_off)
 {
+	int ret = 0;
 	struct himax_ts_data *ts = g_himax_ts_data;
 
 	HW_RESET_ACTIVATE = 1;
@@ -611,8 +757,12 @@ void himax_HW_reset(bool loadconfig,bool int_off)
 
 		TS_LOG_INFO("%s: reset ok.\n", __func__);
 
-		if(loadconfig)
-			himax_loadSensorConfig();
+		if(loadconfig) {
+			ret = himax_loadSensorConfig();
+			if (ret < 0) {
+				TS_LOG_ERR("%s: load sensor config fail\n", __func__);
+			}
+		}
 
 		if(!int_off)
 		{
@@ -672,7 +822,7 @@ static bool himax_ic_package_check(void)
 
 	if (i2c_himax_read(HX_REG_IC_VER, &cmd[0], HX_IC_PACKAGE_CHECK_MAX_SIZE, sizeof(cmd), DEFAULT_RETRY_CNT) < 0)
 		return IC_PACK_CHECK_FAIL;
-	TS_LOG_INFO("%s: Now data[0]=0x%02X,data[1]=0x%02X,data[2]=0x%02X,data[3]=0x%02X\n", __func__, cmd[0], cmd[1], cmd[2], cmd[3]);
+	TS_LOG_INFO("%s: Now data[0]=0x%02X,data[1]=0x%02X,data[2]=0x%02X\n", __func__, cmd[0], cmd[1], cmd[2]);
 	if(cmd[0] == 0x06 && cmd[1] == 0x85 &&
 		(cmd[2] == 0x28 || cmd[2] == 0x29 || cmd[2] == 0x30 ))
 	{
@@ -741,6 +891,11 @@ static void himax_read_TP_info(void)
 	/*read sensor ID*/
 	if (IC_TYPE == HX_85XX_F_SERIES_PWON)
 		g_himax_ts_data->vendor_sensor_id = himax_read_Sensor_ID();
+
+	snprintf(g_himax_ts_data->tskit_himax_data->version_name, MAX_STR_LEN,"%x.%x.%x",
+		g_himax_ts_data->vendor_fw_ver_H,
+		g_himax_ts_data->vendor_fw_ver_L,
+		g_himax_ts_data->vendor_config_ver);
 
 	TS_LOG_INFO("sensor_id=%x.\n",g_himax_ts_data->vendor_sensor_id);
 	TS_LOG_INFO("fw_ver=%x,%x.\n",g_himax_ts_data->vendor_fw_ver_H,g_himax_ts_data->vendor_fw_ver_L);
@@ -867,8 +1022,10 @@ int himax_start_get_rawdata_from_event(int hx_touch_info_size,int RawDataLen,uin
 	int i = 0;
 	int retval = NO_ERR;
 	int index = 0;
-	int m=0,m1=0,m2=0;
-	if(NULL == buf) {
+	int m=0;
+	int m1=0;
+	int m2=0;
+	if((NULL == buf)||(hx_touch_info_size > HX_RECEIVE_BUF_MAX_SIZE - 4)) {
 		return HX_ERROR;
 	}
 	for (i = hx_touch_info_size, check_sum_cal = 0; i < HX_RECEIVE_BUF_MAX_SIZE; i++)
@@ -1135,8 +1292,8 @@ void himax_debug_level_print(int type,int status,int hx_touch_info_size,struct h
 			}
 			break;
 		case 1:
-			TS_LOG_INFO("Finger %d=> X:%d, Y:%d W:%d, Z:%d, F:%d, N:%d\n",
-			hx_touching.loop_i + 1, hx_touching.x, hx_touching.y, hx_touching.w, hx_touching.w, hx_touching.loop_i + 1, EN_NoiseFilter);
+			TS_LOG_INFO("Finger %d=> W:%d, Z:%d, F:%d, N:%d\n",
+			hx_touching.loop_i + 1, hx_touching.w, hx_touching.w, hx_touching.loop_i + 1, EN_NoiseFilter);
 			break;
 		case 2:
 			break;
@@ -1147,14 +1304,13 @@ void himax_debug_level_print(int type,int status,int hx_touch_info_size,struct h
 				{
 					if (g_himax_ts_data->useScreenRes)
 					{
-							TS_LOG_INFO("status:%X, Screen:F:%02d Down, X:%d, Y:%d, W:%d, N:%d\n",
-							hx_touching.finger_pressed, hx_touching.loop_i+1, (hx_touching.x * g_himax_ts_data->widthFactor) >> SHIFTBITS,
-							(hx_touching.y * g_himax_ts_data->heightFactor )>> SHIFTBITS, hx_touching.w, EN_NoiseFilter);
+							TS_LOG_INFO("status:%X, Screen:F:%02d Down, W:%d, N:%d\n",
+							hx_touching.finger_pressed, hx_touching.loop_i+1,  hx_touching.w, EN_NoiseFilter);
 					}
 					else
 					{
-							TS_LOG_INFO("status:%X, Raw:F:%02d Down, X:%d, Y:%d, W:%d, N:%d\n",
-							hx_touching.finger_pressed, hx_touching.loop_i+1, hx_touching.x, hx_touching.y, hx_touching.w, EN_NoiseFilter);
+							TS_LOG_INFO("status:%X, Raw:F:%02d Down, W:%d, N:%d\n",
+							hx_touching.finger_pressed, hx_touching.loop_i+1, hx_touching.w, EN_NoiseFilter);
 					}
 				}
 			}
@@ -1164,14 +1320,12 @@ void himax_debug_level_print(int type,int status,int hx_touch_info_size,struct h
 				{
 					if (g_himax_ts_data->useScreenRes)
 					{
-						TS_LOG_INFO("status:%X, Screen:F:%02d Up, X:%d, Y:%d, N:%d\n",
-						hx_touching.finger_pressed,hx_touching.loop_i+1, (g_himax_ts_data->pre_finger_data[hx_touching.loop_i][0] * g_himax_ts_data->widthFactor )>> SHIFTBITS,
-						(g_himax_ts_data->pre_finger_data[hx_touching.loop_i][1] * g_himax_ts_data->heightFactor) >> SHIFTBITS, Last_EN_NoiseFilter);
+						TS_LOG_INFO("status:%X, Screen:F:%02d Up, N:%d\n",
+						hx_touching.finger_pressed,hx_touching.loop_i+1, Last_EN_NoiseFilter);
 					}
 					else{
-						TS_LOG_INFO("status:%X, Raw:F:%02d Up, X:%d, Y:%d, N:%d\n",
-						hx_touching.finger_pressed, hx_touching.loop_i + 1, g_himax_ts_data->pre_finger_data[hx_touching.loop_i][0],
-						g_himax_ts_data->pre_finger_data[hx_touching.loop_i][1], Last_EN_NoiseFilter);
+						TS_LOG_INFO("status:%X, Raw:F:%02d Up, N:%d\n",
+						hx_touching.finger_pressed, hx_touching.loop_i + 1, Last_EN_NoiseFilter);
 					}
 				}
 			}
@@ -1181,10 +1335,9 @@ void himax_debug_level_print(int type,int status,int hx_touch_info_size,struct h
 					if (((g_himax_ts_data->pre_finger_mask >>hx_touching.loop_i) & 1) == 1)
 					{
 						if (g_himax_ts_data->useScreenRes) {
-								TS_LOG_INFO("status:%X, Screen:F:%02d Up, X:%d, Y:%d, N:%d\n", 0,hx_touching.loop_i + 1, (g_himax_ts_data->pre_finger_data[hx_touching.loop_i][0] * g_himax_ts_data->widthFactor )>> SHIFTBITS,
-								(g_himax_ts_data->pre_finger_data[hx_touching.loop_i][1] * g_himax_ts_data->heightFactor) >> SHIFTBITS, Last_EN_NoiseFilter);
+								TS_LOG_INFO("status:%X, Screen:F:%02d Up, N:%d\n", 0,hx_touching.loop_i + 1, Last_EN_NoiseFilter);
 						} else {
-							TS_LOG_INFO("status:%X, Raw:F:%02d Up, X:%d, Y:%d, N:%d\n",0, hx_touching.loop_i + 1, g_himax_ts_data->pre_finger_data[hx_touching.loop_i][0],g_himax_ts_data->pre_finger_data[hx_touching.loop_i][1], Last_EN_NoiseFilter);
+							TS_LOG_INFO("status:%X, Raw:F:%02d Up, N:%d\n",0, hx_touching.loop_i + 1, Last_EN_NoiseFilter);
 						}
 					}
 				}
@@ -1246,7 +1399,7 @@ void himax_parse_coords(int hx_touch_info_size,int hx_point_num,struct ts_finger
 				if (!g_himax_ts_data->first_pressed)
 				{
 					g_himax_ts_data->first_pressed = 1;//first report
-					TS_LOG_INFO("S1@%d, %d\n", hx_touching.x, hx_touching.y);
+					TS_LOG_DEBUG("S1@%d, %d\n", hx_touching.x, hx_touching.y);
 				}
 
 				g_himax_ts_data->pre_finger_data[hx_touching.loop_i][0] = hx_touching.x;
@@ -1260,7 +1413,7 @@ void himax_parse_coords(int hx_touch_info_size,int hx_point_num,struct ts_finger
 				if (hx_touching.loop_i == 0 && g_himax_ts_data->first_pressed == 1)
 				{
 					g_himax_ts_data->first_pressed = 2;
-					TS_LOG_INFO("E1@%d, %d\n",
+					TS_LOG_DEBUG("E1@%d, %d\n",
 					g_himax_ts_data->pre_finger_data[0][0] , g_himax_ts_data->pre_finger_data[0][1]);
 				}
 				if ((g_himax_ts_data->debug_log_level & BIT(3)) > 0)
@@ -1292,7 +1445,7 @@ void himax_parse_coords(int hx_touch_info_size,int hx_point_num,struct ts_finger
 
 		if (g_himax_ts_data->first_pressed == 1) {
 			g_himax_ts_data->first_pressed = 2;
-			TS_LOG_INFO("E1@%d, %d\n",g_himax_ts_data->pre_finger_data[0][0] , g_himax_ts_data->pre_finger_data[0][1]);
+			TS_LOG_DEBUG("E1@%d, %d\n",g_himax_ts_data->pre_finger_data[0][0] , g_himax_ts_data->pre_finger_data[0][1]);
 		}
 
 		if (g_himax_ts_data->debug_log_level & BIT(1))
@@ -1813,14 +1966,15 @@ static int himax_parse_specific_dts(struct himax_ts_data *ts,
 				struct himax_i2c_platform_data *pdata)
 {
 	int retval = 0;
-	int read_val = 0;
+	uint32_t read_val = 0;
 	int coords_size = 0;
 	uint32_t coords[HX_COORDS_MAX_SIZE] = {0};
 	struct property *prop = NULL;
-	struct device_node *dt = ts->ts_dev->dev.of_node;
+	struct device_node *dt = NULL;
 	if(NULL == ts || NULL == pdata) {
 		return -1;
 	}
+	dt = ts->ts_dev->dev.of_node;
 	prop = of_find_property(dt, "himax,panel-coords", NULL);
 	if (prop) {
 		coords_size = prop->length /((int) sizeof(uint32_t));
@@ -1882,8 +2036,32 @@ static int himax_parse_specific_dts(struct himax_ts_data *ts,
 		TS_LOG_INFO("get device p2p_test_sel:%d\n", read_val);
 	}
 
-	return NO_ERR;
+	retval = of_property_read_u32(dt, "himax,threshold_associated_with_projectid", &read_val);
+	if (retval) {
+		ts->threshold_associated_with_projectid = 0;
+		TS_LOG_INFO("get device threshold_associated_with_projectid not exit,use default value.\n");
+	}else {
+		ts->threshold_associated_with_projectid = read_val;
+		TS_LOG_INFO("get device threshold_associated_with_projectid:%d\n", read_val);
 	}
+
+	return NO_ERR;
+}
+
+static void himax_parse_support_retry_self_test_flag(struct device_node *device, struct himax_ts_data *ts_data)
+{
+	int ret = NO_ERR;
+	unsigned int value = 0;
+	ret = of_property_read_u32(device, "support_retry_self_test_flag", &value);
+	if (ret) {
+		ts_data->support_retry_self_test = 0;
+	} else {
+		ts_data->support_retry_self_test = value;
+	}
+	TS_LOG_INFO("%s, support_retry_self_test flag = %d\n", __func__, ts_data->support_retry_self_test);
+
+	return;
+}
 
 static int himax_parse_dts(struct device_node *device, struct ts_kit_device_data *chip_data)
 {
@@ -1919,6 +2097,12 @@ static int himax_parse_dts(struct device_node *device, struct ts_kit_device_data
 		TS_LOG_INFO("Not define chip rawdata limit time in Dts, use default\n");
 	}
 	TS_LOG_INFO("get chip rawdata limit time = %d\n", chip_data->rawdata_get_timeout);
+	retval = of_property_read_u32(device, HX_IC_RAWDATA_PROC_PRINTF, (u32*)&chip_data->is_ic_rawdata_proc_printf);
+	if (retval) {
+		chip_data->is_ic_rawdata_proc_printf = false;
+		TS_LOG_INFO("Not define chip is_ic_rawdata_proc_printf in Dts, use default\n");
+	}
+	TS_LOG_INFO("get chip is_ic_rawdata_proc_printf = %d\n", chip_data->is_ic_rawdata_proc_printf);
 
 	retval = of_property_read_u32(device, "himax,irq_config", &chip_data->irq_config);
 	if (retval) {
@@ -1950,6 +2134,31 @@ static int himax_parse_dts(struct device_node *device, struct ts_kit_device_data
 			TS_LOG_INFO("NOT support to parse the power type in dts!\n");
 		}
 		TS_LOG_INFO("himax,power_type_sel = %d\n", g_himax_ts_data->power_type_sel);
+	}
+
+	retval = of_property_read_u32(device, "himax,vci_value", &chip_data->regulator_ctr.vci_value);
+	if (retval) {
+		chip_data->regulator_ctr.vci_value = 3300000;//vci default voltage 3.3V
+		TS_LOG_INFO("default vci value 3.3V!\n");
+	}
+	TS_LOG_INFO("himax,regulator_ctr.vci_value = %d\n", chip_data->regulator_ctr.vci_value);
+
+	retval = of_property_read_u32(device, "touch_switch_flag", (u32*)&read_val);
+	if (retval) {
+		TS_LOG_INFO("device touch_switch_flag not exit,use default value.\n");
+		chip_data->touch_switch_flag = 0;
+	}else{
+		chip_data->touch_switch_flag |= (u32)read_val;
+		TS_LOG_INFO("get device touch_switch_flag:%02x\n", chip_data->touch_switch_flag);
+	}
+
+	retval = of_property_read_u32(device, "touch_switch_scene_reg", (u32*)&read_val);
+	if (retval) {
+		TS_LOG_INFO("device set_game_mode_reg not exit,use default value.\n");
+		g_himax_ts_data->touch_switch_scene_reg = 0;
+	}else{
+		g_himax_ts_data->touch_switch_scene_reg = (u8)(read_val & 0XFF);
+		TS_LOG_INFO("get device touch_switch_scene_reg:%02x\n", g_himax_ts_data->touch_switch_scene_reg);
 	}
 
 	retval =of_property_read_string(device, "project_id", &projectid);
@@ -1989,10 +2198,125 @@ static int himax_parse_dts(struct device_node *device, struct ts_kit_device_data
 	}
 	g_himax_ts_data->support_get_tp_color = (uint8_t)read_val;
 	TS_LOG_INFO("%s, support_get_tp_color = %d \n", __func__, g_himax_ts_data->support_get_tp_color);
+
+	himax_parse_support_retry_self_test_flag(device, g_himax_ts_data);
 	TS_LOG_INFO("%s:sucess\n",__func__);
 
 	return NO_ERR;
 
+}
+
+static void himax_scene_switch(unsigned int scene, unsigned int oper)
+{
+	int error = 0;
+	u8 data = 0;//0:exit scene mode
+
+	if (TS_SWITCH_TYPE_SCENE != (g_himax_ts_data->tskit_himax_data->touch_switch_flag & TS_SWITCH_TYPE_SCENE)) {
+		TS_LOG_ERR("%s, scene switch does not suppored by this chip\n",__func__);
+		goto out;
+	}
+
+	switch (oper) {
+		case TS_SWITCH_SCENE_ENTER:
+			TS_LOG_INFO("%s, enter scene %d\n", __func__,scene);
+			error = i2c_himax_write(g_himax_ts_data->touch_switch_scene_reg, (u8*)&scene, 1, 1, DEFAULT_RETRY_CNT);//write 1 byte
+			if(error){
+				TS_LOG_ERR("%s: Switch to scene %d mode Failed: error:%d\n", __func__, scene, error);
+			}
+			break;
+		case TS_SWITCH_SCENE_EXIT:
+			TS_LOG_INFO("%s, enter normal scene\n", __func__);
+			error = i2c_himax_write(g_himax_ts_data->touch_switch_scene_reg, &data, 1, 1, DEFAULT_RETRY_CNT);//write 1 byte
+			if(error){
+				TS_LOG_ERR("%s: exit scene %d mode Failed: error:%d\n", __func__, scene, error);
+			}
+			break;
+		default:
+			TS_LOG_ERR("%s: oper unknown:%d, invalid\n", __func__, oper);
+			break;
+	}
+
+out:
+	return;
+}
+
+
+#define FTS_DOZE_MAX_INPUT_SEPARATE_NUM 2
+static void himax_chip_touch_switch(void)
+{
+	char in_data[MAX_STR_LEN] = {0};
+	unsigned int stype = 0, soper = 0, time = 0;
+	int error = 0;
+	unsigned int i = 0, cnt = 0;
+	u8 param =0;
+	TS_LOG_INFO("%s enter\n", __func__);
+
+	if (NULL == g_himax_ts_data || !g_himax_ts_data->tskit_himax_data ||
+		!g_himax_ts_data->tskit_himax_data->ts_platform_data){
+		TS_LOG_ERR("%s, error chip data\n",__func__);
+		goto out;
+	}
+
+	/* SWITCH_OPER,ENABLE_DISABLE,PARAM */
+	memcpy(in_data, g_himax_ts_data->tskit_himax_data->touch_switch_info, MAX_STR_LEN -1);
+	TS_LOG_INFO("%s, in_data:%s\n",__func__, in_data);
+	for(i = 0; i < strlen(in_data) && (in_data[i] != '\n'); i++){
+		if(in_data[i] == ','){
+			cnt++;
+		}else if(!isdigit(in_data[i])){
+			TS_LOG_ERR("%s: input format error!!\n", __func__);
+			goto out;
+		}
+	}
+	if(cnt != FTS_DOZE_MAX_INPUT_SEPARATE_NUM){
+		TS_LOG_ERR("%s: input format error[separation_cnt=%d]!!\n", __func__, cnt);
+		goto out;
+	}
+
+	error = sscanf(in_data, "%u,%u,%u", &stype, &soper, &time);
+	if(error <= 0){
+		TS_LOG_ERR("%s: sscanf error\n", __func__);
+		goto out;
+	}
+	TS_LOG_DEBUG("stype=%u,soper=%u,param=%u\n", stype, soper, time);
+
+	if(atomic_read(&g_himax_ts_data->tskit_himax_data->ts_platform_data->state) == TS_SLEEP) {
+		TS_LOG_ERR("%s, TP in sleep\n", __func__);
+		goto out;
+	}
+
+	switch (stype) {
+		case TS_SWITCH_TYPE_DOZE:
+			break;
+		case TS_SWITCH_TYPE_GAME:
+			break;
+		case TS_SWITCH_SCENE_3:
+		case TS_SWITCH_SCENE_4:
+		case TS_SWITCH_SCENE_5:
+		case TS_SWITCH_SCENE_6:
+		case TS_SWITCH_SCENE_7:
+		case TS_SWITCH_SCENE_8:
+		case TS_SWITCH_SCENE_9:
+		case TS_SWITCH_SCENE_10:
+		case TS_SWITCH_SCENE_11:
+		case TS_SWITCH_SCENE_12:
+		case TS_SWITCH_SCENE_13:
+		case TS_SWITCH_SCENE_14:
+		case TS_SWITCH_SCENE_15:
+		case TS_SWITCH_SCENE_16:
+		case TS_SWITCH_SCENE_17:
+		case TS_SWITCH_SCENE_18:
+		case TS_SWITCH_SCENE_19:
+		case TS_SWITCH_SCENE_20:
+			himax_scene_switch(stype, soper);
+			break;
+		default:
+			TS_LOG_ERR("%s: stype unknown:%u, invalid\n", __func__, stype);
+			break;
+	}
+
+out:
+	return;
 }
 
 static int himax_chip_detect(struct ts_kit_platform_data *platform_data)
@@ -2090,10 +2414,6 @@ static int himax_chip_detect(struct ts_kit_platform_data *platform_data)
 #endif
 	himax_read_TP_info();
 
-#ifdef CONFIG_HUAWEI_HW_DEV_DCT
-	/* detect current device successful, set the flag as present */
-	set_hw_dev_flag(DEV_I2C_TOUCH_PANEL);
-#endif
 	/*Himax Power On and Load Config*/
 	if (himax_loadSensorConfig() < 0) {
 		TS_LOG_ERR("%s: Load Sesnsor configuration failed, unload driver.\n", __func__);
@@ -2422,8 +2742,10 @@ static int himax_core_suspend(void)
 #ifdef HX_CHIP_STATUS_MONITOR
 	int t = 0;
 #endif
+	uint8_t cmd[2]={0};
 	int retval = 0;
 	struct himax_ts_data *ts = NULL;
+	struct ts_easy_wakeup_info *info = &g_himax_ts_data->tskit_himax_data->easy_wakeup_info;
 //	int iCount = 0;
 	TS_LOG_INFO("%s: Enter suspended. \n", __func__);
 
@@ -2493,16 +2815,35 @@ static int himax_core_suspend(void)
 	//	iCount ++;
 	}
 	/*power down*/
-	if (!g_tskit_pt_station_flag){
-		if (g_himax_ts_data->power_support){
-			himax_gpio_power_off(g_himax_ts_data->pdata);
+	if(ts->tskit_himax_data->ts_platform_data->chip_data->easy_wakeup_info.sleep_mode)
+	{
+		if(true == info->easy_wakeup_flag)
+		{
+			TS_LOG_INFO("%s easy_wakeup_flag=%d\n",__func__,info->easy_wakeup_flag);
+			return NO_ERR;
 		}
-		gpio_direction_output(ts->rst_gpio, 0);
-	}else{
-		retval = himax_enter_sleep_mode();
-		if(retval<0){
-		   TS_LOG_ERR("[himax] %s: himax_enter_sleep_mode fail!\n", __func__);
-		   return retval;
+		cmd[0] = HXXES_ADDR_SMWP;
+		cmd[1] = HXXES_DATA_SMWP_ON;
+		retval = i2c_himax_write(cmd[0],&cmd[1] , 1,sizeof(cmd) ,DEFAULT_RETRY_CNT);
+		if (retval < 0){
+			TS_LOG_ERR("[HXTP]  %s: I2C access failed",__func__);
+			return retval;
+		}
+		mutex_lock(&wrong_touch_lock);
+		info->off_motion_on = true;
+		mutex_unlock(&wrong_touch_lock);
+		info->easy_wakeup_flag = true;
+		TS_LOG_INFO("Turn on SMWP\n");
+	} else {
+		if ((!g_tskit_pt_station_flag) && g_himax_ts_data->power_support ){
+			gpio_direction_output(ts->rst_gpio, 0);
+			himax_gpio_power_off(g_himax_ts_data->pdata);
+		}else{
+			retval = himax_enter_sleep_mode();
+			if(retval<0){
+				  TS_LOG_ERR("[HXTP] %s: himax_enter_sleep_mode fail!\n", __func__);
+				  return retval;
+			}
 		}
 	}
 
@@ -2519,6 +2860,7 @@ static int himax_core_resume(void)
 	struct himax_ts_data *ts;
 	uint8_t data[12] = {0};
 	int retval=0;
+	struct ts_easy_wakeup_info *info = &g_himax_ts_data->tskit_himax_data->easy_wakeup_info;
 
 	TS_LOG_INFO("%s: enter \n", __func__);
 
@@ -2543,21 +2885,60 @@ static int himax_core_resume(void)
 		return RESUME_IN;
 	}
 	/*power on*/
-	if (!g_tskit_pt_station_flag){
-		if (g_himax_ts_data->power_support) {
-			himax_gpio_power_on(g_himax_ts_data->pdata);
+	if(ts->tskit_himax_data->ts_platform_data->chip_data->easy_wakeup_info.sleep_mode)
+	{
+
+
+		if(info->easy_wakeup_flag == false)
+		{
+			return NO_ERR;
 		}
-		//himax 852xf(auo module) gpio power on also need two reset by call this function
-		retval = himax_power_rst_init();
-		if(retval <0){
-			TS_LOG_ERR("[himax] %s: himax_power_rst_init fail!\n", __func__);
-			return retval;
-		}
-	}else{
+
+		gpio_direction_output(ts->rst_gpio, RST_DISABLE);
+		msleep(HX_SLEEP_2MS);
+		gpio_direction_output(ts->rst_gpio, RST_ENABLE);
+		msleep(HX_SLEEP_10MS);
+
+		mutex_lock(&wrong_touch_lock);
+		info->off_motion_on = false;
+		mutex_unlock(&wrong_touch_lock);
+		info->easy_wakeup_flag = false;
+		msleep(HX_SLEEP_5MS);
 		retval = himax_exit_sleep_mode();
 		if(retval <0){
 			TS_LOG_ERR("[himax] %s: himax_exit_sleep_mode fail!\n", __func__);
 			return retval;
+		}
+	}else{
+		if (!g_tskit_pt_station_flag){
+			if (g_himax_ts_data->power_support) {
+				himax_gpio_power_on(g_himax_ts_data->pdata);
+			}
+			//himax 852xf(auo module) gpio power on also need two reset by call this function
+			if(IC_TYPE == HX_85XX_F_SERIES_PWON){
+				retval = himax_power_rst_init();
+				TS_LOG_INFO("xF power rst init\n");
+			}
+			else if(IC_TYPE == HX_85XX_ES_SERIES_PWON) {
+				himax_HW_reset(false, true);
+				TS_LOG_INFO("xEs : Normal HW reset\n");
+				retval = himax_exit_sleep_mode();
+				if(retval <0){
+					TS_LOG_ERR("[himax] %s: himax_exit_sleep_mode fail!\n", __func__);
+					return retval;
+				}
+			}
+			else {
+				TS_LOG_INFO("It's not himax's ic!\n");
+			}
+		}
+		else
+		{
+			retval = himax_exit_sleep_mode();
+			if(retval <0){
+				TS_LOG_ERR("[himax] %s: himax_exit_sleep_mode fail!\n", __func__);
+				return retval;
+			}
 		}
 	}
 	TS_LOG_INFO("%s: power on. \n", __func__);
@@ -2689,7 +3070,15 @@ static void __exit himax_module_exit(void)
 
 static void himax_shutdown(void)
 {
+	if(!g_himax_ts_data || !g_himax_ts_data->pdata) {
+		TS_LOG_ERR("g_himax_ts_data is NULL\n");
+		return;
+	}
+
 	TS_LOG_INFO("%s himax_shutdown call power off\n",__func__);
+	if (g_himax_ts_data->power_support){
+		gpio_direction_output(g_himax_ts_data->pdata->gpio_reset, 0);
+	}
 	himax_power_off();
 	return;
 }
@@ -2833,16 +3222,17 @@ static int himax_chip_get_info(struct ts_chip_info_param *info)
 	int retval = NO_ERR;
 
 	TS_LOG_INFO("%s Enter\n", __func__);
-	if(NULL == info) {
+	if(NULL == info || !g_himax_ts_data || !g_himax_ts_data->tskit_himax_data ||
+		!g_himax_ts_data->tskit_himax_data->ts_platform_data) {
 		return HX_ERROR;
 	}
-#if 0
-	if (himax_read_projectid() < 0) {
-			TS_LOG_ERR("%s read project id error!\n", __func__);
-		}
-#endif
-	snprintf(info->ic_vendor, PAGE_SIZE, "himax-%s", himax_product_id);
-	snprintf(info->mod_vendor, PAGE_SIZE, g_himax_ts_data->tskit_himax_data->ts_platform_data->chip_data->module_name);
+
+	if (!g_himax_ts_data->tskit_himax_data->ts_platform_data->hide_plain_id) {
+		snprintf(info->ic_vendor, sizeof(info->ic_vendor), "himax-%s", himax_product_id);
+	} else {
+		snprintf(info->ic_vendor, sizeof(info->ic_vendor), "%s", himax_product_id);
+	}
+	snprintf(info->mod_vendor, CHIP_INFO_LENGTH , g_himax_ts_data->tskit_himax_data->ts_platform_data->chip_data->module_name);
 
 	snprintf(info->fw_vendor, PAGE_SIZE,
 		"%x.%x.%x",

@@ -730,6 +730,11 @@ struct reset_cb_list *do_cb_func_register(struct reset_cb_list * list_head, cons
 		cb_func_node->cb_info.userdata = user_data;
 		cb_func_node->cb_info.cbfun = func;
     }
+	else
+	{
+		reset_print_err("malloc fail\n");
+		return list_head;
+	}
 
 	if (!list_head)
     {

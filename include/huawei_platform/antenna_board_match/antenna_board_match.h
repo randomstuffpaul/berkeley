@@ -5,10 +5,12 @@
 
 struct antenna_device_ops{
     int (*get_antenna_match_status)(void);
+    int (*get_antenna_board_voltage)(void);
 };
 
 enum antenna_sysfs_type {
     ANTENNA_BOARD_MATCH = 0,
+    ANTENNA_BOARD_VOLTAGE,
 };
 
 struct antenna_device_info {

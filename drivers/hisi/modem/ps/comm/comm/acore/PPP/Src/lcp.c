@@ -70,17 +70,17 @@ VOS_VOID LcpDecodeConfig(struct fsm *, VOS_CHAR *, VOS_CHAR *, VOS_INT32,
                             struct fsm_decode *);
 
 static struct fsm_callbacks lcp_Callbacks = {
-  LcpLayerUp,
-  LcpLayerDown,
-  LcpLayerStart,
-  LcpLayerFinish,
-  LcpInitRestartCounter,
-  LcpSendConfigReq,
-  LcpSentTerminateReq,
-  LcpSendTerminateAck,
-  LcpDecodeConfig,
-  fsm_NullRecvResetReq,
-  fsm_NullRecvResetAck
+    .LayerUp = LcpLayerUp,
+    .LayerDown = LcpLayerDown,
+    .LayerStart = LcpLayerStart,
+    .LayerFinish = LcpLayerFinish,
+    .InitRestartCounter= LcpInitRestartCounter,
+    .SendConfigReq = LcpSendConfigReq,
+    .SentTerminateReq = LcpSentTerminateReq,
+    .SendTerminateAck = LcpSendTerminateAck,
+    .DecodeConfig = LcpDecodeConfig,
+    .RecvResetReq = fsm_NullRecvResetReq,
+    .RecvResetAck = fsm_NullRecvResetAck
 };
 
 static const VOS_CHAR * const lcp_TimerNames[] =

@@ -12,3 +12,4 @@
 /include/ "vce_boe_td4320_6p4_1080p_video.dtsi"
 /include/ "vce_ctc_nt36682a_6p4_1080p_video.dtsi"
 /include/ "vce_lg_td4320_6p4_1080p_video.dtsi"
+/include/ "vce_tm_nt36682a_6p4_1080p_video.dtsi"

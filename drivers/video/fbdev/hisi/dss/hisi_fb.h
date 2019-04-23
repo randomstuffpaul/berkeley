@@ -256,6 +256,7 @@ enum {
 
 typedef struct mdc_chn_info {
 	unsigned int status;
+	unsigned int drm_used;
 	unsigned int cap_available;
 	unsigned int rch_idx;
 	unsigned int wch_idx;
@@ -302,16 +303,20 @@ struct hisifb_esd {
 };
 
 struct hisifb_pipe_clk {
+	uint64_t pxl0_ppll_rate;//need config in panel init.
 	uint64_t pipe_clk_rate;
 	uint32_t pipe_clk_updt_hporch[3];
 	uint32_t fps_updt_hporch[3];
+	uint32_t hporch_pre_set[3];
 	uint32_t pipe_clk_rate_div;
+	uint32_t div_pre_set;
 	uint8_t  pipe_clk_updt_state;
 	uint8_t  pipe_clk_updt_times;
 	uint8_t inited;
 	uint8_t underflow_int;
 	uint8_t dirty_region_updt_disable;
-	uint8_t reserved[3];
+	uint8_t fullhdplus;
+	uint8_t reserved[2];
 
 	struct workqueue_struct *pipe_clk_handle_wq;
 	struct work_struct pipe_clk_handle_work;
@@ -524,6 +529,7 @@ struct hisi_fb_data_type {
 
 	int (*dp_device_srs)(struct hisi_fb_data_type *hisifd, bool blank);
 	int (*dp_get_color_bit_mode) (struct hisi_fb_data_type *hisifd, void __user *argp);
+	int (*dp_get_source_mode) (struct hisi_fb_data_type *hisifd, void __user *argp);
 	int (*dp_pxl_ppll7_init)(struct hisi_fb_data_type *hisifd, u64 pixel_clock);
 
 	void (*video_idle_ctrl_register) (struct platform_device *pdev);

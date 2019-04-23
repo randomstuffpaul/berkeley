@@ -36,7 +36,7 @@ static struct semaphore rdr_exce_sem;
 static void __iomem* sysctrl_base;
 static void __iomem* watchdog_base;
 static unsigned int* dump_vir_addr;
-static struct wake_lock rdr_wl;
+struct wake_lock rdr_wl;
 struct completion sensorhub_rdr_completion;
 static int nmi_reg;
 
@@ -259,7 +259,7 @@ void __send_nmi(void)
         writel(0x2, sysctrl_base + nmi_reg);
     }
     else
-        hwlog_err("sysctrl_base is %Kp, nmi_reg is %d!\n", sysctrl_base,
+        hwlog_err("sysctrl_base is %pK, nmi_reg is %d!\n", sysctrl_base,
                   nmi_reg);
 }
 
@@ -406,7 +406,7 @@ static int __sh_create_dir(char* path)
 
     if (path == NULL)
     {
-        hwlog_err("invalid  parameter. path:%Kp.\n", path);
+        hwlog_err("invalid  parameter. path:%pK.\n", path);
         return -1;
     }
 
@@ -470,7 +470,7 @@ int sh_savebuf2fs(char* logpath, char* filename,
 
     if (logpath == NULL || filename == NULL || buf == NULL || len <= 0)
     {
-        hwlog_err("invalid  parameter. path:%Kp, name:%Kp buf:%Kp len:0x%x\n",
+        hwlog_err("invalid  parameter. path:%pK, name:%pK buf:%pK len:0x%x\n",
                   logpath, filename, buf, len);
         ret = -1;
         goto out2;
@@ -531,7 +531,7 @@ int sh_readfs2buf(char* logpath, char* filename,
 
     if (logpath == NULL || filename == NULL || buf == NULL || len <= 0)
     {
-        hwlog_err("invalid  parameter. path:%Kp, name:%Kp buf:%Kp len:0x%x\n",
+        hwlog_err("invalid  parameter. path:%pK, name:%pK buf:%pK len:0x%x\n",
                   logpath, filename, buf, len);
         goto out2;
     }
@@ -579,7 +579,7 @@ static int sh_create_dir(const char* path)
 
     if (path == NULL)
     {
-        hwlog_err("invalid  parameter. path:%Kp\n", path);
+        hwlog_err("invalid  parameter. path:%pK\n", path);
         return -1;
     }
 
@@ -793,9 +793,9 @@ static int rdr_sh_thread(void* arg)
             hwlog_warn(" ===========dump sensorhub log end==========\n");
         }
 
-        complete_all(&sensorhub_rdr_completion);
-        wake_unlock(&rdr_wl);
+	wake_unlock(&rdr_wl);
 	peri_used_release();
+	complete_all(&sensorhub_rdr_completion);
     }
 
     return 0;

@@ -81,6 +81,8 @@ extern const uint16_t touch_key_array[TOUCH_KEY_NUM];
 #define POWER_SLEEP_MODE	1
 #define REAL_PROJECT_ID_LEN 10
 
+#define RBUF_LEN 1025
+
 struct nvt_ts_data {
 	struct ts_kit_device_data *chip_data;
 	struct platform_device *ts_dev;
@@ -153,7 +155,7 @@ struct nvt_ts_data {
 	struct mutex lock;
 	struct nvt_ts_mem_map *mmap;
 	uint8_t carrier_system;
-	uint8_t rbuf[1025];
+	uint8_t rbuf[RBUF_LEN];
 	uint8_t power_sleep_mode;
 	uint32_t nvt_chip_id_partone;
 	uint32_t nvt_chip_id_parttwo;

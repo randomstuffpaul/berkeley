@@ -69,6 +69,7 @@ static int boost_set_enable(boost_ctrl_source_type type)
 	hwlog_info("boost_5v enable(%s) success\n", module_name_strings(type));
 	return 0;
 }
+
 static int boost_set_disable(boost_ctrl_source_type type)
 {
 	if (boost_status != 0) {
@@ -108,6 +109,7 @@ int boost_5v_enable(bool enable, boost_ctrl_source_type type)
 	return 0;
 
 }
+
 static int boost_5v_gpio_init(struct device_node *np)
 {
 	int ret = 0;
@@ -133,6 +135,7 @@ static int boost_5v_gpio_init(struct device_node *np)
 
 	return 0;
 }
+
 #ifdef CONFIG_SYSFS
 static ssize_t boost_5v_sysfs_show(struct device *dev,
 				 struct device_attribute *attr, char *buf)
@@ -230,6 +233,7 @@ static int boost_5v_probe(struct platform_device *pdev)
 	hwlog_info("probe end\n");
 	return 0;
 }
+
 static int boost_5v_remove(struct platform_device *pdev)
 {
 	hwlog_info("remove begin\n");

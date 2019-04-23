@@ -15,7 +15,6 @@
 #include <linux/kthread.h>
 #include "wbc_hw_hook.h"
 #include "chr_netlink.h"
-#include <linux/spinlock.h>
 
 #undef HWLOG_TAG
 #define HWLOG_TAG chr_netlink
@@ -25,8 +24,7 @@ MODULE_LICENSE("GPL");
 /************************************************************
 						MOCRO   DEFINES
 *************************************************************/
-static spinlock_t chr_receive_sem;
-static spinlock_t chr_send_sem;
+DEFINE_MUTEX(chr_receive_sem);
 
 /********************************
     netlink variables for
@@ -53,6 +51,7 @@ static unsigned int g_chr_timer_state;
 static struct semaphore g_chr_netlink_sync_sema;
 /*this lock is used to protect global variable.*/
 static spinlock_t dest_addr_timer_lock;
+static spinlock_t chr_send_lock;
 static struct timer_list g_chr_netlink_timer;
 /*send a msg with server's address and port.*/
 void notify_chr_thread_to_send_msg(unsigned int dst_addr, unsigned int src_addr)
@@ -103,13 +102,13 @@ static void kernel_chr_receive(struct sk_buff *__skb)
 		hwlog_err("kernel_chr_receive: skb = NULL\n");
 		return;
 	}
-	spin_lock_bh(&chr_receive_sem);
+	mutex_lock(&chr_receive_sem);
 	if (skb->len >= NLMSG_HDRLEN) {
 		nlh = nlmsg_hdr(skb);
 		if (NULL == nlh) {
 			hwlog_err("kernel_chr_receive:  nlh = NULL\n");
 			kfree_skb(skb);
-			spin_unlock_bh(&chr_receive_sem);
+			mutex_unlock(&chr_receive_sem);
 			return;
 		}
 		if ((nlh->nlmsg_len >= sizeof(struct nlmsghdr)) &&
@@ -122,14 +121,14 @@ static void kernel_chr_receive(struct sk_buff *__skb)
 				g_user_space_pid = nlh->nlmsg_pid;
 			} else if (nlh->nlmsg_type == NETLINK_CHR_UNREG) {
 				g_user_space_pid = 0;
-			} else if (nlh->nlmsg_type == NETLINK_CHR_SET_APP_UID) {
+			} else if (nlh->nlmsg_type == NETLINK_CHR_SET_APP_UID && nlh->nlmsg_len >= sizeof(struct tag_chr_msg2knl)) {
 				hmsg = (struct tag_chr_msg2knl *)nlh;
 				set_report_app_uid(hmsg->index, hmsg->uid);
 			}
 		}
 	}
 	kfree_skb(skb);
-	spin_unlock_bh(&chr_receive_sem);
+	mutex_unlock(&chr_receive_sem);
 }
 
 /*
@@ -197,9 +196,7 @@ static int chr_netlink_thread(void *data)
 					g_chr_timer_state = CHR_TIMER_60;
 
 					chr_notify_event(CHR_SPEED_SLOW_EVENT,
-						g_user_space_pid,
-						netIfInfo_struct_ptr->src_addr,
-						NULL);
+						g_user_space_pid, 0xffffffff, NULL);
 				} else {
 					spin_unlock_bh(&dest_addr_timer_lock);
 				}
@@ -269,8 +266,7 @@ static void chr_netlink_init(void)
 		hwlog_info("%s: chr_netlink_init success\n", __func__);
 	sema_init(&g_chr_netlink_sync_sema, 0);
 	spin_lock_init(&dest_addr_timer_lock);
-	spin_lock_init(&chr_send_sem);
-	spin_lock_init(&chr_receive_sem);
+	spin_lock_init(&chr_send_lock);
 	init_timer(&g_chr_netlink_timer);
 	g_chr_netlink_timer.data = 0;
 	g_chr_netlink_timer.function = chr_netlink_timer;
@@ -307,7 +303,7 @@ int chr_notify_event(int event, int pid,
 	struct nlmsghdr *nlh = NULL;
 	struct chr_nl_packet_msg *packet = NULL;
 
-	spin_lock_bh(&chr_send_sem);
+	spin_lock_bh(&chr_send_lock);
 	if (!pid || !g_chr_nlfd) {
 		hwlog_err("%s: cannot notify event, pid = %d\n",
 			__func__,
@@ -343,11 +339,11 @@ int chr_notify_event(int event, int pid,
 
 	/*skb will be freed in netlink_unicast*/
 	ret = netlink_unicast(g_chr_nlfd, skb, pid, MSG_DONTWAIT);
-	hwlog_info("%s:data speed is slow!srcaddr=0x%x\n", __func__, src_addr);
+	hwlog_info("%s:data speed is slow! collateral information=0x%x\n", __func__, src_addr);
 	goto end;
 
 end:
-	spin_unlock_bh(&chr_send_sem);
+	spin_unlock_bh(&chr_send_lock);
 	return ret;
 }
 

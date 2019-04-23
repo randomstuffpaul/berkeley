@@ -40,14 +40,15 @@ struct dev_flag_device{
     int  index;
 };
 
-#define DP_LINK_EVENT_BUF_MAX (64)
-
 typedef struct {
 	dp_link_state_t state;
 	char *event;
 } dp_link_state_to_event_t;
 
+// NOTE: need to be treated separately for normal or factory version.
 static dp_link_state_to_event_t g_dp_link_event[] = {
+#ifndef DP_FACTORY_MODE_ENABLE
+	// for normal version
 	{ DP_LINK_STATE_CABLE_IN,        "DP_LINK_EVENT=CABLE_IN" },
 	{ DP_LINK_STATE_CABLE_OUT,       "DP_LINK_EVENT=CABLE_OUT" },
 	{ DP_LINK_STATE_MULTI_HPD,       "DP_LINK_EVENT=MULTI_HPD" },
@@ -57,10 +58,18 @@ static dp_link_state_to_event_t g_dp_link_event[] = {
 	{ DP_LINK_STATE_LINK_FAILED,     "DP_LINK_EVENT=LINK_FAILED" },
 	{ DP_LINK_STATE_LINK_RETRAINING, "DP_LINK_EVENT=LINK_RETRAINING" },
 	{ DP_LINK_STATE_HDCP_FAILED,     "DP_LINK_EVENT=HDCP_FAILED" },
-
-	// for MMIE test
-	{ DP_LINK_STATE_LINK_REDUCE_RATE,     "DP_LINK_EVENT=LINK_REDUCE_RATE" },
-	{ DP_LINK_STATE_INVALID_COMBINATIONS, "DP_LINK_EVENT=INVALID_COMBINATIONS" },
+#else
+	// for factory version: MMIE test
+	{ DP_LINK_STATE_CABLE_IN,             "MANUFACTURE_DP_LINK_EVENT=CABLE_IN" },
+	{ DP_LINK_STATE_CABLE_OUT,            "MANUFACTURE_DP_LINK_EVENT=CABLE_OUT" },
+	{ DP_LINK_STATE_AUX_FAILED,           "MANUFACTURE_DP_LINK_EVENT=AUX_FAILED" },
+	{ DP_LINK_STATE_SAFE_MODE,            "MANUFACTURE_DP_LINK_EVENT=SAFE_MODE" },
+	{ DP_LINK_STATE_EDID_FAILED,          "MANUFACTURE_DP_LINK_EVENT=EDID_FAILED" },
+	{ DP_LINK_STATE_LINK_FAILED,          "MANUFACTURE_DP_LINK_EVENT=LINK_FAILED" },
+	{ DP_LINK_STATE_HPD_NOT_EXISTED,      "MANUFACTURE_DP_LINK_EVENT=HPD_NOT_EXISTED" },
+	{ DP_LINK_STATE_LINK_REDUCE_RATE,     "MANUFACTURE_DP_LINK_EVENT=LINK_REDUCE_RATE" },
+	{ DP_LINK_STATE_INVALID_COMBINATIONS, "MANUFACTURE_DP_LINK_EVENT=INVALID_COMBINATIONS" },
+#endif
 };
 
 static struct dev_flag_device dp_source = {
@@ -615,12 +624,18 @@ void dp_link_state_event(dp_link_state_t state)
 			find = true;
 			strncpy(event_buf, g_dp_link_event[i].event,
 				MIN(DP_LINK_EVENT_BUF_MAX - 1, strlen(g_dp_link_event[i].event)));
+			dp_factory_set_link_event_no(state, false, event_buf, 0);
 			break;
 		}
 	}
 
 	if (!find) {
 		printk(KERN_ERR "%s: not find link event %d!\n", __func__, state);
+		return;
+	}
+
+	if (dp_factory_mode_is_enable() && !dp_factory_need_report_event()) {
+		printk(KERN_INFO "%s: skip event %s in factory!\n", __func__, event_buf);
 		return;
 	}
 

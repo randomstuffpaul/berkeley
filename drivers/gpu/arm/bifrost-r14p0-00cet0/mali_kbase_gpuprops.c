@@ -58,7 +58,7 @@ static void kbase_gpuprops_construct_coherent_groups(base_gpu_props * const prop
 	KBASE_DEBUG_ASSERT(NULL != props);
 
 	props->coherency_info.coherency = props->raw_props.mem_features;
-	props->coherency_info.num_core_groups = hweight64(props->raw_props.l2_present);
+	props->coherency_info.num_core_groups = hweight64(props->raw_props.l2_present);//lint !e514
 
 	if (props->coherency_info.coherency & GROUPS_L2_COHERENT) {
 		/* Group is l2 coherent */
@@ -102,7 +102,7 @@ static void kbase_gpuprops_construct_coherent_groups(base_gpu_props * const prop
 
 		/* Populate the coherent_group structure for each group */
 		current_group->core_mask = group_mask & props->raw_props.shader_present;
-		current_group->num_cores = hweight64(current_group->core_mask);
+		current_group->num_cores = hweight64(current_group->core_mask);//lint !e514
 
 		num_groups++;
 		current_group++;
@@ -275,10 +275,10 @@ void kbase_gpuprops_set(struct kbase_device *kbdev)
 	gpu_props->mmu.va_bits = KBASE_UBFX32(raw->mmu_features, 0U, 8);
 	gpu_props->mmu.pa_bits = KBASE_UBFX32(raw->mmu_features, 8U, 8);
 
-	gpu_props->num_cores = hweight64(raw->shader_present);
-	gpu_props->num_core_groups = hweight64(raw->l2_present);
-	gpu_props->num_address_spaces = hweight32(raw->as_present);
-	gpu_props->num_job_slots = hweight32(raw->js_present);
+	gpu_props->num_cores = hweight64(raw->shader_present);//lint !e514
+	gpu_props->num_core_groups = hweight64(raw->l2_present);//lint !e514
+	gpu_props->num_address_spaces = hweight32(raw->as_present);//lint !e514
+	gpu_props->num_job_slots = hweight32(raw->js_present);//lint !e514
 }
 
 void kbase_gpuprops_set_features(struct kbase_device *kbdev)
@@ -297,7 +297,7 @@ void kbase_gpuprops_set_features(struct kbase_device *kbdev)
 	 * Additionally, add non-coherent mode, as this is always supported.
 	 */
 	gpu_props->raw_props.coherency_mode = regdump.coherency_features |
-		COHERENCY_FEATURE_BIT(COHERENCY_NONE);
+		COHERENCY_FEATURE_BIT(COHERENCY_NONE);//lint !e648
 
 	if (!kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_THREAD_GROUP_SPLIT))
 		gpu_props->thread_props.max_thread_group_split = 0;

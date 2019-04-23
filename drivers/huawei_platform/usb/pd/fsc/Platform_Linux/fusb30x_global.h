@@ -36,6 +36,7 @@ struct fusb30x_chip                                 // Contains data required by
     FSC_U8 discover_mode_supported;
     FSC_U8 enter_mode_supported;
     FSC_U8 discover_svid_supported;
+    FSC_U8 sink_pdo_number;
 
 #ifdef FSC_DEBUG
     FSC_U8 dbgTimerTicks;                           // Count of timer ticks

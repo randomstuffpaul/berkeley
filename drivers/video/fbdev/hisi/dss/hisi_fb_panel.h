@@ -471,6 +471,9 @@ struct mipi_dsi_phy_ctrl {
 	uint32_t rg_0p8v;
 	uint32_t rg_lpf_r;
 	uint32_t rg_cp;
+	uint32_t rg_pll_fbkdiv;
+	uint32_t rg_pll_prediv;
+	uint32_t rg_pll_posdiv;
 	uint32_t t_prepare;
 	uint32_t t_lpx;
 	uint32_t t_prebegin;
@@ -734,7 +737,6 @@ struct hisi_panel_info {
 	uint8_t  reserved[3];
 	char* panel_name;
 	char lcd_panel_version[LCD_PANEL_VERSION_SIZE];
-	uint32_t board_version;
 	uint8_t dbv_curve_mapped_support;
 	uint8_t is_dbv_need_mapped;
 	uint8_t dbv_map_index;

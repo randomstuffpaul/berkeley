@@ -102,6 +102,8 @@ static unsigned long clarify_token;
 DEFINE_MUTEX(module_mutex);
 EXPORT_SYMBOL_GPL(module_mutex);
 static LIST_HEAD(modules);
+DEFINE_MUTEX(klp_mutex);
+EXPORT_SYMBOL_GPL(klp_mutex);
 
 #ifdef CONFIG_MODULES_TREE_LOOKUP
 
@@ -1939,7 +1941,8 @@ static inline void hhee_lkm_update(const struct module_layout *layout)
 			layout->text_size, clarify_token, 0, 0, 0, 0, &res);
 
 	if (res.a0)
-		pr_err("service from hhee failed-test.\n");
+		pr_err("service from hhee failed test.\n");
+
 #else
 	(void *)layout;
 #endif
@@ -3706,21 +3709,26 @@ static int load_module(struct load_info *info, const char __user *uargs,
 
 	/* Set up MODINFO_ATTR fields */
 	setup_modinfo(mod, info);
-
+	mutex_lock(&klp_mutex);
 	/* Fix up syms, so that st_value is a pointer to location. */
 	err = simplify_symbols(mod, info);
-	if (err < 0)
+	if (err < 0) {
+		mutex_unlock(&klp_mutex);
 		goto free_modinfo;
+	}
 
 	err = apply_relocations(mod, info);
-	if (err < 0)
+	if (err < 0) {
+		mutex_unlock(&klp_mutex);
 		goto free_modinfo;
-
+	}
 	err = post_relocation(mod, info);
-	if (err < 0)
+	if (err < 0) {
+		mutex_unlock(&klp_mutex);
 		goto free_modinfo;
-
+	}
 	flush_module_icache(mod);
+	mutex_unlock(&klp_mutex);
 
 	/* Now copy in args */
 	mod->args = strndup_user(uargs, ~0UL >> 1);

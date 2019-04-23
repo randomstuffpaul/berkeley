@@ -50,7 +50,6 @@ static int lcd_kit_cmds_to_dsi_cmds(struct lcd_kit_dsi_cmd_desc* lcd_kit_cmds, s
 		cmd->dtype  |= GEN_VID_LP_CMD;
 	}
 	cmd->vc =  lcd_kit_cmds->vc;
-	cmd->wait =  lcd_kit_cmds->wait;
 	cmd->waittype =  lcd_kit_cmds->waittype;
 	cmd->dlen =  lcd_kit_cmds->dlen;
 	cmd->payload = lcd_kit_cmds->payload;
@@ -85,6 +84,21 @@ static int lcd_kit_cmd_is_write(struct dsi_cmd_desc* cmd)
 	}
 	return ret;
 }
+
+void lcd_kit_dsi_cmds_tx_delay(char wait,char waittype)
+{
+	if (wait) {
+		if (waittype == WAIT_TYPE_US) {
+			udelay(wait);
+		}
+		else if (waittype == WAIT_TYPE_MS) {
+			LCD_KIT_DELAY(wait);
+		}
+		else {
+			msleep(wait * 1000);
+		}
+	}
+}
 /*
  *  dsi send cmds
 */
@@ -100,6 +114,9 @@ int lcd_kit_dsi_cmds_tx(void* hld, struct lcd_kit_dsi_panel_cmds* cmds)
 		LCD_KIT_ERR("cmd cnt is 0!\n");
 		return LCD_KIT_FAIL;
 	}
+
+	memset(&dsi_cmd, 0, sizeof(struct dsi_cmd_desc) );
+
 	if (cmds->cmds == NULL || cmds->cmd_cnt <= 0) {
 		LCD_KIT_ERR("cmds is null, or cmds->cmd_cnt <= 0!\n");
 		return LCD_KIT_FAIL;
@@ -121,6 +138,7 @@ int lcd_kit_dsi_cmds_tx(void* hld, struct lcd_kit_dsi_panel_cmds* cmds)
 				mipi_dsi_cmds_tx(&dsi_cmd, 1, hisifd->mipi_dsi1_base);
 			}
 		}
+		lcd_kit_dsi_cmds_tx_delay( cmds->cmds[i].wait,cmds->cmds[i].waittype);
 	}
 	up(&disp_info->lcd_kit_sem);
 	return ret;
@@ -153,6 +171,7 @@ int lcd_kit_dsi_cmds_rx(void* hld, uint8_t* out, struct lcd_kit_dsi_panel_cmds* 
 		LCD_KIT_ERR("cmds is null, or cmds->cmd_cnt <= 0!\n");
 		return LCD_KIT_FAIL;
 	}
+	memset(&dsi_cmd, 0, sizeof(struct dsi_cmd_desc) );
 	link_state = cmds->link_state;
 	down(&disp_info->lcd_kit_sem);
 	for (i = 0; i < cmds->cmd_cnt; i++) {
@@ -160,6 +179,7 @@ int lcd_kit_dsi_cmds_rx(void* hld, uint8_t* out, struct lcd_kit_dsi_panel_cmds* 
 		if (lcd_kit_cmd_is_write(&dsi_cmd)) {
 			if (!lcd_kit_dsi_fifo_is_full(hisifd->mipi_dsi0_base)) {
 				mipi_dsi_cmds_tx(&dsi_cmd, 1, hisifd->mipi_dsi0_base);
+				lcd_kit_dsi_cmds_tx_delay( cmds->cmds[i].wait,cmds->cmds[i].waittype);
 			} else {
 				LCD_KIT_ERR("mipi write error\n");
 				ret = LCD_KIT_FAIL;
@@ -229,6 +249,7 @@ int lcd_kit_dsi_cmds_tx_no_lock(void* hld, struct lcd_kit_dsi_panel_cmds* cmds)
 		LCD_KIT_ERR("hisifd is null!\n");
 		return LCD_KIT_FAIL;
 	}
+	memset(&dsi_cmd, 0, sizeof(struct dsi_cmd_desc) );
 	link_state = cmds->link_state;
 	for (i = 0; i < cmds->cmd_cnt; i++) {
 		lcd_kit_cmds_to_dsi_cmds(&cmds->cmds[i], &dsi_cmd, link_state);
@@ -240,6 +261,7 @@ int lcd_kit_dsi_cmds_tx_no_lock(void* hld, struct lcd_kit_dsi_panel_cmds* cmds)
 				mipi_dsi_cmds_tx(&dsi_cmd, 1, hisifd->mipi_dsi1_base);
 			}
 		}
+		lcd_kit_dsi_cmds_tx_delay( cmds->cmds[i].wait,cmds->cmds[i].waittype);
 	}
 	return ret;
 
@@ -271,12 +293,14 @@ int lcd_kit_dsi_cmds_rx_no_lock(void* hld, uint8_t* out, struct lcd_kit_dsi_pane
 		LCD_KIT_ERR("cmds is null, or cmds->cmd_cnt <= 0!\n");
 		return LCD_KIT_FAIL;
 	}
+	memset(&dsi_cmd, 0, sizeof(struct dsi_cmd_desc) );
 	link_state = cmds->link_state;
 	for (i = 0; i < cmds->cmd_cnt; i++) {
 		lcd_kit_cmds_to_dsi_cmds(&cmds->cmds[i], &dsi_cmd, link_state);
 		if (lcd_kit_cmd_is_write(&dsi_cmd)) {
 			if (!lcd_kit_dsi_fifo_is_empty(hisifd->mipi_dsi0_base)) {
 				mipi_dsi_cmds_tx(&dsi_cmd, 1, hisifd->mipi_dsi0_base);
+				lcd_kit_dsi_cmds_tx_delay( cmds->cmds[i].wait,cmds->cmds[i].waittype);
 			} else {
 				LCD_KIT_ERR("mipi write error\n");
 				ret = LCD_KIT_FAIL;

@@ -59,6 +59,20 @@ bool hisi_cluster_cpu_all_pwrdn(void)
 }
 EXPORT_SYMBOL(hisi_cluster_cpu_all_pwrdn);
 
+
+bool hisi_fcm_cluster_pwrdn(void)
+{
+	int fcm_pwrdn = 0;
+
+	spin_lock(&idle_spin_lock);
+	fcm_pwrdn = cpumask_subset(cpu_online_mask, &idle_cpus_mask);
+	spin_unlock(&idle_spin_lock);
+
+	return !!fcm_pwrdn;
+}
+EXPORT_SYMBOL(hisi_fcm_cluster_pwrdn);
+
+
 static struct cpumask pending_idle_cpumask;
 
 static void kick_cpu_sync(int cpu)

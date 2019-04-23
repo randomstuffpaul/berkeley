@@ -173,6 +173,7 @@ extern "C" {
 #define HIFI_SEC_HEAD_LOCATION          (HIFI_IMAGE_TCMBAK_LOCATION + HIFI_IMAGE_TCMBAK_SIZE)
 #define HIFI_SEC_RESERVE_ADDR           (HIFI_SEC_HEAD_LOCATION + HIFI_SEC_HEAD_SIZE)
 
+#define DRV_WATCHDOG_BASE_ADDR          (SOC_ACPU_ASP_WD_BASE_ADDR)
 #else
 #define HIFI_SEC_REGION_SIZE            (0xB80000)
 #define HIFI_RUN_SIZE                   (0xB00000)
@@ -188,6 +189,8 @@ extern "C" {
 #define HIFI_SEC_HEAD_LOCATION          (HIFI_IMAGE_TCMBAK_LOCATION + HIFI_IMAGE_TCMBAK_SIZE)
 #define HIFI_SEC_RESERVE_ADDR           (HIFI_SEC_HEAD_LOCATION + HIFI_SEC_HEAD_SIZE)
 #define HIFI_RUN_LOCATION               (HIFI_SEC_RESERVE_ADDR + HIFI_SEC_RESERVE_SIZE)
+
+#define DRV_WATCHDOG_BASE_ADDR          (SOC_ACPU_ASP_Watchdog_BASE_ADDR)
 #endif
 
 #define SIZE_PARAM_PRIV                         (206408) /*refer from function dsp_nv_init in dsp_soc_para_ctl.c  */

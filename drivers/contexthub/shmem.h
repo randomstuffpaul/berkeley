@@ -14,5 +14,6 @@ extern int shmem_send(obj_tag_t module_id, const void *usr_buf, unsigned int usr
 extern int contexthub_shmem_init(void);
 extern const pkt_header_t *shmempack(const char *buf, unsigned int length);
 extern unsigned int shmem_get_capacity(void);
+extern int shmem_send_resp(const pkt_header_t * head);
 
 #endif

@@ -36,6 +36,7 @@ typedef enum _tag_hwfpga_config_type
     HWCAM_FPGA_DISABLE,
     HWCAM_FPGA_INITIAL,
     HWCAM_FPGA_CLOSE,
+    HWCAM_FPGA_CHECKDEVICE,
 //TODO...
 } hwfpga_config_type_t;
 

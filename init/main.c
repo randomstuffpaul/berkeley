@@ -502,6 +502,14 @@ static void __init filter_args(char *cmdline) {
 }
 #endif
 
+#ifdef CONFIG_DEBUG_RODATA
+void mark_constdata_ro(void);
+#else
+static void mark_constdata_ro(void)
+{
+}
+#endif
+
 asmlinkage __visible void __init start_kernel(void)
 {
 	char *command_line;
@@ -529,12 +537,16 @@ asmlinkage __visible void __init start_kernel(void)
 	page_address_init();
 	pr_notice("%s", linux_banner);
 	setup_arch(&command_line);
+#ifdef CONFIG_HISI_EARLY_RODATA_PROTECTION
+/* setup_arch is the last function to alter the constdata content */
+	mark_constdata_ro();
+#endif
 	mm_init_cpumask(&init_mm);
 	setup_command_line(command_line);
 	setup_nr_cpu_ids();
 	setup_per_cpu_areas();
-	boot_cpu_state_init();
 	smp_prepare_boot_cpu();	/* arch-specific boot-cpu hooks */
+	boot_cpu_hotplug_init();
 
 	build_all_zonelists(NULL, NULL);
 	page_alloc_init();
@@ -957,10 +969,14 @@ __setup("rodata=", set_debug_rodata);
 #ifdef CONFIG_DEBUG_RODATA
 static void mark_readonly(void)
 {
-	if (rodata_enabled)
+	if (rodata_enabled) {
+#ifndef CONFIG_HISI_EARLY_RODATA_PROTECTION
+		mark_constdata_ro();
+#endif
 		mark_rodata_ro();
-	else
+	} else {
 		pr_info("Kernel memory protection disabled.\n");
+	}
 }
 #else
 static inline void mark_readonly(void)

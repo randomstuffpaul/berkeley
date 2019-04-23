@@ -42,7 +42,7 @@ int log_to_exception(char* tag, char* msg)
 	filp = filp_open(LOG_EXCEPTION_FS, O_RDWR, 0);
 
 	if (!filp || IS_ERR(filp)) {
-		hwlog_err("%s: access '%s' fail %p", __func__, LOG_EXCEPTION_FS, filp);
+		hwlog_err("%s: access '%s' fail", __func__, LOG_EXCEPTION_FS);
 		set_fs(oldfs);
 		return -ENODEV;
 	}
@@ -98,7 +98,7 @@ int logbuf_to_exception(char category, int level, char log_type, char sn, void *
 	filp = filp_open(LOG_EXCEPTION_FS, O_RDWR, 0);
 
 	if (!filp || IS_ERR(filp)) {
-		hwlog_err("%s: access '%s' fail %p", __func__, LOG_EXCEPTION_FS, filp);
+		hwlog_err("%s: access '%s' fail", __func__, LOG_EXCEPTION_FS);
 		set_fs(oldfs);
 		return -ENODEV;
 	}

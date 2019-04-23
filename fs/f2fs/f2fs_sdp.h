@@ -66,6 +66,8 @@
 #define FS_AES_256_XTS_KEY_SIZE		(64)
 #define FS_ENCRYPTION_CONTEXT_FORMAT_V2	(2)
 
+#define FS_KEY_INDEX_OFFSET		(63)
+
 struct fscrypt_sdp_key {
 	u32 version;
 	u32 sdpclass;

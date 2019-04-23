@@ -48,7 +48,6 @@ snd-soc-hi3650-hi6403-objs := hi3650_hi6403.o
 snd-soc-hi3660-hi6402-objs := hi3660_hi6402.o
 # HI3660-HI6403 Machine Support
 snd-soc-hi3660-hi6403-objs := hi3660_hi6403.o
-# HI3660-HI6403ES Machine Support
 
 obj-$(CONFIG_SND_HI3650_HI6402) += snd-soc-hi3650-hi6402.o
 obj-$(CONFIG_SND_HI3650_HI6403) += snd-soc-hi3650-hi6403.o

@@ -147,6 +147,16 @@ int f2fs_convert_inline_page(struct dnode_of_data *dn, struct page *page)
 	if (err)
 		return err;
 
+	if (unlikely(dn->data_blkaddr != NEW_ADDR)) {
+		f2fs_put_dnode(dn);
+		set_sbi_flag(fio.sbi, SBI_NEED_FSCK);
+		f2fs_msg(fio.sbi->sb, KERN_WARNING,
+			"%s: corrupted inline inode ino=%lx, i_addr[0]:0x%x, "
+			"run fsck to fix.",
+			__func__, dn->inode->i_ino, dn->data_blkaddr);
+		return -EINVAL;
+	}
+
 	f2fs_bug_on(F2FS_P_SB(page), PageWriteback(page));
 
 	read_inline_data(page, dn->inode_page);
@@ -305,7 +315,7 @@ process_inline:
 		clear_inode_flag(inode, FI_INLINE_DATA);
 		f2fs_put_page(ipage, 1);
 	} else if (ri && (ri->i_inline & F2FS_INLINE_DATA)) {
-		if (truncate_blocks(inode, 0, false))
+		if (truncate_blocks(inode, 0, false, false))
 			return false;
 		goto process_inline;
 	}
@@ -386,6 +396,17 @@ static int f2fs_move_inline_dirents(struct inode *dir, struct page *ipage,
 	err = f2fs_reserve_block(&dn, 0);
 	if (err)
 		goto out;
+
+	if (unlikely(dn.data_blkaddr != NEW_ADDR)) {
+		f2fs_put_dnode(&dn);
+		set_sbi_flag(F2FS_P_SB(page), SBI_NEED_FSCK);
+		f2fs_msg(F2FS_P_SB(page)->sb, KERN_WARNING,
+			"%s: corrupted inline inode ino=%lx, i_addr[0]:0x%x, "
+			"run fsck to fix.",
+			__func__, dir->i_ino, dn.data_blkaddr);
+		err = -EINVAL;
+		goto out;
+	}
 
 	f2fs_wait_on_page_writeback(page, DATA, true);
 	zero_user_segment(page, MAX_INLINE_DATA(dir), PAGE_SIZE);
@@ -468,7 +489,7 @@ static int f2fs_add_inline_entries(struct inode *dir, void *inline_dentry)
 	return 0;
 punch_dentry_pages:
 	truncate_inode_pages(&dir->i_data, 0);
-	truncate_blocks(dir, 0, false);
+	truncate_blocks(dir, 0, false, false);
 	remove_dirty_inode(dir);
 	return err;
 }

@@ -43,7 +43,7 @@ extern  struct ts_kit_device_data *g_focal_dev_data ;
 #define FTS_MODEL_FIRST_START		0x02
 #define FTS_PROJECT_ID_LEN		11
 #define FTS_PANEL_ID_START_BIT		6
-#define FTS_VENDOR_NAME_LEN		8
+#define FTS_VENDOR_NAME_LEN		12
 #define FTS_TP_COLOR_LEN		3
 #define TP_COLOR_SIZE   		15
 #define FTS_REPORT_BTN_TOUCH

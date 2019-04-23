@@ -445,6 +445,8 @@ struct dp_ctrl {
 	uint8_t rx_caps[DPTX_RECEIVER_CAP_SIZE];
 
 	uint8_t *edid;
+	uint32_t edid_try_count;
+	uint32_t edid_try_delay; // unit: ms
 
 	struct sdp_full_data sdp_list[DPTX_SDP_NUM];
 	struct dptx_aux aux;

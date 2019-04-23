@@ -50,7 +50,7 @@ static int parse_test_arg(char *buf, int buf_len, char *arg_name, int *arg_value
 	return 1;
 }
 
-static int sourcesink_bulk_tx_show(struct seq_file *s, void *unused)
+static int sourcesink_bulk_tx_show(struct seq_file *s, void *_unused)
 {
 	seq_printf(s, "Usage:\n"
 		      "echo \"tx_len=XX,tx_pattern=XX\" > /d/sourcesink-0/bulk_xfer\n"
@@ -349,7 +349,7 @@ struct isoc_test_case {
 	__u16 pkt_len;
 };
 
-static int sourcesink_isoc_show(struct seq_file *s, void *unused)
+static int sourcesink_isoc_show(struct seq_file *s, void *_unused)
 {
 	struct sourcesink	*ss = s->private;
 	mutex_lock(&ss->isoc_test_lock);
@@ -575,9 +575,9 @@ static unsigned long calc_interval(struct sourcesink *ss, bool is_in)
 	interval = 1UL << (isoc_ep->desc.bInterval - 1);/*lint !e613*/
 
 	if (ss->udev->speed == USB_SPEED_FULL)
-		interval *= 125;
-	else if (ss->udev->speed == USB_SPEED_HIGH)
 		interval *= 1000;
+	else if (ss->udev->speed == USB_SPEED_HIGH)
+		interval *= 125;
 
 	return interval;
 }
@@ -618,7 +618,7 @@ static void excute_isoc_test(struct sourcesink *ss,
 			ss->isoc_test_result = -EINVAL;
 			return;
 		}
-		tx_delay_ms = (interval * rx_test->pkt_num * rx_test->urb_num)/1000;
+		rx_delay_ms = (interval * rx_test->pkt_num * rx_test->urb_num)/1000;
 	}
 
 	if (tx_test->pkt_num != 0) {
@@ -631,7 +631,7 @@ static void excute_isoc_test(struct sourcesink *ss,
 			ss->isoc_test_result = -EINVAL;
 			return;
 		}
-		rx_delay_ms = (interval * rx_test->pkt_num * rx_test->urb_num)/1000;
+		tx_delay_ms = (interval * tx_test->pkt_num * tx_test->urb_num)/1000;
 	}
 
 	delay_ms = (tx_delay_ms > rx_delay_ms) ? tx_delay_ms : rx_delay_ms;
@@ -874,7 +874,7 @@ static int control_rw_test(struct sourcesink *ss, int size, bool r)
 	return ret;
 }
 
-static int sourcesink_control_rw_show(struct seq_file *s, void *unused)
+static int sourcesink_control_rw_show(struct seq_file *s, void *_unused)
 {
 	struct sourcesink	*ss = s->private;
 	mutex_lock(&ss->control_rw_lock);

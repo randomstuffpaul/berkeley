@@ -49,6 +49,7 @@ void ilitek_config_enable_report_irq(void)
 
 int ilitek_config_check_int_status(bool high)
 {
+    u32 debug_pccont = 0;
     int timer = 1000;
     int irq_gpio = g_ilitek_ts->ts_dev_data->ts_platform_data->irq_gpio;
 
@@ -69,6 +70,12 @@ int ilitek_config_check_int_status(bool high)
         mdelay(5);
         timer--;
     }
+
+    /* debug: dump reg in timeout */
+    ilitek_config_ice_mode_enable();
+    debug_pccont = ilitek_config_ice_mode_read(ILITEK_DEBUG_REG_PC_CONT);
+    ilitek_info("read reg[0x%x], data = 0x%x\n", ILITEK_DEBUG_REG_PC_CONT, debug_pccont);
+    ilitek_config_ice_mode_disable();
 
     ilitek_info("check busy timeout !!\n");
 
@@ -760,25 +767,44 @@ int ilitek_config_set_watch_dog(bool enable)
     return 0;
 }
 
+#define ILITEK_CMD_CDC_DEBUG                   0xF8
 int ilitek_config_check_cdc_busy(int retrys, int delay)
 {
+    int i = 1;
     u8 cmd[2] = { 0 };
-    u8 busy = 0;
+    u8 debug_cmd[2] = { 0 };
+    u8 busy = 0, debug_data = 0;
+    u32 debug_pccont = 0;
     struct ilitek_protocol *p_pro = g_ilitek_ts->pro;
 
     cmd[0] = p_pro->cmd_read_ctrl;
     cmd[1] = p_pro->cmd_cdc_busy;
 
-    while (retrys > 0) {
-        mdelay(delay);
+    debug_cmd[0] = p_pro->cmd_read_ctrl;
+    debug_cmd[1] = ILITEK_CMD_CDC_DEBUG;
+
+    ilitek_info("check cdc busy start, retrys = %d, delay = %d\n", retrys, delay);
+    do {
         ilitek_i2c_write_read(cmd, &busy, 1);
         ilitek_debug(DEBUG_CONFIG, "cdc busy state = 0x%x\n", busy);
+
+        if (ilitek_debug_level & DEBUG_CONFIG) {
+            ilitek_i2c_write_read(debug_cmd, &debug_data, 1);
+            ilitek_debug(DEBUG_CONFIG, "cdc f8 data = 0x%x\n", debug_data);
+        }
+
         if (busy == 0x41 || busy == 0x51) {
             ilitek_info("check busy is free\n");
             return 0;
         }
-        retrys--;
-    }
+        mdelay(delay);
+    } while (i++ <= retrys);
+
+    /* debug: dump reg in timeout */
+    ilitek_config_ice_mode_enable();
+    debug_pccont = ilitek_config_ice_mode_read(ILITEK_DEBUG_REG_PC_CONT);
+    ilitek_info("read reg[0x%x], data = 0x%x\n", ILITEK_DEBUG_REG_PC_CONT, debug_pccont);
+    ilitek_config_ice_mode_disable();
 
     ilitek_info("check busy timeout !!\n");
     return -EIO;

@@ -838,6 +838,7 @@ typedef enum
     WLAN_AP_CHIP_OUI_RALINK     = 1,   /* 芯片厂商为RALINK */
     WLAN_AP_CHIP_OUI_RALINK1    = 2,
     WLAN_AP_CHIP_OUI_ATHEROS    = 3,   /* 芯片厂商为ATHEROS */
+    WLAN_AP_CHIP_OUI_BCM        = 4,   /* 芯片厂商为BROADCOM */
 
     WLAN_AP_CHIP_OUI_BUTT
 }wlan_ap_chip_oui_enum;

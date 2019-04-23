@@ -28,6 +28,9 @@ static u32 g_subtype;
 #undef __AP_BL31PANIC_SUBTYPE_MAP
 #define __AP_BL31PANIC_SUBTYPE_MAP(x, y, z) {x, #y, #z, z},
 
+#undef __AP_VENDOR_PANIC_SUBTYPE_MAP
+#define __AP_VENDOR_PANIC_SUBTYPE_MAP(x, y, z) {x, #y, #z, z},
+
 #undef __APWDT_HWEXC_SUBTYPE_MAP
 #define __APWDT_HWEXC_SUBTYPE_MAP(x, y, z) {x, #y":hw", #z, z},
 
@@ -59,6 +62,7 @@ struct exp_subtype exp_subtype_map[] = {
 #undef __MMC_EXCEPTION_SUBTYPE_MAP
 #undef __AP_PANIC_SUBTYPE_MAP
 #undef __AP_BL31PANIC_SUBTYPE_MAP
+#undef __AP_VENDOR_PANIC_SUBTYPE_MAP
 #undef __APWDT_HWEXC_SUBTYPE_MAP
 #undef __APWDT_EXC_SUBTYPE_MAP
 #undef __LPM3_EXC_SUBTYPE_MAP

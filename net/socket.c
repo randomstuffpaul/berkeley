@@ -89,6 +89,7 @@
 #include <linux/magic.h>
 #include <linux/slab.h>
 #include <linux/xattr.h>
+#include <linux/nospec.h>
 
 #include <asm/uaccess.h>
 #include <asm/unistd.h>
@@ -116,7 +117,7 @@ unsigned int sysctl_net_busy_poll __read_mostly;
 #include <huawei_platform/emcom/emcom_xengine.h>
 #endif
 #ifdef CONFIG_HUAWEI_BASTET
-#include <huawei_platform/power/bastet/bastet.h>
+#include <huawei_platform/net/bastet/bastet.h>
 #endif
 #ifdef CONFIG_HW_FDLEAK
 #include <chipset_common/hwfdleak/fdleak.h>
@@ -453,6 +454,9 @@ static int sock_map_fd(struct socket *sock, int flags)
 	newfile = sock_alloc_file(sock, flags, NULL);
 	if (likely(!IS_ERR(newfile))) {
 		fd_install(fd, newfile);
+#ifdef CONFIG_MPTCP
+		sock->fd = fd;
+#endif
 		return fd;
 	}
 
@@ -592,7 +596,7 @@ struct socket *sock_alloc(void)
 	inode->i_uid = current_fsuid();
 	inode->i_gid = current_fsgid();
 	inode->i_op = &sockfs_inode_ops;
-#ifdef CONFIG_HUAWEI_KSTATE
+#if defined(CONFIG_HUAWEI_KSTATE) || defined(CONFIG_MPTCP)
 	if (sock != NULL && current != NULL) {
 		sock->pid = current->tgid;
 	}
@@ -612,7 +616,7 @@ EXPORT_SYMBOL(sock_alloc);
  *	an inode not a file.
  */
 
-static void __sock_release(struct socket *sock, struct inode *inode)
+void __sock_release(struct socket *sock, struct inode *inode)
 {
 	if (sock->ops) {
 		struct module *owner = sock->ops->owner;
@@ -642,9 +646,8 @@ static void __sock_release(struct socket *sock, struct inode *inode)
 
 void sock_release(struct socket *sock)
 {
-       __sock_release(sock, NULL);
+	__sock_release(sock, NULL);
 }
-
 EXPORT_SYMBOL(sock_release);
 
 void __sock_tx_timestamp(__u16 tsflags, __u8 *tx_flags)
@@ -2389,6 +2392,7 @@ SYSCALL_DEFINE2(socketcall, int, call, unsigned long __user *, args)
 
 	if (call < 1 || call > SYS_SENDMMSG)
 		return -EINVAL;
+	call = array_index_nospec(call, SYS_SENDMMSG + 1);
 
 	len = nargs[call];
 	if (len > sizeof(a))

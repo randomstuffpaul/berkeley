@@ -104,7 +104,7 @@ static SINT32 VDMHAL_CheckRpCfgAddress(OMXVDH_REG_CFG_S *pVdhRegCfg, MEM_BUFFER_
 	VDMHAL_ASSERT_RET(pVdhMemMap[VDH_SHAREFD_MESSAGE_POOL].u8IsMapped != 0, "msg pool is not mapped");
 	VDMHAL_ASSERT_RET(pVdhRegCfg->VdhAvmAddr != 0, "vdhAvmAddr is NULL");
 
-	if (pVdhRegCfg->VdhAvmAddr != (pVdhMemMap[VDH_SHAREFD_MESSAGE_POOL].u32StartPhyAddr
+	if (pVdhRegCfg->VdhAvmAddr != (pVdhMemMap[VDH_SHAREFD_MESSAGE_POOL].startPhyAddr
 		+ (RP_MSG_SLOT_INDEX * 4 * USE_MSG_SLOT_SIZE))) {
 		dprint(PRN_FATAL, "%s VdhAvmAddr is error", __func__);
 		return VDMHAL_ERR;
@@ -204,7 +204,7 @@ SINT32 VDMHAL_IMP_OpenHAL(MEM_BUFFER_S* pOpenParam)
 	VDMHAL_ASSERT_RET(NULL != pOpenParam, "pOpenParam is error ");
 	VDMHAL_ASSERT_RET(0 != pOpenParam->u8IsMapped, "Message no map");
 
-	MemBaseAddr = pOpenParam->u32StartPhyAddr;
+	MemBaseAddr = pOpenParam->startPhyAddr;
 	Size = pOpenParam->u32Size;
 	VdhId = 0;
 
@@ -391,7 +391,7 @@ SINT32 VDMHAL_IMP_OpenHeifHAL(MEM_BUFFER_S* pOpenParam)
 	VDMHAL_ASSERT_RET(NULL != pOpenParam, "pOpenParam is error ");
 	VDMHAL_ASSERT_RET(0 != pOpenParam->u8IsMapped, "Message no map");
 
-	MemBaseAddr = pOpenParam->u32StartPhyAddr;
+	MemBaseAddr = pOpenParam->startPhyAddr;
 	Size = pOpenParam->u32Size;
 	VdhId = 1;
 
@@ -619,24 +619,24 @@ SINT32 VDMHAL_IMP_CheckCfgAddress(OMXVDH_REG_CFG_S *pVdhRegCfg, MEM_BUFFER_S* pV
 			"pVdhRegCfg->mbamt_to_dec is error");
 
 	/* down message check */
-	u32MapMsgAddr = (pVdhMemMap[VDH_SHAREFD_MESSAGE_POOL].u32StartPhyAddr
+	u32MapMsgAddr = (pVdhMemMap[VDH_SHAREFD_MESSAGE_POOL].startPhyAddr
 			+ (DN_MSG_SLOT_INDEX * 4 * msg_slot_size));
 	VDH_CHECK_CFG_ADDR_EQ_RETURN(pVdhRegCfg->VdhAvmAddr, "down message", u32MapMsgAddr);
 
 	/* up message check */
-	u32MapMsgAddr = (pVdhMemMap[VDH_SHAREFD_MESSAGE_POOL].u32StartPhyAddr
+	u32MapMsgAddr = (pVdhMemMap[VDH_SHAREFD_MESSAGE_POOL].startPhyAddr
 			+ (UP_MSG_SLOT_INDEX * 4 * msg_slot_size));
 	VDH_CHECK_CFG_ADDR_EQ_RETURN(pVdhRegCfg->VdhVamAddr, "up message", u32MapMsgAddr);
 
 	/* hfbc message check */
-	u32MapMsgAddr = (pVdhMemMap[VDH_SHAREFD_MESSAGE_POOL].u32StartPhyAddr
+	u32MapMsgAddr = (pVdhMemMap[VDH_SHAREFD_MESSAGE_POOL].startPhyAddr
 			 + (DN_MSG_HEAD_SLOT_INDEX  * 4 * msg_slot_size));
 	VDH_CHECK_CFG_ADDR_EQ_RETURN(pVdhRegCfg->VdhCfgInfoAddr, "hfbc message", u32MapMsgAddr);
 
 	/* stream  check */
 	for (index = VDH_SHAREFD_STREAM_BUF; index < vdhStreamBufNum; index++) {
-		u32StartStreamPhyAddr = pVdhMemMap[index].u32StartPhyAddr;
-		u32EndStreamPhyAddr = (pVdhMemMap[index].u32StartPhyAddr
+		u32StartStreamPhyAddr = pVdhMemMap[index].startPhyAddr;
+		u32EndStreamPhyAddr = (pVdhMemMap[index].startPhyAddr
 					+ pVdhMemMap[index].u32Size);
 		vdhCfg = ((STREAM_BASE_ADDR *)(&(pVdhRegCfg->VdhStreamBaseAddr)))->stream_base_addr;
 		/* VDH_CHECK_CFG_ADDR_RETURN(((STREAM_BASE_ADDR *)(&(pVdhRegCfg->VdhStreamBaseAddr)))->stream_base_addr,
@@ -661,11 +661,11 @@ SINT32 VDMHAL_IMP_CheckCfgAddress(OMXVDH_REG_CFG_S *pVdhRegCfg, MEM_BUFFER_S* pV
 		if (pVdhMemMap[index].u8IsMapped == 0) {
 			break;
 		}
-		if (((USIGN)(pVdhRegCfg->VdhYstAddr) >= pVdhMemMap[index].u32StartPhyAddr)
+		if (((USIGN)(pVdhRegCfg->VdhYstAddr) >= pVdhMemMap[index].startPhyAddr)
 			&& ((pVdhRegCfg->VdhUvoffset > 0)
 				&& ((HI_U32)pVdhRegCfg->VdhUvoffset < pVdhMemMap[index].u32Size))
 			&& ((USIGN)(pVdhRegCfg->VdhYstAddr)
-				< (pVdhMemMap[index].u32StartPhyAddr
+				< (pVdhMemMap[index].startPhyAddr
 					+ pVdhMemMap[index].u32Size
 					- pVdhRegCfg->VdhUvoffset))) {
 			is_mapped = 1;

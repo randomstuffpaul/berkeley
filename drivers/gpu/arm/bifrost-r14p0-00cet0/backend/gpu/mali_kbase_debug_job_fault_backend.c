@@ -77,7 +77,7 @@ static int as_reg_snapshot[] = {
 	AS_FAULTADDRESS_HI,
 	AS_STATUS
 };
-
+/*lint -e574*/
 bool kbase_debug_job_fault_reg_snapshot_init(struct kbase_context *kctx,
 		int reg_range)
 {
@@ -134,14 +134,15 @@ bool kbase_debug_job_fault_reg_snapshot_init(struct kbase_context *kctx,
 
 	/* set the termination flag*/
 	kctx->reg_dump[offset] = REGISTER_DUMP_TERMINATION_FLAG;
-	kctx->reg_dump[offset + 1] = REGISTER_DUMP_TERMINATION_FLAG;
+	kctx->reg_dump[offset + 1] = REGISTER_DUMP_TERMINATION_FLAG;      //lint !e679
 
 	dev_dbg(kctx->kbdev->dev, "kbase_job_fault_reg_snapshot_init:%d\n",
 			offset);
 
 	return true;
 }
-
+/*lint +e574*/
+/*lint -e679*/
 bool kbase_job_fault_get_reg_snapshot(struct kbase_context *kctx)
 {
 	int offset = 0;
@@ -157,6 +158,6 @@ bool kbase_job_fault_get_reg_snapshot(struct kbase_context *kctx)
 	}
 	return true;
 }
-
+/*lint +e679*/
 
 #endif

@@ -624,11 +624,12 @@ s32 bsp_set_most_used_size(u32 u32Size, u32 u32PoolType)
 *****************************************************************************/
 void* bsp_malloc(u32 u32Size, MEM_POOL_TYPE enFlags)
 {
-    u8 *pItem;
+    u8 *pItem = NULL;
     pItem = (u8 *)kmalloc(u32Size, GFP_KERNEL);
     if(pItem == NULL) {
         return NULL;
     }
+    memset((void*)pItem , 0 , u32Size);
     return (void*)pItem;
 }
 EXPORT_SYMBOL(bsp_malloc);

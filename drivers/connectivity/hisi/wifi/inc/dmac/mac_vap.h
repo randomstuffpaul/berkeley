@@ -2721,6 +2721,9 @@ typedef struct
     oal_uint8                   uc_dbb_scale_11a_ht20_vht20;    /* 20MHz dbb scale */
     oal_uint8                   uc_dbb_scale_ht40_vht40;        /* 40MHz dbb scale */
     oal_uint8                   uc_dbb_scale_vht80;             /* 80MHz dbb scale */
+    oal_uint8                   uc_dbb_scale_ht40_vht40_mcs8_9_comp;   /* 40MHz MCS8_9 dbb scale ²¹³¥Öµ */
+    oal_uint8                   uc_dbb_scale_vht80_mcs8_9_comp;        /* 80MHz MCS8_9 dbb scale ²¹³¥Öµ */
+    oal_uint8                   auc_resv[2];
 }mac_cfg_ce_5g_hi_band_params;
 
 typedef struct

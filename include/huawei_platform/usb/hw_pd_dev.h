@@ -110,6 +110,10 @@ enum pd_typec_attach_type {
 #endif	/* CONFIG_TYPEC_CAP_CUSTOM_SRC */
     PD_DPM_TYPEC_ATTACHED_VBUS_ONLY,
     PD_DPM_TYPEC_UNATTACHED_VBUS_ONLY,
+
+#ifdef CONFIG_TYPEC_CAP_CUSTOM_SRC2
+	PD_DPM_TYPEC_ATTACHED_CUSTOM_SRC2,
+#endif
 };
 
 enum pd_dpm_cable_event_type {
@@ -162,6 +166,7 @@ struct pd_dpm_ops {
 	int (*pd_dpm_notify_direct_charge_status)(void*, bool mode);
 	void (*pd_dpm_set_cc_mode)(int mode);
 	void (*pd_dpm_set_voltage)(void*, int vol);
+	int (*pd_dpm_get_cc_state)(void);
 };
 struct pd_dpm_pd_state {
 	uint8_t connected;
@@ -272,6 +277,13 @@ struct cc_check_ops {
 };
 int cc_check_ops_register(struct cc_check_ops*);
 
+#ifdef CONFIG_TYPEC_CAP_CUSTOM_SRC2
+struct cable_vdo_ops {
+	int (*is_cust_src2_cable)(void);
+};
+int pd_dpm_cable_vdo_ops_register(struct cable_vdo_ops *);
+#endif
+
 /* for chip layer to get class created by core layer */
 struct class *hw_pd_get_class(void);
 
@@ -293,6 +305,7 @@ extern bool pd_dpm_get_high_power_charging_status(void);
 extern bool pd_dpm_get_high_voltage_charging_status(void);
 extern bool pd_dpm_get_optional_max_power_status(void);
 extern bool pd_dpm_get_cc_orientation(void);
+extern int pd_dpm_get_cc_state_type(void);
 #ifdef CONFIG_CONTEXTHUB_PD
 extern int pd_dpm_handle_combphy_event(struct pd_dpm_combphy_event event);
 #endif

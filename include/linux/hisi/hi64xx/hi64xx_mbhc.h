@@ -20,36 +20,37 @@ struct hi64xx_mbhc_config {
 	/* board defination */
 	int hs_det_inv;
 	int hs_btn_num;
-	int hs_3_pole_min_voltage;
-	int hs_3_pole_max_voltage;
-	int hs_4_pole_min_voltage;
-	int hs_4_pole_max_voltage;
-	int btn_play_min_voltage;
-	int btn_play_max_voltage;
-	int btn_volume_up_min_voltage;
-	int btn_volume_up_max_voltage;
-	int btn_volume_down_min_voltage;
-	int btn_volume_down_max_voltage;
-	int btn_voice_assistant_min_voltage;
-	int btn_voice_assistant_max_voltage;
-	int hs_extern_cable_min_voltage;
-	int hs_extern_cable_max_voltage;
-	int hs_mbhc_vref_reg_value;
+	unsigned int hs_3_pole_min_voltage;
+	unsigned int hs_3_pole_max_voltage;
+	unsigned int hs_4_pole_min_voltage;
+	unsigned int hs_4_pole_max_voltage;
+	unsigned int btn_play_min_voltage;
+	unsigned int btn_play_max_voltage;
+	unsigned int btn_volume_up_min_voltage;
+	unsigned int btn_volume_up_max_voltage;
+	unsigned int btn_volume_down_min_voltage;
+	unsigned int btn_volume_down_max_voltage;
+	unsigned int btn_voice_assistant_min_voltage;
+	unsigned int btn_voice_assistant_max_voltage;
+	unsigned int hs_extern_cable_min_voltage;
+	unsigned int hs_extern_cable_max_voltage;
+	unsigned int hs_mbhc_vref_reg_value;
 	unsigned int hs_ctrl;
 	unsigned int coefficient; /* voltage coefficient*/
 	unsigned int irq_reg0;
 	bool hs_detect_extern_cable;
 };
 
-struct mbhc_reg {
+struct hs_mbhc_reg {
 	unsigned int irq_source_reg;
 	unsigned int irq_mbhc_2_reg;
-	unsigned int ana_60_reg;
-	unsigned int saradc_value_reg;
-	unsigned int mbhc_vref_reg;
-	unsigned int sar_cfg_reg;
-	unsigned int micbias_eco_reg;
-	unsigned int hsdet_ctrl_reg;
+};
+
+struct hs_mbhc_func {
+	void (*hs_mbhc_on)(struct snd_soc_codec *);
+	unsigned int (*hs_get_voltage)(struct snd_soc_codec *, unsigned int);
+	void (*hs_enable_hsdet)(struct snd_soc_codec *, struct hi64xx_mbhc_config);
+	void (*hs_mbhc_off)(struct snd_soc_codec *);
 };
 
 struct hs_res_detect_func {
@@ -62,10 +63,15 @@ struct hs_res_detect_func {
 struct hi64xx_mbhc {
 };
 
+struct hi64xx_hs_cfg{
+	struct hs_mbhc_reg* mbhc_reg;
+	struct hs_mbhc_func* mbhc_func;
+	struct hs_res_detect_func* res_detect_func;
+};
+
 extern int hi64xx_mbhc_init(struct snd_soc_codec *codec,
 			struct device_node *node,
-			struct mbhc_reg *mbhc_reg,
-			struct hs_res_detect_func *hs_res_detect_func,
+			struct hi64xx_hs_cfg *hi64xx_hs_cfg,
 			struct hi64xx_resmgr *resmgr,
 			struct hi64xx_irq *irqmgr,
 			struct hi64xx_mbhc **mbhc);
@@ -74,4 +80,5 @@ extern void hi64xx_mbhc_deinit(struct hi64xx_mbhc *mbhc);
 
 extern void hi64xx_irq_mask_btn_irqs(struct hi64xx_mbhc *mbhc);
 extern void hi64xx_irq_unmask_btn_irqs(struct hi64xx_mbhc *mbhc);
+extern bool hi64xx_check_saradc_ready_detect(struct snd_soc_codec *codec);
 #endif

@@ -31,6 +31,9 @@
 #include <mali_kbase_mem_linux.h>
 #include <mali_kbase_dma_fence.h>
 #include <mali_kbase_ctx_sched.h>
+#ifdef CONFIG_HISI_LAST_BUFFER
+#include <platform/hisilicon/last_buffer/mali_kbase_hisi_lb_callback.h>
+#endif
 
 #if BASE_DEBUG_FENCE_TIMEOUT
 #ifdef CONFIG_HW_ZEROHUNG
@@ -100,6 +103,7 @@ kbase_create_context(struct kbase_device *kbdev, bool is_compat)
 	err = kbase_mem_pool_init(&kctx->mem_pool,
 				  kbdev->mem_pool_max_size_default,
 				  KBASE_MEM_POOL_4KB_PAGE_TABLE_ORDER,
+				  0,
 				  kctx->kbdev,
 				  &kbdev->mem_pool);
 	if (err)
@@ -108,10 +112,21 @@ kbase_create_context(struct kbase_device *kbdev, bool is_compat)
 	err = kbase_mem_pool_init(&kctx->lp_mem_pool,
 				  (kbdev->mem_pool_max_size_default >> 9),
 				  KBASE_MEM_POOL_2MB_PAGE_TABLE_ORDER,
+				  0,
 				  kctx->kbdev,
 				  &kbdev->lp_mem_pool);
 	if (err)
 		goto free_mem_pool;
+
+#ifdef CONFIG_HISI_LAST_BUFFER
+	lb_pools_callbacks *pools_cbs = kbase_hisi_get_lb_pools_cbs(kbdev);
+	KBASE_DEBUG_ASSERT(pools_cbs);
+	if (pools_cbs->init_ctx_pools(kctx)) {
+		/* We have terminated the lb_pools if init failed, so free the normal pools.
+		 */
+		goto free_both_pools;
+	}
+#endif
 
 	err = kbase_mem_evictable_init(kctx);
 	if (err)
@@ -270,6 +285,12 @@ void kbase_destroy_context(struct kbase_context *kctx)
 
 	kbase_mem_pool_mark_dying(&kctx->mem_pool);
 
+#ifdef CONFIG_HISI_LAST_BUFFER
+	lb_pools_callbacks *pools_cbs = kbase_hisi_get_lb_pools_cbs(kbdev);
+	KBASE_DEBUG_ASSERT(pools_cbs);
+	pools_cbs->dying_ctx_pools(kctx);
+#endif
+
 	kbase_jd_zap_context(kctx);
 
 	/* We have already waited for the jobs to complete (and hereafter there
@@ -345,6 +366,11 @@ void kbase_destroy_context(struct kbase_context *kctx)
 	kbase_mem_evictable_deinit(kctx);
 	kbase_mem_pool_term(&kctx->mem_pool);
 	kbase_mem_pool_term(&kctx->lp_mem_pool);
+
+#ifdef CONFIG_HISI_LAST_BUFFER
+	pools_cbs->term_ctx_pools(kctx);
+#endif
+
 	WARN_ON(atomic_read(&kctx->nonmapped_pages) != 0);
 
 	vfree(kctx);

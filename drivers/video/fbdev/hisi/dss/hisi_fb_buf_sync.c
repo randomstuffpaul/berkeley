@@ -649,7 +649,13 @@ void hisifb_buf_sync_suspend(struct hisi_fb_data_type *hisifd)
 		HISI_FB_ERR("hisifd is NULL");
 		return;
 	}
+
 	buf_sync_ctrl = &hisifd->buf_sync_ctrl;
+	if (NULL == buf_sync_ctrl->timeline) {
+		HISI_FB_ERR("timeline NULL Pointer!\n");
+		return;
+	}
+
 	spin_lock_irqsave(&buf_sync_ctrl->refresh_lock, flags);
 	if ((buf_sync_ctrl->timeline->next_value - buf_sync_ctrl->timeline->value) > 0) {
 		val = buf_sync_ctrl->timeline->next_value - buf_sync_ctrl->timeline->value;

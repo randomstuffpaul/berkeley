@@ -351,12 +351,14 @@ static void str_low(char *str)
 static unsigned long str_to_hex(char *p)
 {
 	unsigned long hex = 0;
-	unsigned long length = strlen(p), shift = 0;
+	unsigned long length = 0;
+	unsigned long shift = 0;
 	unsigned char dig = 0;
 	if(NULL == p) {
 		TS_LOG_ERR("%s: p is Null\n", __func__);
 		return hex;
 	}
+	length = strlen(p);
 	str_low(p);
 
 	if (length == 0)
@@ -1148,11 +1150,10 @@ static int32_t nvt_206_load_mp_ctrl_ram(char *file_path, struct nvt_206_test_cmd
 			filp_close(fp, NULL);
 			return retval;
 		}
-		memset((void *)fbufp,0,(unsigned int)stat.size + 2);
+		memset((void *)fbufp,0,(unsigned int)stat.size + 1);
 		read_ret = (int) vfs_read(fp, (char __user *)fbufp, (size_t) stat.size, &pos);
 		if (read_ret > 0) {
 			fbufp[stat.size] = '\0';
-			fbufp[stat.size+1] = '\n';
 			ptr = fbufp;
 
 			while ( ptr && (ptr < (fbufp + stat.size))) {

@@ -77,8 +77,6 @@ struct lcd_kit_disp_info {
 	u32 lcd_type;
 	/*panel information*/
 	char* compatible;
-	/*board version*/
-	u32 board_version;
 	/*product id*/
 	u32 product_id;
 	/*dsi1 support*/
@@ -99,8 +97,6 @@ struct lcd_kit_disp_info {
 	struct lcd_kit_project_id project_id;
 	/*panel version*/
 	struct lcd_kit_panel_version panel_version;
-	/*otp gamma*/
-	struct lcd_kit_otp_gamma otp_gamma;
 	/********************end****************/
 };
 

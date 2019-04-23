@@ -35,8 +35,8 @@ static const struct partition partition_table_emmc[] =
   {PART_DFX,              			335*1024,          16*1024,        EMMC_USER_PART},/* dfx              16M   p24*/
   {PART_RRECORD,          			351*1024,          16*1024,        EMMC_USER_PART},/* rrecord          16M   p25*/
   {PART_CACHE,                  		367*1024,         104*1024,        EMMC_USER_PART},/* cache           104M   p26*/
-  {PART_FW_LPM3_A,        			471*1024,              256,        EMMC_USER_PART},/* fw_lpm3_a       256K   p27*/
-  {PART_RESERVED3_A,      			  482560,             7936,        EMMC_USER_PART},/* reserved3A     7936K   p28*/
+  {PART_FW_LPM3_A,        			471*1024,             1024,        EMMC_USER_PART},/* fw_lpm3_a      1024K   p27*/
+  {PART_RESERVED3_A,      			472*1024,             7168,        EMMC_USER_PART},/* reserved3A     7168K   p28*/
   {PART_IVP,              			479*1024,           2*1024,        EMMC_USER_PART},/* ivp               2M   p29*/
   {PART_HDCP_A,           			481*1024,           1*1024,        EMMC_USER_PART},/* PART_HDCP_A       1M   p30*/
   {PART_HISEE_IMG_A,      			482*1024,           4*1024,        EMMC_USER_PART},/* part_hisee_img_a  4M   p31*/
@@ -138,8 +138,8 @@ static const struct partition partition_table_ufs[] =
   {PART_DFX,              			327*1024, 		16*1024,       	UFS_PART_3},/* dfx              		  16M    p20*/
   {PART_RRECORD,          			343*1024, 		16*1024,       	UFS_PART_3},/* rrecord          		  16M    p21*/
   {PART_CACHE,            			359*1024,    	       104*1024,       	UFS_PART_3},/* cache            		 104M    p22*/
-  {PART_FW_LPM3_A,        			463*1024, 		    256,       	UFS_PART_3},/* fw_lpm3_a        		 256K    p23*/
-  {PART_RESERVED3_A,      			474368,   		   7936,       	UFS_PART_3},/* reserved3A       		7936K    p24*/
+  {PART_FW_LPM3_A,        			463*1024, 		   1024,       	UFS_PART_3},/* fw_lpm3_a        		1024K    p23*/
+  {PART_RESERVED3_A,      			464*1024,   		 7*1024,       	UFS_PART_3},/* reserved3A       		7168K    p24*/
   {PART_IVP,              			471*1024, 		 2*1024,       	UFS_PART_3},/* ivp              		   2M    p25*/
   {PART_HDCP_A,           			473*1024, 		 1*1024,       	UFS_PART_3},/* PART_HDCP_A      		   1M    p26*/
   {PART_HISEE_IMG_A,      			474*1024, 		 4*1024,       	UFS_PART_3},/* part_hisee_img_a 		   4M    p27*/

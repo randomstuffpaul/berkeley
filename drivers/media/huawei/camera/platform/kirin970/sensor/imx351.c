@@ -45,22 +45,6 @@ static hwsensor_intf_t *s_intf = NULL;
 static sensor_t *s_sensor = NULL;
 
 struct sensor_power_setting hw_imx351_power_up_setting[] = {
-    //disable MCAM1 reset [GPIO136]
-    {
-        .seq_type     = SENSOR_SUSPEND2,
-        .config_val   = SENSOR_GPIO_LOW,
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay        = POWER_DELAY_0,
-    },
-
-    //disable MCAM1 PWDN [GPIO227]
-    {
-        .seq_type     = SENSOR_PWDN2,
-        .config_val   = SENSOR_GPIO_LOW,//pull HIGH
-        .sensor_index = SENSOR_INDEX_INVALID,
-        .delay        = POWER_DELAY_0,
-    },
-
     //SCAM IOVDD 1.80V [LDO21]
     {
         .seq_type     = SENSOR_IOVDD,
@@ -170,6 +154,14 @@ int imx351_power_up(hwsensor_intf_t* si)
     }
     cam_info("enter %s. index = %d name = %s", __func__, sensor->board_info->sensor_index, sensor->board_info->name);
 
+    ret = hw_sensor_power_up_config(sensor->dev, sensor->board_info);
+    if (0 == ret){
+        cam_info("%s. power up config success.", __func__);
+    }else{
+        cam_err("%s. power up config fail.", __func__);
+        return ret;
+    }
+
     if (hw_is_fpga_board()) {
         ret = do_sensor_power_on(sensor->board_info->sensor_index, sensor->board_info->name);
     } else {
@@ -215,6 +207,8 @@ int imx351_power_down(hwsensor_intf_t* si)
     {
         cam_err("%s. power down sensor fail.", __func__);
     }
+
+    hw_sensor_power_down_config(sensor->board_info);
 
     return ret;
 }

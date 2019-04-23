@@ -120,6 +120,7 @@ struct f2fs_super_block {
 /*
  * For checkpoint
  */
+#define CP_QUOTA_NEED_FSCK_FLAG	0x00001000
 #define CP_NOCRC_RECOVERY_FLAG	0x00000200
 #define CP_TRIMMED_FLAG		0x00000100
 #define CP_NAT_BITS_FLAG	0x00000080

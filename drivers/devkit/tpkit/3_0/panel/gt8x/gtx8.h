@@ -555,10 +555,11 @@ struct gtx8_ts_data {
 	struct gtx8_ts_config game_cfg;
 	struct gtx8_ts_config game_noise_cfg;
 
-	bool flip_x;
-	bool flip_y;
-	bool noise_env;
-	bool tools_support;
+	u32 flip_x;
+	u32 flip_y;
+	u32 noise_env;
+	u32 tools_support;
+	u32 gtx8_static_pid_support;
 	volatile bool rawdiff_mode;
 	u32 doze_mode_set_count;
 	int tool_esd_disable;

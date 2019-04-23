@@ -885,7 +885,13 @@ static void receive_file_work(struct work_struct *data)
 			read_req = dev->rx_req[cur_buf];
 			cur_buf = (cur_buf + 1) % RX_REQ_MAX;
 
+			spin_lock_irq(&dev->lock);
+			if (dev->state == STATE_OFFLINE) {
+				spin_unlock_irq(&dev->lock);
+				break;
+			}
 			len = usb_ep_align_maybe(cdev->gadget, dev->ep_out, count);
+			spin_unlock_irq(&dev->lock);
 			if (len > dev->bulk_buffer_size)
 				len = dev->bulk_buffer_size;
 			read_req->length = len;
@@ -1361,7 +1367,9 @@ static void mtp_function_disable(struct usb_function *f)
 	struct usb_composite_dev	*cdev = dev->cdev;
 
 	DBG(cdev, "mtp_function_disable\n");
+	spin_lock_irq(&dev->lock);
 	dev->state = STATE_OFFLINE;
+	spin_unlock_irq(&dev->lock);
 	usb_ep_disable(dev->ep_in);
 	usb_ep_disable(dev->ep_out);
 	usb_ep_disable(dev->ep_intr);

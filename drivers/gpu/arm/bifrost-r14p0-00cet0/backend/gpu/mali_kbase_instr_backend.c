@@ -309,7 +309,7 @@ bool kbase_instr_hwcnt_dump_complete(struct kbase_context *kctx,
 						bool * const success)
 {
 	unsigned long flags;
-	bool complete = false;
+	bool complete = false;                                    //lint !e578
 	struct kbase_device *kbdev = kctx->kbdev;
 
 	spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
@@ -328,7 +328,7 @@ bool kbase_instr_hwcnt_dump_complete(struct kbase_context *kctx,
 	return complete;
 }
 KBASE_EXPORT_SYMBOL(kbase_instr_hwcnt_dump_complete);
-
+/*lint -e31*/
 #define CACHE_CLEAN_TIMEOUT 500
 void kbasep_cache_clean_worker(struct work_struct *data)
 {
@@ -409,7 +409,7 @@ void kbase_instr_hwcnt_sample_done(struct kbase_device *kbdev)
 
 	spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
 }
-
+/*lint +e31*/
 void kbase_clean_caches_done(struct kbase_device *kbdev)
 {
 	u32 irq_mask;

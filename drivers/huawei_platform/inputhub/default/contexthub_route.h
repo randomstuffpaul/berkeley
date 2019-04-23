@@ -68,13 +68,6 @@ struct mcu_notifier {
 	struct workqueue_struct *mcu_notifier_wq;
 };
 
-static struct {
-	int ext_hall_adapt;
-	int ext_hall_value[HALL_ONE_DATA_NUM];
-} ext_hall_table[] = {
-    { 0, {1, 0, 2, -1}},
-};
-
 #define OFFSET(struct_t, member)                    offsetof(struct_t, member)
 #define OFFSET_OF_END_MEM(struct_t, member)         ((unsigned long)(&(((struct_t *)0)->member) + 1))
 #define OFFSET_INTERVAL(struct_t, member1, member2) (OFFSET_OF_END_MEM(struct_t, member2) - OFFSET_OF_END_MEM(struct_t, member1))

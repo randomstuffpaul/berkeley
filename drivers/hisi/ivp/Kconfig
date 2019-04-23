@@ -45,6 +45,14 @@ config IVP_IVPV100
 config IVP_IVPV120
 	bool "ivpv120"
 	depends on HISI_IVP
+
+config IVP_IVPV210
+        bool "ivpv210"
+        depends on HISI_IVP
+
+config IVP_IVPV250
+	bool "ivpv250"
+	depends on HISI_IVP
 endchoice
 endmenu
 

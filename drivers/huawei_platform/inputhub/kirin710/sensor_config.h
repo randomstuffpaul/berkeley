@@ -44,6 +44,7 @@
 #define VCNL36658_PARA_SIZE (31)
 #define TSL2591_PARA_SIZE (14)
 #define BH1726_PARA_SIZE (16)
+#define APDS9308_PARA_SIZE 14
 #define ACC_OFFSET_NV_NUM	307
 #define ACC_OFFSET_NV_SIZE	(60)
 #define MAG_CALIBRATE_DATA_NV_NUM 233
@@ -193,6 +194,13 @@ typedef struct _BH1726_ALS_PARA_TABLE {
 	uint8_t tp_manufacture;
 	s16 bh1726_para[BH1726_PARA_SIZE];
 } BH1726_ALS_PARA_TABLE;
+
+typedef struct _APDS9308_ALS_PARA_TABLE {
+	uint8_t phone_type;
+	uint8_t phone_version;
+	uint8_t tp_manufacture;
+	s16 apds9308_para[APDS9308_PARA_SIZE];
+} APDS9308_ALS_PARA_TABLE;
 
 extern int fill_extend_data_in_dts(struct device_node *dn, const char *name, unsigned char *dest, size_t max_size, int flag);
 extern int mcu_i2c_rw(uint8_t bus_num, uint8_t i2c_add, uint8_t *tx, uint32_t tx_len, uint8_t *rx_out, uint32_t rx_len);

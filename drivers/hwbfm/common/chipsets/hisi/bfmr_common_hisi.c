@@ -62,7 +62,7 @@ int bfmr_get_device_full_path(char *dev_name, char *path_buf, unsigned int path_
 
     if (unlikely((NULL == dev_name) || (NULL == path_buf)))
     {
-        BFMR_PRINT_INVALID_PARAMS("dev_name: %p, path_buf: %p\n", dev_name, path_buf);
+        BFMR_PRINT_INVALID_PARAMS("dev_name or path_buf.\n");
         return -1;
     }
 

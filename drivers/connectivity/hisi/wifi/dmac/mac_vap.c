@@ -578,7 +578,6 @@ oal_uint32  mac_vap_add_assoc_user(mac_vap_stru *pst_vap, oal_uint16 us_user_idx
     oal_uint32                  ul_rslt;
     oal_uint16                  us_hash_idx;
     oal_dlist_head_stru        *pst_dlist_head;
-    oal_uint                    ul_irq_save;
 
     if (OAL_UNLIKELY(OAL_PTR_NULL == pst_vap))
     {
@@ -632,6 +631,8 @@ oal_uint32  mac_vap_add_assoc_user(mac_vap_stru *pst_vap, oal_uint16 us_user_idx
     /* 记录对应的用户索引值 */
     pst_hash->us_user_idx = us_user_idx;
 
+    oal_spin_lock_bh(&pst_vap->st_cache_user_lock);
+
     pst_dlist_head = &(pst_vap->ast_user_hash[pst_user->us_user_hash_idx]);
 #ifdef _PRE_WLAN_DFT_STAT
     (pst_vap->ul_hash_cnt)++;
@@ -644,13 +645,11 @@ oal_uint32  mac_vap_add_assoc_user(mac_vap_stru *pst_vap, oal_uint16 us_user_idx
 #ifdef _PRE_WLAN_DFT_STAT
     (pst_vap->ul_dlist_cnt)++;
 #endif
-    oal_spin_lock_irq_save(&pst_vap->st_cache_user_lock, &ul_irq_save);
 
     /* 更新cache user */
     oal_set_mac_addr(pst_vap->auc_cache_user_mac_addr, pst_user->auc_user_mac_addr);
     pst_vap->us_cache_user_id = us_user_idx;
 
-    oal_spin_unlock_irq_restore(&pst_vap->st_cache_user_lock, &ul_irq_save);
 
     /* 记录STA模式下的与之关联的VAP的id */
     if (WLAN_VAP_MODE_BSS_STA == pst_vap->en_vap_mode)
@@ -660,6 +659,8 @@ oal_uint32  mac_vap_add_assoc_user(mac_vap_stru *pst_vap, oal_uint16 us_user_idx
 
     /* vap已关联 user个数++ */
     pst_vap->us_user_nums++;
+
+    oal_spin_unlock_bh(&pst_vap->st_cache_user_lock);
 
     return OAL_SUCC;
 }
@@ -676,8 +677,6 @@ oal_uint32  mac_vap_del_user(mac_vap_stru *pst_vap, oal_uint16 us_user_idx)
     oal_dlist_head_stru    *pst_dlist_tmp       = OAL_PTR_NULL;
     oal_uint32              ul_ret              = OAL_FAIL;
     oal_uint8               uc_txop_ps_user_cnt = 0;
-    oal_uint                ul_irq_save;
-
 
     if (OAL_UNLIKELY(OAL_PTR_NULL == pst_vap))
     {
@@ -686,8 +685,7 @@ oal_uint32  mac_vap_del_user(mac_vap_stru *pst_vap, oal_uint16 us_user_idx)
         return OAL_ERR_CODE_PTR_NULL;
     }
 
-
-    oal_spin_lock_irq_save(&pst_vap->st_cache_user_lock, &ul_irq_save);
+    oal_spin_lock_bh(&pst_vap->st_cache_user_lock);
 
     /* 与cache user id对比 , 相等则清空cache user*/
     if (us_user_idx == pst_vap->us_cache_user_id)
@@ -696,12 +694,11 @@ oal_uint32  mac_vap_del_user(mac_vap_stru *pst_vap, oal_uint16 us_user_idx)
         pst_vap->us_cache_user_id = MAC_INVALID_USER_ID;
     }
 
-    oal_spin_unlock_irq_restore(&pst_vap->st_cache_user_lock, &ul_irq_save);
-
     pst_user = (mac_user_stru *)mac_res_get_mac_user(us_user_idx);
 
     if (OAL_UNLIKELY(OAL_PTR_NULL == pst_user))
     {
+        oal_spin_unlock_bh(&pst_vap->st_cache_user_lock);
         OAM_ERROR_LOG1(pst_vap->uc_vap_id, OAM_SF_ASSOC, "{mac_vap_del_user::pst_user null,us_user_idx is %d}", us_user_idx);
 
         return OAL_ERR_CODE_PTR_NULL;
@@ -711,6 +708,7 @@ oal_uint32  mac_vap_del_user(mac_vap_stru *pst_vap, oal_uint16 us_user_idx)
 
     if(pst_user->us_user_hash_idx >= MAC_VAP_USER_HASH_MAX_VALUE)
     {
+        oal_spin_unlock_bh(&pst_vap->st_cache_user_lock);
         /*ADD USER命令丢失，或者重复删除User都可能进入此分支。*/
         OAM_ERROR_LOG1(pst_vap->uc_vap_id, OAM_SF_ASSOC, "{mac_vap_del_user::hash idx invaild %u}", pst_user->us_user_hash_idx);
         return OAL_FAIL;
@@ -778,8 +776,10 @@ oal_uint32  mac_vap_del_user(mac_vap_stru *pst_vap, oal_uint16 us_user_idx)
         {
             mac_vap_set_assoc_id(pst_vap, 0xff);
         }
+        oal_spin_unlock_bh(&pst_vap->st_cache_user_lock);
         return OAL_SUCC;
     }
+    oal_spin_unlock_bh(&pst_vap->st_cache_user_lock);
 
     OAM_WARNING_LOG1(pst_vap->uc_vap_id, OAM_SF_ASSOC, "{mac_vap_del_user::delete user failed,user idx is %d.}", us_user_idx);
 
@@ -793,7 +793,6 @@ oal_uint32  mac_vap_find_user_by_macaddr( mac_vap_stru *pst_vap, oal_uint8 *puc_
     oal_uint32                  ul_user_hash_value;
     mac_res_user_hash_stru     *pst_hash;
     oal_dlist_head_stru        *pst_entry;
-    oal_uint                    ul_irq_save;
 
     if (OAL_UNLIKELY((OAL_PTR_NULL == pst_vap)
                   || (OAL_PTR_NULL == puc_sta_mac_addr)
@@ -820,13 +819,14 @@ oal_uint32  mac_vap_find_user_by_macaddr( mac_vap_stru *pst_vap, oal_uint8 *puc_
         return OAL_FAIL;
     }
 
-    oal_spin_lock_irq_save(&pst_vap->st_cache_user_lock, &ul_irq_save);
+    oal_spin_lock_bh(&pst_vap->st_cache_user_lock);
+
     /* 与cache user对比 , 相等则直接返回cache user id*/
     if (!oal_compare_mac_addr(pst_vap->auc_cache_user_mac_addr, puc_sta_mac_addr))
     {
         /* 用户删除后，user macaddr和cache user macaddr地址均为0，但实际上用户已经删除，此时user id无效 */
         *pus_user_idx = pst_vap->us_cache_user_id;
-        oal_spin_unlock_irq_restore(&pst_vap->st_cache_user_lock, &ul_irq_save);
+        oal_spin_unlock_bh(&pst_vap->st_cache_user_lock);
         return (*pus_user_idx != (oal_uint16)MAC_INVALID_USER_ID) ? OAL_SUCC : OAL_FAIL;/* [false alarm]:返回值为布尔值0或者1，不影响*/
     }
 
@@ -851,11 +851,11 @@ oal_uint32  mac_vap_find_user_by_macaddr( mac_vap_stru *pst_vap, oal_uint8 *puc_
             /*更新cache user*/
             oal_set_mac_addr(pst_vap->auc_cache_user_mac_addr, pst_mac_user->auc_user_mac_addr);
             pst_vap->us_cache_user_id = pst_hash->us_user_idx;
-            oal_spin_unlock_irq_restore(&pst_vap->st_cache_user_lock, &ul_irq_save);
+            oal_spin_unlock_bh(&pst_vap->st_cache_user_lock);
             return (*pus_user_idx != (oal_uint16)MAC_INVALID_USER_ID) ? OAL_SUCC : OAL_FAIL;/* [false alarm]:返回值为布尔值0或者1，不影响*/
         }
     }
-    oal_spin_unlock_irq_restore(&pst_vap->st_cache_user_lock, &ul_irq_save);
+    oal_spin_unlock_bh(&pst_vap->st_cache_user_lock);
     return OAL_FAIL;
 }
 

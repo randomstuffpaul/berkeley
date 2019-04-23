@@ -19,6 +19,6 @@ VME_HEX_ADDRESS=$[vmlinux_end - 0x08000000 - KERNEL_ADDRESS]
 
 if [ ${VME_HEX_ADDRESS} -ge ${DTB_HEX_ADDRESS} ];
 then
-	echo "BSS section and dtb range is overlayed,please fix it!";
+	echo "BSS section(${VME_HEX_ADDRESS}) and dtb(${DTB_HEX_ADDRESS}) range is overlayed,please fix it!";
 	exit -1;
 fi

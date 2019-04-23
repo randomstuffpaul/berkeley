@@ -198,9 +198,11 @@ static ssize_t himax_diag_show(struct device *dev,struct device_attribute *attr,
 		count+=snprintf(buf+count, HX_MAX_PRBUF_SIZE-count,   "\n");
 	} else if (diag_command == 7) {
 		for (loop_i = 0; loop_i < 128 ;loop_i++) {
-			if ((loop_i % 16) == 0)
+			if ((loop_i % 16) == 0) {
 				count+=snprintf(buf+count, HX_MAX_PRBUF_SIZE-count,   "LineStart:");
-				count+=snprintf(buf+count, HX_MAX_PRBUF_SIZE-count,   "%4d", diag_coor[loop_i]);
+			}
+			count+=snprintf(buf+count, HX_MAX_PRBUF_SIZE-count,   "%4d", diag_coor[loop_i]);
+
 			if ((loop_i % 16) == 15)
 				count+=snprintf(buf+count, HX_MAX_PRBUF_SIZE-count,   "\n");
 		}
@@ -509,7 +511,10 @@ static ssize_t himax_register_store(struct device *dev,struct device_attribute *
 							TS_LOG_INFO("CMD: FE(%x), %x, %d\n", register_command,write_da[0], length);
 						}
 						else {
-							i2c_himax_write( register_command, &write_da[0], length, sizeof(write_da), DEFAULT_RETRY_CNT);
+							retval = i2c_himax_write( register_command, &write_da[0], length, sizeof(write_da), DEFAULT_RETRY_CNT);
+							if (retval < 0) {
+								TS_LOG_ERR("%s: himax i2c write failed\n", __func__);
+							}
 							TS_LOG_INFO("CMD: %x, %x, %d\n", register_command,write_da[0], length);
 						}
 					}
@@ -538,7 +543,7 @@ static DEVICE_ATTR(register, (S_IWUSR|S_IRUGO),himax_register_show, himax_regist
 #ifdef HX_TP_SYS_DEBUG
 static uint8_t himax_read_FW_ver(bool hw_reset)
 {
-	uint8_t cmd[3];
+	uint8_t cmd[3] = {0};
 
 	himax_int_enable(g_himax_ts_data->tskit_himax_data->ts_platform_data->irq_id,0);
 
@@ -845,6 +850,9 @@ bool getFlashDumpGoing(void)
 void setFlashBuffer(void)
 {
 	flash_buffer = kzalloc(FLASH_SIZE * sizeof(uint8_t), GFP_KERNEL);
+	if (!flash_buffer) {
+		TS_LOG_ERR("%s: kzalloc fail\n", __func__);
+	}
 	memset(flash_buffer,0x00,FLASH_SIZE);
 }
 
@@ -1016,6 +1024,7 @@ void hx852xf_ts_flash_work_func(struct work_struct *work)
 {
 	int buffer_ptr = 0;
 	int i=0, j=0;
+	int retval = 0;
 	uint8_t sector = 0;
 	uint8_t page = 0;
 	uint8_t page_tmp[HX_RECEIVE_BUF_MAX_SIZE]  = {0};
@@ -1396,7 +1405,10 @@ void hx852xf_ts_flash_work_func(struct work_struct *work)
 
 		}
 
-	i2c_himax_master_write( x43_command, 1, sizeof(x43_command), DEFAULT_RETRY_CNT);
+	retval = i2c_himax_master_write( x43_command, 1, sizeof(x43_command), DEFAULT_RETRY_CNT);
+	if(retval < 0) {
+		TS_LOG_ERR("%s: i2c write fail\n", __func__);
+	}
 	msleep(HX_SLEEP_50MS);
 
 	if (local_flash_command == FW_DUMP)
@@ -1455,6 +1467,7 @@ void hx852xes_ts_flash_work_func(struct work_struct *work)
 {
 	int buffer_ptr = 0;
 	int i=0, j=0;
+	int retval = 0;
 	uint8_t sector = 0;
 	uint8_t page = 0;
 	uint8_t page_tmp[HX_RECEIVE_BUF_MAX_SIZE]  = {0};
@@ -1764,7 +1777,10 @@ void hx852xes_ts_flash_work_func(struct work_struct *work)
 
 		}
 
-	i2c_himax_master_write( x43_command, 1, sizeof(x43_command), DEFAULT_RETRY_CNT);
+	retval = i2c_himax_master_write( x43_command, 1, sizeof(x43_command), DEFAULT_RETRY_CNT);
+	if(retval < 0) {
+		TS_LOG_ERR("%s: i2c write fail\n", __func__);
+	}
 	msleep(HX_SLEEP_50MS);
 
 	if (local_flash_command == FW_DUMP)

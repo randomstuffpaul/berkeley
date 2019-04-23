@@ -118,7 +118,9 @@ HI_S32 VENC_DRV_EflOpenVedu(HI_VOID)
 	}
 
 	VeduIpCtx.IpFree = 1;
+#ifndef HIVCODECV500
 	VENC_HAL_SetSmmuAddr((S_HEVC_AVC_REGS_TYPE*)(VeduIpCtx.pRegBase));/*lint !e826 */
+#endif
 	VENC_HAL_DisableAllInt((S_HEVC_AVC_REGS_TYPE*)(VeduIpCtx.pRegBase));/*lint !e826 */
 	VENC_HAL_ClrAllInt    ((S_HEVC_AVC_REGS_TYPE*)(VeduIpCtx.pRegBase));/*lint !e826 */
 #ifdef IRQ_EN

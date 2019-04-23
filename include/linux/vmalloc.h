@@ -22,6 +22,7 @@ struct notifier_block;		/* in notifier.h */
 #define VM_UNINITIALIZED	0x00000020	/* vm_struct is not fully initialized */
 #define VM_NO_GUARD		0x00000040      /* don't add guard page */
 #define VM_KASAN		0x00000080      /* has allocated kasan shadow memory */
+#define VM_PMALLOC		0x00000100      /* pmalloc */
 /* bits [20..32] reserved for arch specific ioremap internals */
 
 /*
@@ -102,6 +103,7 @@ extern int remap_vmalloc_range(struct vm_area_struct *vma, void *addr,
 							unsigned long pgoff);
 void vmalloc_sync_all(void);
  
+struct vmap_area *find_vmap_area(unsigned long addr);
 /*
  *	Lowlevel-APIs (not for driver use!)
  */

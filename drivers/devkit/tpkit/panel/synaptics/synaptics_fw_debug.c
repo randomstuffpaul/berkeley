@@ -558,7 +558,6 @@ static int rmidev_release(struct inode *inp, struct file *filp)
 
 	mutex_lock(&(dev_data->file_mutex));
 	rmi4_data->reset_device(rmi4_data);
-
 	dev_data->ref_count--;
 	if (dev_data->ref_count < 0)
 		dev_data->ref_count = 0;

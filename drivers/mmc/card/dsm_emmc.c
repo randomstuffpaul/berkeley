@@ -47,6 +47,16 @@ struct emmc_dsm_log g_emmc_dsm_log;
 
 EXPORT_SYMBOL(emmc_dclient);
 
+int can_report(char *max_count)
+{
+	if (0 == *max_count)
+		return 0;
+	else {
+		(*max_count)--;
+		return 1;
+	}
+}
+
 /*
  * first send the err msg to /dev/exception node.
  * if it produces lots of reduplicated msg, will just record the times
@@ -77,161 +87,81 @@ static int dsm_emmc_process_log(int code, char *err_msg)
 	static char emmc_dyncap_needed_max_count = ERR_MAX_COUNT;
 	static char emmc_syspool_exhausted_max_count = ERR_MAX_COUNT;
 	static char emmc_packed_failure_max_count = ERR_MAX_COUNT;
+	static char emmc_data_crc_failure_max_count = ERR_MAX_COUNT;
+	static char emmc_command_crc_failure_max_count = ERR_MAX_COUNT;
 #endif
 	/*filter: if it has the same msg code with last, record err code&count*/
-    if (g_last_msg_code == code) {
-		ret = 0;
+	if (g_last_msg_code == code) {
 		g_last_msg_count++;
-    } else {
-		g_last_msg_code = code;
-		g_last_msg_count = 0;
-		ret = 1;
-    }
-	/*restrict count of every error, note:deplicated msg donesn't its count*/
-	if (1 == ret) {
-		switch (code) {
-		case DSM_EMMC_VDET_ERR:
-			if (0 < vdet_err_max_count) {
-				vdet_err_max_count--;
-				ret = 1;
-			} else {
-				ret = 0;
-			}
-			break;
+		return 0;
+	}
+
+	g_last_msg_code = code;
+	g_last_msg_count = 0;
+
+	switch (code) {
+	case DSM_EMMC_VDET_ERR:
+		ret = can_report(&vdet_err_max_count);
+		break;
 #ifndef CONFIG_HUAWEI_EMMC_DSM_ONLY_VDET
-		case DSM_SYSTEM_W_ERR:
-			if (0 < system_w_err_max_count) {
-				system_w_err_max_count--;
-				ret = 1;
-			} else {
-				ret = 0;
-			}
-			break;
-		case DSM_EMMC_ERASE_ERR:
-			if (0 < erase_err_max_count) {
-				erase_err_max_count--;
-				ret = 1;
-			} else {
-				ret = 0;
-			}
-			break;
-		case DSM_EMMC_SEND_CXD_ERR:
-			if (0 < send_cxd_err_max_count) {
-				send_cxd_err_max_count--;
-				ret = 1;
-			} else {
-				ret = 0;
-			}
-			break;
-		case DSM_EMMC_READ_ERR:
-			if (0 < emmc_read_err_max_count) {
-				emmc_read_err_max_count--;
-				ret = 1;
-			} else {
-				ret = 0;
-			}
-			break;
-		case DSM_EMMC_WRITE_ERR:
-			if (0 < emmc_write_err_max_count) {
-				emmc_write_err_max_count--;
-				ret = 1;
-			} else {
-				ret = 0;
-			}
-			break;
-		case DSM_EMMC_SET_BUS_WIDTH_ERR:
-			if (0 < emmc_set_width_err_max_count) {
-				emmc_set_width_err_max_count--;
-				ret = 1;
-			} else {
-				ret = 0;
-			}
-			break;
-		case DSM_EMMC_PRE_EOL_INFO_ERR:
-			if (0 < emmc_pre_eol_max_count) {
-				emmc_pre_eol_max_count--;
-				ret = 1;
-			} else {
-				ret = 0;
-			}
-			break;
-		case DSM_EMMC_TUNING_ERROR:
-			if (0 < emmc_tuning_err_max_count) {
-				emmc_tuning_err_max_count--;
-				ret = 1;
-			} else {
-				ret = 0;
-			}
-			break;
-		case DSM_EMMC_LIFE_TIME_EST_ERR:
-			if (0 < emmc_life_time_err_max_count) {
-				emmc_life_time_err_max_count--;
-				ret = 1;
-			} else {
-				ret = 0;
-			}
-			break;
-		case DSM_EMMC_RSP_ERR:
-			if (0 < emmc_rsp_err_max_count) {
-				emmc_rsp_err_max_count--;
-				ret = 1;
-			} else {
-				ret = 0;
-			}
-			break;
-		case DSM_EMMC_RW_TIMEOUT_ERR:
-			if (0 < emmc_rw_timeout_max_count) {
-				emmc_rw_timeout_max_count--;
-				ret = 1;
-			} else {
-				ret = 0;
-			}
-			break;
-		case DSM_EMMC_HOST_ERR:
-			if (0 < emmc_host_err_max_count) {
-				emmc_host_err_max_count--;
-				ret = 1;
-			} else {
-				ret = 0;
-			}
-			break;
-		case DSM_EMMC_URGENT_BKOPS:
-			if (0 < emmc_urgent_bkops_max_count) {
-				emmc_urgent_bkops_max_count--;
-				ret = 1;
-			} else {
-				ret = 0;
-			}
-			break;
-		case DSM_EMMC_DYNCAP_NEEDED:
-			if (0 < emmc_dyncap_needed_max_count) {
-				emmc_dyncap_needed_max_count--;
-				ret = 1;
-			} else {
-				ret = 0;
-			}
-			break;
-		case DSM_EMMC_SYSPOOL_EXHAUSTED:
-			if (0 < emmc_syspool_exhausted_max_count) {
-				emmc_syspool_exhausted_max_count--;
-				ret = 1;
-			} else {
-				ret = 0;
-			}
-			break;
-		case DSM_EMMC_PACKED_FAILURE:
-			if (0 < emmc_packed_failure_max_count) {
-				emmc_packed_failure_max_count--;
-				ret = 1;
-			} else {
-				ret = 0;
-			}
-			break;
+	case DSM_SYSTEM_W_ERR:
+		ret = can_report(&system_w_err_max_count);
+		break;
+	case DSM_EMMC_ERASE_ERR:
+		ret = can_report(&erase_err_max_count);
+		break;
+	case DSM_EMMC_SEND_CXD_ERR:
+		ret = can_report(&send_cxd_err_max_count);
+		break;
+	case DSM_EMMC_READ_ERR:
+		ret = can_report(&emmc_read_err_max_count);
+		break;
+	case DSM_EMMC_WRITE_ERR:
+		ret = can_report(&emmc_write_err_max_count);
+		break;
+	case DSM_EMMC_SET_BUS_WIDTH_ERR:
+		ret = can_report(&emmc_set_width_err_max_count);
+		break;
+	case DSM_EMMC_PRE_EOL_INFO_ERR:
+		ret = can_report(&emmc_pre_eol_max_count);
+		break;
+	case DSM_EMMC_TUNING_ERROR:
+		ret = can_report(&emmc_tuning_err_max_count);
+		break;
+	case DSM_EMMC_LIFE_TIME_EST_ERR:
+		ret = can_report(&emmc_life_time_err_max_count);
+		break;
+	case DSM_EMMC_RSP_ERR:
+		ret = can_report(&emmc_rsp_err_max_count);
+		break;
+	case DSM_EMMC_RW_TIMEOUT_ERR:
+		ret = can_report(&emmc_rw_timeout_max_count);
+		break;
+	case DSM_EMMC_HOST_ERR:
+		ret = can_report(&emmc_host_err_max_count);
+		break;
+	case DSM_EMMC_URGENT_BKOPS:
+		ret = can_report(&emmc_urgent_bkops_max_count);
+		break;
+	case DSM_EMMC_DYNCAP_NEEDED:
+		ret = can_report(&emmc_dyncap_needed_max_count);
+		break;
+	case DSM_EMMC_SYSPOOL_EXHAUSTED:
+		ret = can_report(&emmc_syspool_exhausted_max_count);
+		break;
+	case DSM_EMMC_PACKED_FAILURE:
+		ret = can_report(&emmc_packed_failure_max_count);
+		break;
+	case DSM_EMMC_DATA_CRC:
+		ret = can_report(&emmc_data_crc_failure_max_count);
+		break;
+	case DSM_EMMC_COMMAND_CRC:
+		ret = can_report(&emmc_command_crc_failure_max_count);
+		break;
 #endif
-		default:
-			ret = 0;
-			break;
-		}
+	default:
+		ret = 0;
+		break;
 	}
 
 	return ret;
@@ -254,7 +184,7 @@ int dsm_emmc_get_log(void *card, int code, char *err_msg)
 	int i = 1;
 	u8 *ext_csd = NULL;
 
-	printk(KERN_ERR "dj enter dsm_emmc_get_log\n");
+	printk(KERN_ERR "DSM_EMMC enter dsm_emmc_get_log\n");
 	if (dsm_emmc_process_log(code, err_msg)) {
 		/*clear global buffer*/
 		memset(g_emmc_dsm_log.emmc_dsm_log, 0, buff_size);
@@ -272,31 +202,52 @@ int dsm_emmc_get_log(void *card, int code, char *err_msg)
 			last_msg_count = 0;
 		}
 
-		ret = snprintf(dsm_log_buff, buff_size, "Err num: %d, %s\n", code, err_msg);
-		if (ret < 0) {
-			pr_err("%s:%d ++\n", __func__, __LINE__);
-			ret = 0;
-		}
-		dsm_log_buff += ret;
-		buff_size -= (unsigned int)ret;
-		pr_info("Err num: %d, %s\n", code, err_msg);
-		printk(KERN_ERR "dj Err num: %d, %s\n", code, err_msg);
+		printk(KERN_ERR "DSM_EMMC Err num: %d, %s\n", code, err_msg);
 		/*print card CID info*/
 		if (NULL != card_dev) {
 			if (sizeof(struct mmc_cid) < buff_size) {
-				ret = snprintf(dsm_log_buff, buff_size,
-					"Card's cid:%08x%08x%08x%08x\n\n",
-					card_dev->raw_cid[0], card_dev->raw_cid[1],
-					card_dev->raw_cid[2], card_dev->raw_cid[3]);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat"
+				/*lint -e559*/
+				ret = snprintf(dsm_log_buff, buff_size, "manufacturer_id:%04x Error Num:%lu, %s",
+						card_dev->cid.manfid, code, err_msg);
+				/*lint +e559*/
+#pragma GCC diagnostic pop
 				if (ret < 0) {
 					pr_err("%s:%d ++\n", __func__, __LINE__);
 					ret = 0;
 				}
 				dsm_log_buff += ret;
 				buff_size -= (unsigned int)ret;
-				pr_info("Card's cid:%08x%08x%08x%08x\n\n",
-					card_dev->raw_cid[0], card_dev->raw_cid[1],
-					card_dev->raw_cid[2], card_dev->raw_cid[3]);
+
+				ret = snprintf(dsm_log_buff, buff_size, "product_name:%s ",
+						card_dev->cid.prod_name);
+				if (ret < 0) {
+					pr_err("%s:%d ++\n", __func__, __LINE__);
+					ret = 0;
+				}
+				dsm_log_buff += ret;
+				buff_size -= (unsigned int)ret;
+
+				ret = snprintf(dsm_log_buff, buff_size, "fw:%02x%02x%02x%02x%02x%02x%02x%02x ", card_dev->ext_csd.fwrev[0],card_dev->ext_csd.fwrev[1],\
+						card_dev->ext_csd.fwrev[2],card_dev->ext_csd.fwrev[3],card_dev->ext_csd.fwrev[4],card_dev->ext_csd.fwrev[5],\
+						card_dev->ext_csd.fwrev[6],card_dev->ext_csd.fwrev[7]);
+
+				if (ret < 0) {
+					pr_err("%s:%d ++\n", __func__, __LINE__);
+					ret = 0;
+				}
+				dsm_log_buff += ret;
+				buff_size -= (unsigned int)ret;
+
+				ret = snprintf(dsm_log_buff, buff_size, "manufacturer_date:%02x\n", (card_dev->raw_cid[3]>>8)&0xff);
+				if (ret < 0) {
+					pr_err("%s:%d ++\n", __func__, __LINE__);
+					ret = 0;
+				}
+				dsm_log_buff += ret;
+				buff_size -= (unsigned int)ret;
+
 			} else {
 				printk(KERN_ERR "%s:g_emmc_dsm_log Buff size is not enough\n", __FUNCTION__);
 				printk(KERN_ERR "%s:eMMC error message is: %s\n", __FUNCTION__, err_msg);
@@ -363,15 +314,12 @@ int dsm_emmc_get_log(void *card, int code, char *err_msg)
 		/*get size of used buffer*/
 		emmc_dsm_real_upload_size = sizeof(g_emmc_dsm_log.emmc_dsm_log) - buff_size;
 		pr_debug("DSM_DEBUG %s\n", g_emmc_dsm_log.emmc_dsm_log);
-		printk(KERN_ERR "dj DSM_DEBUG %s\n", g_emmc_dsm_log.emmc_dsm_log);
+		printk(KERN_ERR "DSM_EMMC DSM_DEBUG %s\n", g_emmc_dsm_log.emmc_dsm_log);
 
 		return 1;
 	} else {
 		printk("%s:Err num: %d, %s\n", __FUNCTION__, code, err_msg);
 		if (NULL != card_dev) {
-			pr_info("Card's cid:%08x%08x%08x%08x\n\n",
-				card_dev->raw_cid[0], card_dev->raw_cid[1],
-				card_dev->raw_cid[2], card_dev->raw_cid[3]);
 			pr_info("Card's ios.clock:%uHz, ios.old_rate:%uHz, ios.power_mode:%u,\
 				ios.timing:%u, ios.bus_mode:%u, ios.bus_width:%u\n",
 					card_dev->host->ios.clock, card_dev->host->ios.old_rate,
@@ -379,7 +327,7 @@ int dsm_emmc_get_log(void *card, int code, char *err_msg)
 					card_dev->host->ios.bus_mode, card_dev->host->ios.bus_width);
 		}
 	}
-	printk(KERN_ERR "dj leave dsm_emmc_get_log\n");
+	printk(KERN_ERR "DSM_EMMC leave dsm_emmc_get_log\n");
 	return 0;
 }
 EXPORT_SYMBOL(dsm_emmc_get_log);
@@ -434,6 +382,6 @@ void dsm_emmc_init(void)
 	if (!emmc_dclient) {
 		emmc_dclient = dsm_register_client(&dsm_emmc);
 	}
-	spin_lock_init(&g_emmc_dsm_log.lock);
+	mutex_init(&g_emmc_dsm_log.lock);
 }
 EXPORT_SYMBOL(dsm_emmc_init);

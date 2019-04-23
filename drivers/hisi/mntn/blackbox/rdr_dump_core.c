@@ -885,11 +885,6 @@ static void save_buffer_to_dfx_tempbuffer(struct every_number_info *every_number
 	struct dfx_head_info *dfx_head_info;
 	int ret, fd_dfx, cnt, cfo, need_write_size;
 
-	if (0 != rdr_wait_partition("/data/lost+found", 1000)) {
-		BB_PRINT_ERR("%s():%d:data is not ready\n", __func__, __LINE__);
-		return;
-	}
-
 	buf = kzalloc(SZ_4K, GFP_KERNEL);
 	if (!buf) {
 		BB_PRINT_ERR("%s():%d:kzalloc buf fail\n", __func__, __LINE__);

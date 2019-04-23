@@ -273,12 +273,6 @@ static int fts_cmd_wirte(u8 ctrl, u8 *cmd, u8 len)
 		buf[pos++] = cmd[i];
 	}
 
-	if ((ctrl & BIT(CTRL_CMD_CRC_BIT))) {
-		crckermit(buf, pos, &crc);
-		buf[pos++] = crc & 0xFF;
-		buf[pos++] = (crc >> 8) & 0xFF;
-	}
-
 	ret = fts_spi_write(buf, pos);
 
 	return ret;
@@ -448,23 +442,10 @@ static int fts_boot_read(u8 *cmd, u8 cmdlen, u8 *data, u32 datalen)
 	memset(txbuf, 0xFF, datalen + SPI_HEADER_LENGTH);
 	txbuf[0] = DATA_PACKAGE;
 	txlen = datalen + 1;
-	if (ctrl & BIT(CTRL_DATA_CRC_BIT)) {
-		txlen = txlen + 2;
-	}
 	ret = fts_spi_read(txbuf, txlen);
 	if (ret < 0) {
 		TS_LOG_ERR("%s:data wirte fail\n", __func__);
 		goto boot_read_err;
-	}
-
-	if (ctrl & BIT(CTRL_DATA_CRC_BIT)) {
-		crckermit(txbuf, txlen - 2, &crc);
-		crc_read = (txbuf[txlen - 1] << 8) + txbuf[txlen - 2];
-		if (crc != crc_read) {
-			TS_LOG_ERR("%s:crc(r) check fail,crc calc:%04x read:%04x\n", __func__, crc, crc_read);
-			ret = -EIO;
-			goto boot_read_err;
-		}
 	}
 
 	memcpy(data, txbuf + 1, datalen);

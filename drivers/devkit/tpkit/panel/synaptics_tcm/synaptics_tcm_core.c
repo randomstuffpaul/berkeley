@@ -95,7 +95,11 @@ static int syna_tcm_hdl_get_state(void);
 
 #define CHARGE_REPORT_DONE		  	0
 #define CHARGE_REPORT_NOT_REPORT	1
-
+#define FW_UPDATE_RETRY_DELAY_TIMES			500
+#define FW_UPDATE_RETRY_TOTAL_TIME			240 // 2min
+#define WORK_IS_RUNNING			1
+#define WORK_IS_CLOSE			0
+#define EER_LOG_LIMIT			5
 static int syna_report_priority[BIT_MAX] = {0,3,8,7,12,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF};
 static int syna_report_priority_limite[BIT_MAX] = {50,20,20,20,20,50,50,50,20,20,20,20,50,50,50,50};
 struct tp_status_and_count tp_status_dmd_bit_status[BIT_MAX];
@@ -121,8 +125,7 @@ extern struct ts_tui_data tee_tui_data;
 
 static int syna_tcm_comm_check(void);
 static int syna_tcm_mmi_test(struct ts_rawdata_info *info,
-				 struct ts_cmd_node *out_cmd);
-//static int syna_tcm_chip_get_info(struct ts_chip_info_param *info);
+				struct ts_cmd_node *out_cmd);
 static int syna_tcm_fw_update_boot(char *file_name);
 static int syna_tcm_fw_update_sd(void);
 static int syna_tcm_before_suspend(void);
@@ -134,7 +137,6 @@ static int syna_tcm_irq_bottom_half(struct ts_cmd_node *in_cmd, struct ts_cmd_no
 static int syna_tcm_irq_top_half(struct ts_cmd_node *cmd);
 static int syna_tcm_input_config(struct input_dev * input_dev);
 static int syna_tcm_parse_dts(struct device_node *np, struct ts_kit_device_data *chip_data);
-//static int syna_tcm_get_brightness_info(void);
 static int syna_tcm_init_chip(void);
 static int syna_tcm_chip_detect(struct ts_kit_platform_data* data);
 static int synaptics_tcm_chip_get_capacitance_test_type(struct ts_test_type_info *info);
@@ -149,18 +151,17 @@ extern int hostprocessing_get_project_id(char *out);
 static int synaptics_tcm_chip_get_info(struct ts_chip_info_param *info);
 static void synaptics_tcm_chip_touch_switch(void);
 static int syna_tcm_holster_switch(struct ts_holster_info *info);
+static void syna_tcm_hard_reset(void);
 
 struct ts_device_ops ts_kit_syna_tcm_ops = {
 	.chip_detect = syna_tcm_chip_detect,
 	.chip_init = syna_tcm_init_chip,
-//	.chip_get_brightness_info = syna_tcm_get_brightness_info,
 	.chip_parse_config = syna_tcm_parse_dts,
 	.chip_input_config = syna_tcm_input_config,
 	.chip_irq_top_half = syna_tcm_irq_top_half,
 	.chip_irq_bottom_half = syna_tcm_irq_bottom_half,
 	.chip_fw_update_boot = syna_tcm_fw_update_boot,  // host download on boot
 	.chip_fw_update_sd = syna_tcm_fw_update_sd,   // host download by hand
-//	.oem_info_switch = synaptics_oem_info_switch,
 	.chip_get_info = synaptics_tcm_chip_get_info,
 	.chip_get_capacitance_test_type =
 		synaptics_tcm_chip_get_capacitance_test_type,
@@ -169,33 +170,56 @@ struct ts_device_ops ts_kit_syna_tcm_ops = {
 	.chip_suspend = syna_tcm_suspend,
 	.chip_resume = syna_tcm_resume,
 	.chip_after_resume = syna_tcm_after_resume,
-//	.chip_wakeup_gesture_enable_switch =
-//		synaptics_wakeup_gesture_enable_switch,
 	.chip_get_rawdata = syna_tcm_mmi_test,
-//	.chip_get_calibration_data = synaptics_get_calibration_data,
-//	.chip_get_calibration_info = synaptics_get_calibration_info,
-//	.chip_get_debug_data = synaptics_get_debug_data,
 	.chip_glove_switch = syna_tcm_glove_switch,
-//	.chip_shutdown = synaptics_shutdown,
 	.chip_charger_switch = syna_tcm_charger_switch,
 	.chip_holster_switch = syna_tcm_holster_switch,
 	.chip_roi_switch = syna_tcm_roi_switch,
 	.chip_roi_rawdata = syna_tcm_roi_rawdata,
-//	.chip_palm_switch = synaptics_palm_switch,
-//	.chip_regs_operate = synaptics_regs_operate,
-//	.chip_calibrate = synaptics_calibrate,
-//	.chip_calibrate_wakeup_gesture = synaptics_calibrate_wakeup_gesture,
-//	.chip_reset = synaptics_reset_device,
-//#ifdef HUAWEI_TOUCHSCREEN_TEST
-//	.chip_test = test_dbg_cmd_test,
-//#endif
-//	.chip_wrong_touch = synaptics_wrong_touch,
-//	.chip_work_after_input = synaptics_work_after_input_kit,
-//	.chip_ghost_detect = synaptics_ghost_detect,
-//	.chip_check_status = synaptics_chip_check_status,
 	.chip_touch_switch = synaptics_tcm_chip_touch_switch,
 };
 
+static struct workqueue_struct *g_synaptics_tcm_fw_update_wq;
+static struct delayed_work g_synaptics_tcm_fw_update_work;
+static atomic_t g_work_status;
+static unsigned int g_download_work_retry_time;
+static void synaptics_tcm_fw_update_work_fn(struct work_struct *work);
+static void synaptics_tcm_fw_update_work_fn(struct work_struct *work)
+{
+	int retval;
+
+	disable_irq(tcm_hcd->syna_tcm_chip_data->ts_platform_data->irq_id);
+	tcm_hcd->host_download_mode = false;
+	TS_LOG_INFO("%s, called!\n", __func__);
+	if (atomic_read(&g_work_status) == WORK_IS_CLOSE) {
+		enable_irq(tcm_hcd->syna_tcm_chip_data->ts_platform_data->irq_id);
+		TS_LOG_INFO("%s, called, but TS is suspend do nothing!\n", __func__);
+		return;
+	}
+	syna_tcm_hard_reset();
+	retval = zeroflash_download(tcm_hcd->fw_name, tcm_hcd);
+	if (retval) {
+		TS_LOG_ERR("failed to download fw, retry to HDL\n");
+		if (atomic_read(&g_work_status) == WORK_IS_RUNNING &&
+				g_download_work_retry_time) {
+			queue_delayed_work(g_synaptics_tcm_fw_update_wq,
+				&g_synaptics_tcm_fw_update_work,
+				msecs_to_jiffies(tcm_hcd->retry_download_delay_time));
+			g_download_work_retry_time--;
+		} else {
+			TS_LOG_INFO("TS is suspend or retry %d!\n",
+				g_download_work_retry_time);
+		}
+	} else {
+		TS_LOG_INFO("downloaded firmware successfully, PR%d\n",
+			tcm_hcd->packrat_number);
+		tcm_hcd->host_download_mode = true;
+		syna_tcm_status_resume();
+		if (tcm_hcd->tp_status_report_support)
+			tcm_hcd->in_suspend_charge = false;
+	}
+	enable_irq(tcm_hcd->syna_tcm_chip_data->ts_platform_data->irq_id);
+}
 static void syna_tcm_report_dmd_state_report(void)
 {
 	int i = 0;
@@ -401,13 +425,13 @@ static int synaptics_tcm_get_project_id(char *project_id)
 			return 0;
 		}
 	}
-
+	project_id[PROJECT_ID_FW_LEN] = 0;
 	return retval;
 }
 
 static int synaptics_tcm_get_fw_ver(void)
 {
-
+	return 0;
 }
 static int synaptics_tcm_chip_get_info(struct ts_chip_info_param *info)
 {
@@ -435,9 +459,9 @@ static int synaptics_tcm_chip_get_info(struct ts_chip_info_param *info)
 		return -EINVAL;
 	}
 
-	snprintf(buf_fw_ver, CHIP_INFO_LENGTH, "0x%x", tcm_hcd->packrat_number);
+	snprintf(buf_fw_ver, CHIP_INFO_LENGTH, "PR%d", tcm_hcd->packrat_number);
 	TS_LOG_INFO("buf_fw_ver = %s", buf_fw_ver);
-	
+
 	if(!tcm_hcd->syna_tcm_chip_data->ts_platform_data->hide_plain_id)  {
 		len = (sizeof(info->ic_vendor) - 1) > sizeof(SYNAPTICS_CHIP_INFO) ?
 				sizeof(SYNAPTICS_CHIP_INFO) : (sizeof(info->ic_vendor) - 1);
@@ -448,7 +472,7 @@ static int synaptics_tcm_chip_get_info(struct ts_chip_info_param *info)
 		memcpy(info->ic_vendor, buf_proj_id, len);
 	}
 
-	strncpy(info->mod_vendor, buf_proj_id, CHIP_INFO_LENGTH);
+	strncpy(info->mod_vendor, buf_proj_id, CHIP_INFO_LENGTH - 1);
 	strncpy(info->fw_vendor, buf_fw_ver, CHIP_INFO_LENGTH);
 
 	return 0;
@@ -545,6 +569,12 @@ static int syna_tcm_spi_rmi_read(struct syna_tcm_hcd *tcm_hcd,
 {
 	int retval = NO_ERR;
 
+#if defined (CONFIG_TEE_TUI)
+	if (tcm_hcd->syna_tcm_chip_data->report_tui_enable) {
+		return NO_ERR;
+	}
+#endif
+
 	retval = syna_tcm_spi_alloc_mem(tcm_hcd, length + 2);
 	if (retval < 0) {
 		TS_LOG_ERR("Failed to allocate memory\n");
@@ -615,6 +645,12 @@ static int syna_tcm_spi_rmi_write(struct syna_tcm_hcd *tcm_hcd,
 {
 	int retval = NO_ERR;
 
+#if defined (CONFIG_TEE_TUI)
+	if (tcm_hcd->syna_tcm_chip_data->report_tui_enable) {
+		return NO_ERR;
+	}
+#endif
+
 	retval = syna_tcm_spi_alloc_mem(tcm_hcd, (length + 2));
 	if (retval < 0) {
 		TS_LOG_ERR("Failed to allocate memory\n");
@@ -673,6 +709,12 @@ static int syna_tcm_spi_read(struct syna_tcm_hcd *tcm_hcd, unsigned char *data,
 {
 	int retval = NO_ERR;
 
+#if defined (CONFIG_TEE_TUI)
+	if (tcm_hcd->syna_tcm_chip_data->report_tui_enable) {
+		return NO_ERR;
+	}
+#endif
+
 	retval = syna_tcm_spi_alloc_mem(tcm_hcd, length);
 	if (retval < 0) {
 		TS_LOG_ERR("Failed to allocate memory\n");
@@ -730,6 +772,12 @@ static int syna_tcm_spi_write(struct syna_tcm_hcd *tcm_hcd, unsigned char *data,
 		unsigned int length)
 {
 	int retval = NO_ERR;
+
+#if defined (CONFIG_TEE_TUI)
+	if (tcm_hcd->syna_tcm_chip_data->report_tui_enable) {
+		return NO_ERR;
+	}
+#endif
 
 	retval = syna_tcm_spi_write_transfer(tcm_hcd, data, length);
 	if (retval < 0) {
@@ -1652,9 +1700,18 @@ static int syna_tcm_pinctrl_select_normal(void)
 
 static void syna_tcm_power_on_gpio_set(void)
 {
+	int ret = 0;
+
 	syna_tcm_pinctrl_select_normal();
-	gpio_direction_input(tcm_hcd->syna_tcm_chip_data->ts_platform_data->irq_gpio);
-	gpio_direction_output(tcm_hcd->syna_tcm_chip_data->ts_platform_data->reset_gpio, 1);
+	ret = gpio_direction_input(tcm_hcd->syna_tcm_chip_data->ts_platform_data->irq_gpio);
+	if (ret) {
+		TS_LOG_ERR("%s: gpio_direction_input for irq gpio failed\n", __func__);
+	}
+
+	ret = gpio_direction_output(tcm_hcd->syna_tcm_chip_data->ts_platform_data->reset_gpio, 1);
+	if (ret) {
+		TS_LOG_ERR("%s: gpio_direction_output for reset gpio failed\n", __func__);
+	}
 }
 
 static void ts_kit_power_gpio_enable(void)
@@ -1691,16 +1748,24 @@ static void syna_tcm_vddio_on(void)
 
 static void syna_tcm_gpio_reset(void)
 {
+	int ret = 0;
+
 	TS_LOG_INFO("synaptics_gpio_reset\n");
 	if (!tcm_hcd->syna_tcm_chip_data->ts_platform_data->reset_gpio) {
 		TS_LOG_INFO("reset_gpio is null, not supported reset\n");
 		return;
 	}
 
-	gpio_direction_input(tcm_hcd->syna_tcm_chip_data->ts_platform_data->irq_gpio);
+	ret = gpio_direction_input(tcm_hcd->syna_tcm_chip_data->ts_platform_data->irq_gpio);
+	if (ret) {
+		TS_LOG_ERR("%s: gpio_direction_input for irq gpio failed\n", __func__);
+	}
 	TS_LOG_INFO("set gpio int input\n");
 
-	gpio_direction_output(tcm_hcd->syna_tcm_chip_data->ts_platform_data->reset_gpio, GPIO_OUTPUT_HIGH);
+	ret = gpio_direction_output(tcm_hcd->syna_tcm_chip_data->ts_platform_data->reset_gpio, GPIO_OUTPUT_HIGH);
+	if (ret) {
+		TS_LOG_ERR("%s: gpio_direction_output for reset gpio failed\n", __func__);
+	}
 	mdelay(1);
 }
 
@@ -2608,8 +2673,20 @@ static int syna_tcm_resume(void)
 
 	pre_finger_status = 0;
 	tcm_hcd->in_suspend = false;
-
 	return retval;
+}
+
+static void syna_tcm_hard_reset(void)
+{
+	int syna_reset_gpio;
+
+	syna_reset_gpio = tcm_hcd->syna_tcm_chip_data->ts_platform_data->reset_gpio;
+	gpio_direction_output(syna_reset_gpio, GPIO_OUTPUT_HIGH);
+	mdelay(1); // this number is ic spec delay time
+	gpio_direction_output(syna_reset_gpio, GPIO_OUTPUT_LOW);
+	udelay(300); // this number is ic spec delay time
+	gpio_direction_output(syna_reset_gpio, GPIO_OUTPUT_HIGH);
+	mdelay(21); // this number is ic spec delay time
 }
 
 /*  do some things after power on. */
@@ -2621,29 +2698,34 @@ static int syna_tcm_after_resume(void *feature_info)
 	if (tcm_hcd->init_okay) {
 retry:
 		retval = zeroflash_download(tcm_hcd->fw_name, tcm_hcd);
-			if (retval) {
-				TS_LOG_ERR("failed to download fw\n");
-				gpio_direction_output(tcm_hcd->syna_tcm_chip_data->ts_platform_data->reset_gpio, GPIO_OUTPUT_HIGH);
-				mdelay(1);
-				gpio_direction_output(tcm_hcd->syna_tcm_chip_data->ts_platform_data->reset_gpio, GPIO_OUTPUT_LOW);
-				udelay(300);
-				gpio_direction_output(tcm_hcd->syna_tcm_chip_data->ts_platform_data->reset_gpio, GPIO_OUTPUT_HIGH);
-				mdelay(21);
-				if(retry --) {
-					TS_LOG_ERR("retry to HDL\n");
-					goto retry;
-				}
-				goto exit;
-			} else {
-				TS_LOG_DEBUG("downloaded firmware successfully\n");
-				tcm_hcd->host_download_mode = true;
+		if (retval) {
+			TS_LOG_ERR("failed to download fw\n");
+			syna_tcm_hard_reset();
+			if (retry--) {
+				TS_LOG_ERR("retry to HDL\n");
+				goto retry;
 			}
-	} else if(get_into_recovery_flag_adapter()) {
+			if (tcm_hcd->resume_retry_download_fw_support) {
+				queue_delayed_work(g_synaptics_tcm_fw_update_wq,
+					&g_synaptics_tcm_fw_update_work,
+					msecs_to_jiffies(tcm_hcd->retry_download_delay_time));
+				atomic_set(&g_work_status, WORK_IS_RUNNING);
+				g_download_work_retry_time = tcm_hcd->retry_download_retry_times;
+				// don't report wake up error, move retry failed report
+				retval = NO_ERR;
+			}
+			goto exit;
+		} else {
+			TS_LOG_INFO("downloaded firmware successfully, PR%d\n",
+				tcm_hcd->packrat_number);
+			tcm_hcd->host_download_mode = true;
+		}
+	} else if (get_into_recovery_flag_adapter()) {
 		syna_tcm_fw_update_boot(tcm_hcd->fw_name);
 	}
 
 	syna_tcm_status_resume();
-	if(tcm_hcd->tp_status_report_support)
+	if (tcm_hcd->tp_status_report_support)
 		tcm_hcd->in_suspend_charge = false;
 exit:
 	return retval;
@@ -2652,6 +2734,17 @@ exit:
 static int syna_tcm_before_suspend(void)
 {
 	int retval = NO_ERR;
+	if (tcm_hcd->resume_retry_download_fw_support &&
+			(atomic_read(&g_work_status) == WORK_IS_RUNNING)) {
+		cancel_delayed_work(&g_synaptics_tcm_fw_update_work);
+		atomic_set(&g_work_status, WORK_IS_CLOSE);
+		if (tcm_hcd->host_download_mode == false) {
+#if defined(CONFIG_HUAWEI_DSM)
+			ts_dmd_report(DSM_TP_WAKEUP_ERROR_NO,
+				"try to client record 926004020 for resume error!\n");
+#endif
+		}
+	}
 	if(tcm_hcd->tp_status_report_support && (!g_tskit_pt_station_flag)) {
 		tcm_hcd->in_before_suspend = true;
 		syna_tcm_hdl_get_state();
@@ -2737,12 +2830,7 @@ retry:
 	retval = zeroflash_download(file_name, tcm_hcd);
 	if (retval) {
 		TS_LOG_ERR("failed to download fw retry\n");
-		gpio_direction_output(tcm_hcd->syna_tcm_chip_data->ts_platform_data->reset_gpio, GPIO_OUTPUT_HIGH);
-		mdelay(1);
-		gpio_direction_output(tcm_hcd->syna_tcm_chip_data->ts_platform_data->reset_gpio, GPIO_OUTPUT_LOW);
-		udelay(300);
-		gpio_direction_output(tcm_hcd->syna_tcm_chip_data->ts_platform_data->reset_gpio, GPIO_OUTPUT_HIGH);
-		mdelay(21);
+		syna_tcm_hard_reset();
 		if(retry --) {
 			TS_LOG_ERR("retry to HDL\n");
 			goto retry;
@@ -2771,16 +2859,24 @@ static int syna_tcm_irq_bottom_half(struct ts_cmd_node *in_cmd,
 	char fw_name[MAX_STR_LEN * 4] = {0};
 	struct ts_fingers *info =
 		&out_cmd->cmd_param.pub_params.algo_param.info;
+	static int error_log_count = 0;
 
 	out_cmd->command = TS_INPUT_ALGO;
 	out_cmd->cmd_param.pub_params.algo_param.algo_order =
 		tcm_hcd->syna_tcm_chip_data->algo_id;
 	TS_LOG_DEBUG("order: %d\n",
 			out_cmd->cmd_param.pub_params.algo_param.algo_order);
-
+	tcm_hcd->esd_report_status = NOT_NEED_REPORT;
 	retval = syna_tcm_read_one_package(info);
-	if (retval < 0) {
+	if ((retval < 0) && (error_log_count < EER_LOG_LIMIT)) {
+		error_log_count++;
 		TS_LOG_ERR("Failed to syna_tcm_read_one_package, try to read F$35\n");
+	}
+	/* 'use_esd_report' setup in DTS; 'esd_report_status' setup in irq function */
+	if(NEED_REPORT == tcm_hcd->esd_report_status && tcm_hcd->use_esd_report) {
+		TS_LOG_INFO("%s, plam_key_report.\n", __func__);
+		out_cmd->command = TS_PALM_KEY;
+		out_cmd->cmd_param.pub_params.ts_key = TS_KEY_IRON;
 	}
 
 exit:
@@ -2810,6 +2906,7 @@ static int syna_tcm_input_config(struct input_dev *input_dev)
 	set_bit(TS_TOUCHPLUS_KEY2, input_dev->keybit);
 	set_bit(TS_TOUCHPLUS_KEY3, input_dev->keybit);
 	set_bit(TS_TOUCHPLUS_KEY4, input_dev->keybit);
+	set_bit(TS_KEY_IRON, input_dev->keybit);/* report ESD EVENT */
 
 #ifdef INPUT_PROP_DIRECT
 	set_bit(INPUT_PROP_DIRECT, input_dev->propbit);
@@ -3138,6 +3235,46 @@ static void syna_tcm_parse_power_dts(struct device_node *np, struct ts_kit_devic
 	}
 }
 
+static void syna_tcm_parse_download_fw_dts(struct device_node *np,
+	struct ts_kit_device_data *chip_data)
+{
+	int retval;
+	u32 value = 0;
+
+	retval = of_property_read_u32(np,
+		"resume_retry_download_fw_support",
+		&tcm_hcd->resume_retry_download_fw_support);
+	if (retval)
+		tcm_hcd->resume_retry_download_fw_support = 0;
+
+	if (tcm_hcd->resume_retry_download_fw_support) {
+		retval = of_property_read_u32(np,
+			"retry_download_delay_time",
+			&tcm_hcd->retry_download_delay_time);
+		if (retval)
+			tcm_hcd->retry_download_delay_time = FW_UPDATE_RETRY_DELAY_TIMES;
+		retval = of_property_read_u32(np,
+			"retry_download_retry_times",
+			&tcm_hcd->retry_download_retry_times);
+		if (retval || !tcm_hcd->retry_download_retry_times)
+			tcm_hcd->retry_download_retry_times = FW_UPDATE_RETRY_TOTAL_TIME;
+		TS_LOG_INFO("delay_time = %d, retry_times = %d\n",
+			tcm_hcd->retry_download_delay_time,
+			tcm_hcd->retry_download_retry_times);
+	}
+
+	retval = of_property_read_u32(np, "support_download_fw_incharger", &value);
+	if (!retval) {
+		chip_data->download_fw_incharger = (u8)value;
+		TS_LOG_INFO("use dts download_fw_incharger = %d\n",
+			    chip_data->download_fw_incharger);
+	} else {
+		chip_data->download_fw_incharger = 0;
+		TS_LOG_INFO("use default download_fw_incharger = %d\n",
+			    chip_data->download_fw_incharger);
+	}
+}
+
 static void syna_tcm_parse_feature_dts(struct device_node *np, struct ts_kit_device_data *chip_data)
 {
 	int retval = NO_ERR;
@@ -3276,6 +3413,12 @@ static void syna_tcm_parse_feature_dts(struct device_node *np, struct ts_kit_dev
 	}
 	TS_LOG_INFO("use dts(retval = %d) for aft_wxy_enable = %d\n", retval, tcm_hcd->aft_wxy_enable);
 
+	retval = of_property_read_u32(np, "use_esd_report", &tcm_hcd->use_esd_report);
+	if(retval) {
+		tcm_hcd->use_esd_report = 0;
+	}
+	TS_LOG_INFO("use dts(retval = %d) for use_esd_report = %d\n", retval, tcm_hcd->use_esd_report);
+
 	retval = of_property_read_u32(np, "use_dma_download_firmware", &tcm_hcd->use_dma_download_firmware);
 	if(retval) {
 		tcm_hcd->use_dma_download_firmware = 0;
@@ -3299,7 +3442,7 @@ static int syna_tcm_parse_dts(struct device_node *np, struct ts_kit_device_data 
 	syna_tcm_parse_power_dts(np,chip_data);
 
 	syna_tcm_parse_feature_dts(np,chip_data);
-	
+	syna_tcm_parse_download_fw_dts(np, chip_data);
 	return 0;
 }
 
@@ -3336,6 +3479,17 @@ static int syna_tcm_init_chip(void)
 	#endif
 
 	retval = debug_device_init(tcm_hcd);
+	if (tcm_hcd->resume_retry_download_fw_support) {
+		g_synaptics_tcm_fw_update_wq =
+			create_singlethread_workqueue("syna_tcm_fw_update_wq");
+		if (!g_synaptics_tcm_fw_update_wq) {
+			TS_LOG_ERR("%s: create fw update workqueue failed\n", __func__);
+		} else {
+			INIT_DELAYED_WORK(&g_synaptics_tcm_fw_update_work,
+				synaptics_tcm_fw_update_work_fn);
+			atomic_set(&g_work_status, WORK_IS_CLOSE);
+		}
+	}
 	return retval;
 }
 
@@ -3601,7 +3755,6 @@ static int syna_tcm_charger_switch(struct ts_charger_info *info)
 		retval = -EINVAL;
 		break;
 	}
-	return retval;
 #endif
 	return retval;
 }
@@ -3620,6 +3773,11 @@ static int syna_tcm_glove_switch(struct ts_glove_info *info)
 		TS_LOG_ERR("synaptics_glove_switch: info is Null\n");
 		retval = -ENOMEM;
 		return retval;
+	}
+
+	if (!info->glove_supported) {
+		TS_LOG_INFO("%s:not support glove\n", __func__);
+		return NO_ERR;
 	}
 
 	switch (info->op_action) {

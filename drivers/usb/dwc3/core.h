@@ -104,6 +104,7 @@
 #define DWC3_GHWPARAMS7		0xc15c
 #define DWC3_GDBGFIFOSPACE	0xc160
 #define DWC3_GDBGLTSSM		0xc164
+#define DWC3_GDBGLSPMUX_DEV	0xc170
 #define DWC3_GPRTBIMAP_HS0	0xc180
 #define DWC3_GPRTBIMAP_HS1	0xc184
 #define DWC3_GPRTBIMAP_FS0	0xc188
@@ -112,6 +113,8 @@
 
 #define DWC3_VER_NUMBER		0xc1a0
 #define DWC3_VER_TYPE		0xc1a4
+
+#define DWC3_GDBGLSPMUX_DEV_ANALYZER_SET(rv, av)	(((rv) &~(0xff << 16)) |((av) << 16))
 
 #define DWC3_GUSB2PHYCFG(n)	(0xc200 + (n * 0x04))
 #define DWC3_GUSB2I2CCTL(n)	(0xc240 + (n * 0x04))
@@ -243,6 +246,8 @@
 #define DWC3_GUSB3PIPECTL_TX_DEEPH(n)	((n) << 1)
 
 /* Global TX Fifo Size Register */
+#define DWC31_GTXFIFOSIZ_TXFRAMNUM	BIT(15)		/* DWC_usb31 only */
+#define DWC31_GTXFIFOSIZ_TXFDEF(n)	((n) & 0x7fff)	/* DWC_usb31 only */
 #define DWC3_GTXFIFOSIZ_TXFDEF(n)	((n) & 0xffff)
 #define DWC3_GTXFIFOSIZ_TXFSTADDR(n)	((n) & 0xffff0000)
 
@@ -1191,6 +1196,8 @@ static inline void dwc3_host_exit(struct dwc3 *dwc)
 { }
 #endif
 
+extern struct atomic_notifier_head device_event_nh;
+
 #if IS_ENABLED(CONFIG_USB_DWC3_GADGET) || IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE)
 int dwc3_gadget_init(struct dwc3 *dwc);
 void dwc3_gadget_exit(struct dwc3 *dwc);
@@ -1200,12 +1207,15 @@ int dwc3_gadget_set_link_state(struct dwc3 *dwc, enum dwc3_link_state state);
 int dwc3_send_gadget_ep_cmd(struct dwc3_ep *dep, unsigned cmd,
 		struct dwc3_gadget_ep_cmd_params *params);
 int dwc3_send_gadget_generic_command(struct dwc3 *dwc, unsigned cmd, u32 param);
-int dwc3_conndone_notifier_register(struct notifier_block *nb);
-int dwc3_conndone_notifier_unregister(struct notifier_block *nb);
-int dwc3_setconfig_notifier_register(struct notifier_block *nb);
-int dwc3_setconfig_notifier_unregister(struct notifier_block *nb);
-int dwc3_reset_notifier_register(struct notifier_block *nb);
-int dwc3_reset_notifier_unregister(struct notifier_block *nb);
+
+
+#define DEVICE_EVENT_CONNECT_DONE	0
+#define DEVICE_EVENT_RESET	1
+#define DEVICE_EVENT_CMD_TMO	2
+#define DEVICE_EVENT_SETCONFIG	3
+
+int dwc3_device_event_notifier_register(struct notifier_block *nb);
+int dwc3_device_event_notifier_unregister(struct notifier_block *nb);
 #else
 static inline int dwc3_gadget_init(struct dwc3 *dwc)
 { return 0; }
@@ -1225,17 +1235,9 @@ static inline int dwc3_send_gadget_ep_cmd(struct dwc3_ep *dep, unsigned cmd,
 static inline int dwc3_send_gadget_generic_command(struct dwc3 *dwc,
 		int cmd, u32 param)
 { return 0; }
-static inline int dwc3_conndone_notifier_register(struct notifier_block *nb)
+static inline int dwc3_device_event_notifier_register(struct notifier_block *nb)
 { return 0; }
-static inline int dwc3_conndone_notifier_unregister(struct notifier_block *nb)
-{ return 0; }
-static inline int dwc3_setconfig_notifier_register(struct notifier_block *nb)
-{ return 0; }
-static inline int dwc3_setconfig_notifier_unregister(struct notifier_block *nb)
-{ return 0; }
-static inline int dwc3_reset_notifier_register(struct notifier_block *nb)
-{ return 0; }
-static inline int dwc3_reset_notifier_unregister(struct notifier_block *nb)
+static inline int dwc3_device_event_notifier_unregister(struct notifier_block *nb)
 { return 0; }
 #endif
 

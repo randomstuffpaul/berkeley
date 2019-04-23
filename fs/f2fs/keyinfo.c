@@ -171,7 +171,7 @@ static int f2fs_derive_get_keyindex(u8 *descriptor, u8 keyring_type)
 			goto out;
 		}
 
-		res = (int) (*(master_key->raw + 63) & 0xff);
+		res = (int) (*(master_key->raw + FS_KEY_INDEX_OFFSET) & 0xff);
 	} else {
 		if (ukp->datalen != sizeof(struct fscrypt_sdp_key)) {
 			up_read(&keyring_key->sem);
@@ -194,7 +194,7 @@ static int f2fs_derive_get_keyindex(u8 *descriptor, u8 keyring_type)
 				goto out;
 			}
 
-			res = (int) (*(master_sdp_key->raw + 63) & 0xff);
+			res = (int) (*(master_sdp_key->raw + FS_KEY_INDEX_OFFSET) & 0xff);
 		}
 	}
 

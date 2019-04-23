@@ -31,6 +31,9 @@ static struct lcd_kit_panel_map panel_map[] = {
 	{PANEL_SAMSUNG_EA8076_V2, samsung_ea8076_probe},
 	{PANEL_SAMSUNG_EA8074, samsung_ea8076_probe},
 	{PANEL_BOE_R66451, boe_r66451_probe},
+	{PANEL_TONY_SAMSUNG_EA8076_V4,samsung_ea8076_probe},
+	{PANEL_TONY_SAMSUNG_EA8076,samsung_ea8076_probe},
+
 };
 
 struct lcd_kit_panel_ops *g_lcd_kit_panel_ops = NULL;

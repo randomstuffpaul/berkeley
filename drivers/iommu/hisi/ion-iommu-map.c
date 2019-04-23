@@ -131,40 +131,6 @@ static void iova_pool_destroy(struct gen_pool *pool)
 	gen_pool_destroy(pool);
 }
 
-static int iommu_check_tile_format(struct iommu_map_format *format,
-				   unsigned long phys_len)
-{
-	unsigned long header_size = format->header_size;
-	unsigned long phys_page_line = format->phys_page_line;
-	unsigned long virt_page_line = format->virt_page_line;
-
-	/* check invalid args */
-	if ((phys_len <= header_size) || !phys_page_line || !virt_page_line) {
-		pr_err("[%s]wrong arg:phys_len 0x%lx, header_size 0x%lx\n",
-			 __func__, phys_len, header_size);
-		pr_err("[%s]wrong arg:phys line 0x%lx, virt line 0x%lx\n",
-			 __func__, phys_page_line, virt_page_line);
-		return -EINVAL;
-	}
-
-	/* virt_page_line <= 128 and
-	 * virt_page_line / phys_page_line = 1 in normal process */
-	if ((virt_page_line * PAGE_SIZE > SZ_512K) ||
-	    (virt_page_line / phys_page_line != 1)) {
-		pr_err("%s:virt line/phys line out of standard\n", __func__);
-		return -EINVAL;
-	}
-
-	/* check overflow */
-	if ((virt_page_line * PAGE_SIZE <= virt_page_line) ||
-	    (phys_page_line * PAGE_SIZE <= phys_page_line)) {
-		pr_err("%s:virt_line/phys_line too large!!!\n", __func__);
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
 static int do_iommu_domain_map(struct ion_iommu_domain *ion_domain,
 		struct scatterlist *sgl, struct iommu_map_format *format,
 		struct map_result *result)
@@ -177,7 +143,6 @@ static int do_iommu_domain_map(struct ion_iommu_domain *ion_domain,
 	struct gen_pool *pool;
 	struct iommu_domain *domain;
 	struct scatterlist *sg;
-	struct tile_format fmt;
 
 	if (format->prot & IOMMU_SEC) {
 		pr_err("prot 0x%lx\n", format->prot);
@@ -189,35 +154,11 @@ static int do_iommu_domain_map(struct ion_iommu_domain *ion_domain,
 		phys_len += (unsigned long)ALIGN(sg->length, PAGE_SIZE);
 
 	/* get io virtual address size */
-	if (format->is_tile) {
-		unsigned long lines;
-		unsigned long body_size;
-
-		if (iommu_check_tile_format(format, phys_len)) {
-			pr_err("%s:check foramt fail\n", __func__);
-			return -EINVAL;
-		}
-		body_size = phys_len - format->header_size;
-		lines = body_size / (format->phys_page_line * PAGE_SIZE);
-
-		/*header need more lines virtual space*/
-		if (format->header_size) {
-			unsigned long header_size;
-
-			header_size = ALIGN(format->header_size,
-					format->virt_page_line * PAGE_SIZE);
-			lines +=  header_size
-					/ (format->virt_page_line * PAGE_SIZE);
-		}
-
-		iova_size = lines * format->virt_page_line * PAGE_SIZE - (format->virt_page_line - format->phys_page_line) * PAGE_SIZE;
-	} else {
-		iova_size = phys_len;
-	}
+	iova_size = phys_len;
 
 	iova_alloc_sz = iova_size;
 #ifdef CONFIG_HISI_IOMMU_IOVA_DEBUG
-	if ((!format->is_tile) && IS_ALIGNED(iova_size, ion_domain->range.align)) {
+	if (IS_ALIGNED(iova_size, ion_domain->range.align)) {
 		pr_err("enter CONFIG_HISI_IOMMU_IOVA_DEBUG\n");
 		iova_alloc_sz += ion_domain->range.align;
 	}
@@ -245,17 +186,8 @@ static int do_iommu_domain_map(struct ion_iommu_domain *ion_domain,
 	}
 
 	/* do map */
-	if (format->is_tile) {
-		fmt.is_tile = format->is_tile;
-		fmt.phys_page_line = format->phys_page_line;
-		fmt.virt_page_line = format->virt_page_line;
-		fmt.header_size = format->header_size;
-		ret = iommu_map_tile(domain, iova_start,
-					sgl, iova_size, 0, &fmt);
-	} else {
-		ret = iommu_map_sg(domain, iova_start, sgl,
-				   sg_nents(sgl), format->prot);
-	}
+	ret = iommu_map_sg(domain, iova_start, sgl,
+			sg_nents(sgl), format->prot);
 
 	if (ret != iova_size) {
 		pr_err("[%s]map failed!iova_start = %lx, iova_size = %lx\n",
@@ -311,13 +243,8 @@ static int do_iommu_domain_unmap(struct map_result *result)
 	}
 
 	/* unmap tile equals to unmpa range */
-	if (result->is_tile) {
-		unmaped_size = iommu_unmap_tile(ion_domain->domain,
+	unmaped_size = iommu_unmap(ion_domain->domain,
 		result->iova_start, result->iova_size);
-	} else {
-		unmaped_size = iommu_unmap(ion_domain->domain,
-				result->iova_start, result->iova_size);
-	}
 
 	if (unmaped_size != result->iova_size) {
 		pr_err("[%s]unmap failed!\n", __func__);
@@ -326,8 +253,7 @@ static int do_iommu_domain_unmap(struct map_result *result)
 	/* free iova */
 	if (pool) {
 #ifdef CONFIG_HISI_IOMMU_IOVA_DEBUG
-		if ((!result->is_tile) &&
-				IS_ALIGNED(result->iova_size, ion_domain->range.align))
+		if (IS_ALIGNED(result->iova_size, ion_domain->range.align))
 			iova_alloc_sz += ion_domain->range.align;
 #endif
 		ret = addr_in_gen_pool(pool, result->iova_start,
@@ -359,6 +285,79 @@ int hisi_iommu_unmap_domain(struct iommu_map_format *format)
 	return do_iommu_domain_unmap(&result);
 }
 EXPORT_SYMBOL_GPL(hisi_iommu_unmap_domain);
+
+unsigned long hisi_iommu_idle_display_map(phys_addr_t paddr, size_t allsize, size_t l3size, size_t lbsize)
+{
+	int ret;
+	unsigned long iova, ret_va = 0;
+	size_t map_size = 0;
+	struct ion_iommu_domain *ion_domain = ion_iommu_domain;
+
+	if (!PAGE_ALIGNED(allsize)
+		|| !PAGE_ALIGNED(l3size)
+		|| !PAGE_ALIGNED(lbsize))
+		return 0;
+
+	if (l3size + lbsize >= lbsize
+	    && allsize < l3size + lbsize)
+		return 0;
+
+	iova = hisi_alloc_iova(ion_domain->iova_pool, allsize, ion_domain->range.align);
+	if (!iova) {
+		pr_err("[%s]iova alloc size 0x%lx failed! pool avail 0x%lx\n",
+			__func__, allsize, gen_pool_avail(ion_domain->iova_pool));
+		return 0;
+	}
+	ret_va = iova;
+
+	/**
+	 * map l3 fisrt
+	 */
+	if (l3size) {
+		ret = iommu_map(ion_domain->domain, iova, paddr, l3size,
+			IOMMU_CACHE|IOMMU_READ|IOMMU_WRITE|IOMMU_NO_LB_MAP);
+		if (ret)
+			goto free_iova;
+	}
+	iova += l3size;
+	paddr += l3size;
+	map_size += l3size;
+
+	/**
+	 * map lb second
+	 */
+	if (lbsize) {
+		ret = iommu_map(ion_domain->domain, iova, paddr,
+			lbsize, IOMMU_READ|IOMMU_WRITE);
+		if (ret)
+			goto err;
+	}
+	iova += lbsize;
+	paddr += lbsize;
+	map_size += lbsize;
+
+
+	/**
+	 * map last
+	 */
+	if (allsize - map_size) {
+		ret = iommu_map(ion_domain->domain, iova, paddr,
+			allsize - map_size, IOMMU_READ|IOMMU_WRITE|IOMMU_NO_LB_MAP);
+		if (ret)
+			goto err;
+	}
+
+	return ret_va;
+
+err:
+	iommu_unmap(ion_domain->domain, ret_va, map_size);
+
+free_iova:
+	hisi_free_iova(ion_domain->iova_pool, iova, allsize);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(hisi_iommu_idle_display_map);
 
 /*only used to test*/
 phys_addr_t ion_iommu_domain_iova_to_phys(unsigned long iova)

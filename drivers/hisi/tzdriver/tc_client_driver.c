@@ -2066,45 +2066,52 @@ int TC_NS_ClientClose(TC_NS_DEV_File *dev, int flag)
 		TCERR("invalid dev(null)\n");
 		return ret;
 	}
-	mutex_lock(&g_operate_session_lock);
-	mutex_lock(&dev->service_lock);
-	list_for_each_entry_safe(service, service_temp, &dev->services_list,
-				 head) {
-		if (service) {
-			/* close unclosed session */
-			if (!list_empty(&service->session_list)) {
-				TC_NS_Session *session, *tmp_session;
+	if (flag == 0) {
+		mutex_lock(&g_operate_session_lock);
+		mutex_lock(&dev->service_lock);
+		list_for_each_entry_safe(service, service_temp, &dev->services_list,
+				head) {
+			if (service) {
+				/* close unclosed session */
+				if (!list_empty(&service->session_list)) {
+					TC_NS_Session *session, *tmp_session;
 
-				mutex_lock(&service->session_lock);
-				list_for_each_entry_safe(session, tmp_session,
-							 &service->session_list,
-							 head) {
-					TCDEBUG
-					("terminate opened service 0x%x\n",
-					 *(uint32_t *) service->uuid);
-					mutex_lock(&session->ta_session_lock);
-					kill_session(dev, service->uuid,
-						     session->session_id);
-					mutex_unlock(&session->ta_session_lock);
-					/* Clean session secure information */
-					ret_s = memset_s((void *)&session->secure_info,
-						 sizeof(session->secure_info),
-						 0,
-						 sizeof(session->secure_info));
-					if (ret_s != EOK) {
-						 tloge("TC_NS_ClientClose memset_s error=%d\n", ret_s);
+					mutex_lock(&service->session_lock);
+					list_for_each_entry_safe(session, tmp_session,
+							&service->session_list,
+							head) {
+						TCDEBUG
+							("terminate opened service 0x%x\n",
+							 *(uint32_t *) service->uuid);
+						mutex_lock(&session->ta_session_lock);
+						kill_session(dev, service->uuid,
+								session->session_id);
+						mutex_unlock(&session->ta_session_lock);
+						/* Clean session secure information */
+						ret_s = memset_s((void *)&session->secure_info,
+								sizeof(session->secure_info),
+								0,
+								sizeof(session->secure_info));
+						if (ret_s != EOK) {
+							tloge("TC_NS_ClientClose memset_s error=%d\n", ret_s);
+						}
+						put_session_struct(session); /* pair with open session */
 					}
-					put_session_struct(session); /* pair with open session */
+					mutex_unlock(&service->session_lock);
 				}
-				mutex_unlock(&service->session_lock);
-			}
 
-			list_del(&service->head);
-			put_service_struct(service); /* pair with TC_NS_ServiceInit */
-			dev->service_cnt--;
+				list_del(&service->head);
+				put_service_struct(service); /* pair with TC_NS_ServiceInit */
+				dev->service_cnt--;
+			}
 		}
+		mutex_unlock(&dev->service_lock);
+		if (dev->dev_file_id == tui_attach_device())
+			do_ns_tui_release();
+		kill_ion_by_cafd(dev->dev_file_id);
+		mutex_unlock(&g_operate_session_lock);
 	}
-	mutex_unlock(&dev->service_lock);
+
 	mutex_lock(&dev->shared_mem_lock);
 	list_for_each_entry_safe(shared_mem, shared_mem_temp,
 				 &dev->shared_mem_list, head) {
@@ -2125,9 +2132,6 @@ int TC_NS_ClientClose(TC_NS_DEV_File *dev, int flag)
 	/*del dev from the list */
 	list_del(&dev->head);
 	mutex_unlock(&g_tc_ns_dev_list.dev_lock);
-	if (dev->dev_file_id == tui_attach_device())
-		do_ns_tui_release();
-	kill_ion_by_cafd(dev->dev_file_id);
 	kfree(dev);
 
 	TCDEBUG("dev list  dev file cnt:%d\n", g_tc_ns_dev_list.dev_file_cnt);
@@ -2138,8 +2142,6 @@ int TC_NS_ClientClose(TC_NS_DEV_File *dev, int flag)
 	} else {
 		TCERR("dev file list had been empty already");
 	}
-
-	mutex_unlock(&g_operate_session_lock);
 
 	return ret;
 }

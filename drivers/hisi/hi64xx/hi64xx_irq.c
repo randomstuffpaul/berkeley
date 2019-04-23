@@ -84,6 +84,7 @@ static irqreturn_t hi64xx_irq_handler(int irq, void *data)
 
 	wake_lock(&hi64xx_irq->wake_lock);
 	disable_irq_nosync(irq);
+
 	return IRQ_WAKE_THREAD;/*lint !e454*/
 }
 

@@ -1363,7 +1363,10 @@ static int focal_ft5x46_lcd_noise_test(
 	}
 
 	for ( i=0; i<FTS_RETRY_TIMES; i++) {
-		focal_start_scan();
+		ret = focal_start_scan();
+		if (ret) {
+		TS_LOG_ERR("%s:start scan fail, ret=%d\n",__func__, ret);
+		}
 		msleep(FTS_WRITE_REG_DELAY_TIME);
 	}
 
@@ -1473,15 +1476,27 @@ static int focal_ft5x46_lcd_noise_test(
 
 close_noise_test:
 	//close noise test switch
-	focal_write_reg(REG_5X46_NOISE_TEST_SWITCH, CLOSE_5X46_FIR_SW);
+	ret = focal_write_reg(REG_5X46_NOISE_TEST_SWITCH, CLOSE_5X46_FIR_SW);
+	if(ret){
+		TS_LOG_ERR("%s:write reg failed, ret=%d\n", __func__, ret);
+	}
 restore_frequency_register:
-	focal_write_reg(REG_5X46_CHANG_FRE, 0x00);//setting default frequency
+	ret = focal_write_reg(REG_5X46_CHANG_FRE, 0x00);//setting default frequency
+	if(ret){
+		TS_LOG_ERR("%s:write reg failed, ret=%d\n", __func__, ret);
+	}
 close_hardware_filter:
 	//restore 0xFB register status
-	focal_write_reg(REG_5X46_FIR_EN, chfir);
+	ret = focal_write_reg(REG_5X46_FIR_EN, chfir);
+	if(ret){
+		TS_LOG_ERR("%s:write reg failed, ret=%d\n", __func__, ret);
+	}
 restore_rawdata_mode:
 	//Switch read raw mode
-	focal_write_reg(REG_DATA_TYPE, READ_5X46_READ_RAW);
+	ret = focal_write_reg(REG_DATA_TYPE, READ_5X46_READ_RAW);
+	if(ret){
+		TS_LOG_ERR("%s:write reg failed, ret=%d\n", __func__, ret);
+	}
 test_finish:
 	if (test_result->result) {
 		result_code[1] = RAWDATA_TEST_PASS_CHAR; //test pass
@@ -1533,7 +1548,7 @@ static int focal_get_cb_data_format(int *data, size_t size,unsigned int chl_x,un
 		ret = focal_chip_clb();
 		if (ret) {
 			TS_LOG_ERR("%s:clb fail, ret=%d\n", __func__, ret);
-			return ret;
+			goto free_cb_data;
 		}
 	}
 
@@ -1866,6 +1881,7 @@ test_finish:
 		ret = focal_chip_clb();
 		if (ret) {
 			TS_LOG_ERR("%s:clb fail, ret=%d\n", __func__, ret);
+			*result = test_result;
 			return ret;
 		}
     }
@@ -2850,7 +2866,10 @@ static int focal_get_adc_data(int *data, size_t size,unsigned int chl_x,unsigned
 	}
 
 	if (FOCAL_FT5X46 == g_focal_dev_data->ic_type){
-		focal_start_scan();
+		ret = focal_start_scan();
+		if (ret) {
+		TS_LOG_ERR("%s:start scan fail, ret=%d\n",__func__, ret);
+		}
 		ret =  focal_adc_scan();
 		if (ret) {
 		TS_LOG_ERR("%s:adc scan fail, ret=%d\n", __func__, ret);
@@ -3221,7 +3240,10 @@ static void focal_put_test_result(
 
 reset_data_type:
 
-	focal_write_reg(REG_DATA_TYPE, 0);
+	ret = focal_write_reg(REG_DATA_TYPE, 0);
+	if(ret){
+		TS_LOG_ERR("%s: focal write reg failed !ret=%d\n",__func__, ret);
+	}
 exit:
 
 	return ret;
@@ -3683,7 +3705,6 @@ int focal_get_debug_data(
 	data_size = chl_x * chl_y;
 	debug_data = kzalloc(data_size * sizeof(int), GFP_KERNEL);
 	if (!debug_data) {
-		ret = -ENOMEM;
 		TS_LOG_ERR("%s:alloc mem fail\n", __func__);
 		goto exit;
 	}

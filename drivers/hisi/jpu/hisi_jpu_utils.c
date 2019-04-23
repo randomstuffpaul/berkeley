@@ -514,7 +514,8 @@ int hisijpu_clk_enable(struct hisi_jpu_data_type *hisijd)
 		HISI_JPU_DEBUG("jpg func clk default rate is: %ld.\n", JPG_FUNC_CLK_DEFAULT_RATE);
 		ret = jpeg_dec_set_rate(hisijd->jpg_func_clk, JPG_FUNC_CLK_DEFAULT_RATE);
 	}else if (hisijd->jpu_support_platform == HISI_DSS_V500
-		|| hisijd->jpu_support_platform == HISI_DSS_V501) {
+		|| hisijd->jpu_support_platform == HISI_DSS_V501
+		|| hisijd->jpu_support_platform == HISI_DSS_V510) {
 		HISI_JPU_DEBUG("jpg func clk default rate is: %ld.\n", JPG_FUNC_CLK_DEFAULT_RATE_V501);
 		ret = jpeg_dec_set_rate(hisijd->jpg_func_clk, JPG_FUNC_CLK_DEFAULT_RATE_V501);
 	}else {
@@ -818,7 +819,8 @@ void hisi_jpu_dec_normal_reset(struct hisi_jpu_data_type *hisijd)
 		return;
 	}
 
-	if(hisijd->jpu_support_platform == HISI_DSS_V501) {
+	if(hisijd->jpu_support_platform == HISI_DSS_V501
+		|| hisijd->jpu_support_platform == HISI_DSS_V510) {
 		hisijpu_set_reg(hisijd->jpu_cvdr_base + JPGDEC_CVDR_AXI_JPEG_NR_RD_CFG_8_CS, 0x1, 1, 25);
 		ret = hisijpu_check_reg_state(hisijd->jpu_cvdr_base + JPGDEC_CVDR_AXI_JPEG_NR_RD_CFG_8_CS, 0x01000000);
 		if (ret) {
@@ -848,7 +850,8 @@ void hisi_jpu_dec_error_reset(struct hisi_jpu_data_type *hisijd)
 
 	/* step1 */
 	hisijpu_set_reg(hisijd->jpu_top_base + JPGDEC_CRG_CFG1, 0x00010000, 32, 0);
-	if(hisijd->jpu_support_platform == HISI_DSS_V501) {
+	if(hisijd->jpu_support_platform == HISI_DSS_V501
+		|| hisijd->jpu_support_platform == HISI_DSS_V510) {
 		hisijpu_set_reg(hisijd->jpu_cvdr_base + JPGDEC_CVDR_AXI_JPEG_NR_RD_CFG_8_CS, 0x1, 1, 25);
 		hisijpu_set_reg(hisijd->jpu_cvdr_base + JPGDEC_CVDR_AXI_JPEG_NR_RD_CFG_9_CS, 0x1, 1, 25);
 		hisijpu_set_reg(hisijd->jpu_cvdr_base + JPGDEC_CVDR_AXI_JPEG_NR_WR_CFG_8_CS, 0x1, 1, 25);
@@ -865,7 +868,8 @@ void hisi_jpu_dec_error_reset(struct hisi_jpu_data_type *hisijd)
 	if(ret) {
 		HISI_JPU_ERR("fail to wait JPGDEC_RO_STATE!\n");
 	}
-	if(hisijd->jpu_support_platform == HISI_DSS_V501) {
+	if(hisijd->jpu_support_platform == HISI_DSS_V501
+		|| hisijd->jpu_support_platform == HISI_DSS_V510) {
 		ret = hisijpu_check_reg_state(hisijd->jpu_cvdr_base + JPGDEC_CVDR_AXI_JPEG_NR_RD_CFG_8_CS, 0x01000000);
 		if(ret) {
 			HISI_JPU_ERR("fail to wait JPGDEC_CVDR_AXI_JPEG_NR_RD_CFG_8_CS!\n");
@@ -914,7 +918,8 @@ void hisi_jpu_dec_error_reset(struct hisi_jpu_data_type *hisijd)
 	}
 
 	/* step4 */
-	if(hisijd->jpu_support_platform == HISI_DSS_V501) {
+	if(hisijd->jpu_support_platform == HISI_DSS_V501
+		|| hisijd->jpu_support_platform == HISI_DSS_V510) {
 		hisijpu_set_reg(hisijd->jpu_cvdr_base + JPGDEC_CVDR_AXI_JPEG_NR_RD_CFG_8_CS, 0x0, 1, 25);
 		hisijpu_set_reg(hisijd->jpu_cvdr_base + JPGDEC_CVDR_AXI_JPEG_NR_RD_CFG_9_CS, 0x0, 1, 25);
 		hisijpu_set_reg(hisijd->jpu_cvdr_base + JPGDEC_CVDR_AXI_JPEG_NR_WR_CFG_8_CS, 0x0, 1, 25);
@@ -1129,7 +1134,8 @@ static int hisi_jpu_dec_reg_default(struct hisi_jpu_data_type *hisijd)
 	/* cppcheck-suppress * */
 	memset(jpu_dec_reg, 0, sizeof(jpu_dec_reg_t));
 
-	if(hisijd->jpu_support_platform == HISI_DSS_V501) {
+	if(hisijd->jpu_support_platform == HISI_DSS_V501
+		|| hisijd->jpu_support_platform == HISI_DSS_V510) {
 		jpu_dec_reg->dec_start = inp32(jpu_dec_base + JPEG_DEC_START_CS);
 		jpu_dec_reg->preftch_ctrl = inp32(jpu_dec_base + JPEG_DEC_PREFTCH_CTRL_CS);
 		jpu_dec_reg->frame_size = inp32(jpu_dec_base + JPEG_DEC_FRAME_SIZE_CS);
@@ -1238,19 +1244,21 @@ static int hisi_jpu_dec_set_cvdr(struct hisi_jpu_data_type *hisijd)
 		HISI_JPU_ERR("jpu_cvdr_base is NULL!\n");
 		return -EINVAL;
 	}
-	if(hisijd->jpu_support_platform == HISI_DSS_V501) {
+	if(hisijd->jpu_support_platform == HISI_DSS_V501
+		|| hisijd->jpu_support_platform == HISI_DSS_V510) {
 		outp32(hisijd->jpu_cvdr_base + JPGDEC_CVDR_AXI_JPEG_CVDR_CFG_CS, 0x070f2000);
 
 		outp32(hisijd->jpu_cvdr_base + JPGDEC_CVDR_AXI_JPEG_NR_WR_CFG_8_CS, 0x80060000);
 		outp32(hisijd->jpu_cvdr_base + JPGDEC_CVDR_AXI_JPEG_NR_WR_CFG_9_CS, 0x80060000);
 
-	if (hisijd->jpu_support_platform == HISI_KIRIN_970) {
-		outp32(hisijd->jpu_cvdr_base + JPGDEC_CVDR_AXI_JPEG_NR_WR_CFG_0, 0x80000000);
-		outp32(hisijd->jpu_cvdr_base + JPGDEC_CVDR_AXI_JPEG_NR_WR_CFG_1, 0x80000000);
-	}else if (hisijd->jpu_support_platform == HISI_DSS_V501) {
-		outp32(hisijd->jpu_cvdr_base + JPGDEC_CVDR_AXI_JPEG_NR_WR_CFG_0, 0x80060000);
-		outp32(hisijd->jpu_cvdr_base + JPGDEC_CVDR_AXI_JPEG_NR_WR_CFG_1, 0x80060000);
-	}
+		if (hisijd->jpu_support_platform == HISI_KIRIN_970) {
+			outp32(hisijd->jpu_cvdr_base + JPGDEC_CVDR_AXI_JPEG_NR_WR_CFG_0, 0x80000000);
+			outp32(hisijd->jpu_cvdr_base + JPGDEC_CVDR_AXI_JPEG_NR_WR_CFG_1, 0x80000000);
+		}else if (hisijd->jpu_support_platform == HISI_DSS_V501
+			|| hisijd->jpu_support_platform == HISI_DSS_V510) {
+			outp32(hisijd->jpu_cvdr_base + JPGDEC_CVDR_AXI_JPEG_NR_WR_CFG_0, 0x80060000);
+			outp32(hisijd->jpu_cvdr_base + JPGDEC_CVDR_AXI_JPEG_NR_WR_CFG_1, 0x80060000);
+		}
 		/* Wr_qos_max:0x1;wr_qos_threshold_01_start:0x1;wr_qos_threshold_01_stop:0x1,WR_QOS&RD_QOS encode will also set this */
 		outp32(hisijd->jpu_cvdr_base + JPGDEC_CVDR_AXI_JPEG_CVDR_WR_QOS_CFG_CS, 0x10333311);
 		outp32(hisijd->jpu_cvdr_base + JPGDEC_CVDR_AXI_JPEG_CVDR_RD_QOS_CFG_CS, 0x10333311);
@@ -1410,7 +1418,8 @@ static int hisi_jpu_dec_set_reg(struct hisi_jpu_data_type *hisijd, jpu_dec_reg_t
 		jpu_dec_reg->csc_trans_coef4);
 	}
 
-	if(hisijd->jpu_support_platform == HISI_DSS_V501) {
+	if(hisijd->jpu_support_platform == HISI_DSS_V501
+		|| hisijd->jpu_support_platform == HISI_DSS_V510) {
 		outp32(jpu_dec_base + JPEG_DEC_PREFTCH_CTRL_CS, jpu_dec_reg->preftch_ctrl);
 		outp32(jpu_dec_base + JPEG_DEC_FRAME_SIZE_CS, jpu_dec_reg->frame_size);
 		outp32(jpu_dec_base + JPEG_DEC_CROP_HORIZONTAL_CS, jpu_dec_reg->crop_horizontal);
@@ -2037,7 +2046,8 @@ static int hisijpu_check_userdata(struct hisi_jpu_data_type *hisijd, jpu_data_t 
 		return -EINVAL;
 	}
 
-	if(hisijd->jpu_support_platform != HISI_DSS_V501) {
+	if(hisijd->jpu_support_platform != HISI_DSS_V501
+		&& hisijd->jpu_support_platform != HISI_DSS_V510) {
 		/* is format can handle for chip limit*/
 		ret = hisijpu_check_format(jpu_req);
 		if (ret) {
@@ -2178,12 +2188,14 @@ int hisijpu_job_exec(struct hisi_jpu_data_type *hisijd, void __user *argp)
 		((jpu_req->pix_width - 1) | ((jpu_req->pix_height - 1) << 16)), 32, 0);
 
 	/* input bitstreams addr */
-	if(hisijd->jpu_support_platform == HISI_DSS_V501) {
+	if(hisijd->jpu_support_platform == HISI_DSS_V501
+		|| hisijd->jpu_support_platform == HISI_DSS_V510) {
 		pjpu_dec_reg->bitstreams_start_h = (jpu_req->start_addr >> 32) & 0x3;
 	}
 	pjpu_dec_reg->bitstreams_start = jpu_set_bits32(pjpu_dec_reg->bitstreams_start,
 		(uint32_t)jpu_req->start_addr, 32, 0);
-	if(hisijd->jpu_support_platform == HISI_DSS_V501) {
+	if(hisijd->jpu_support_platform == HISI_DSS_V501
+		|| hisijd->jpu_support_platform == HISI_DSS_V510) {
 		pjpu_dec_reg->bitstreams_end_h = (jpu_req->end_addr >> 32) & 0x3;
 	}
 	pjpu_dec_reg->bitstreams_end = jpu_set_bits32(pjpu_dec_reg->bitstreams_end,
@@ -2279,6 +2291,12 @@ int hisijpu_job_exec(struct hisi_jpu_data_type *hisijd, void __user *argp)
 		hisi_jpu_dump_reg(hisijd);
 	}
 
+	if (g_debug_jpu_dec_job_timediff) {
+		jpu_get_timestamp(&tv1);
+		timediff = jpu_timestamp_diff(&tv0, &tv1);
+		HISI_JPU_INFO("jpu job exec timediff is %ld us!", timediff);
+	}
+
 err_out:
 	ret1 = hisi_jpu_off(hisijd);
 	if (ret1) {
@@ -2286,12 +2304,6 @@ err_out:
 	}
 
 	up(&hisijd->blank_sem);
-
-	if (g_debug_jpu_dec_job_timediff) {
-		jpu_get_timestamp(&tv1);
-		timediff = jpu_timestamp_diff(&tv0, &tv1);
-		HISI_JPU_INFO("jpu job exec timediff is %ld us!", timediff);
-	}
 
 	HISI_JPU_DEBUG("-.\n");
 

@@ -48,6 +48,20 @@
 
 typedef int (*stp_cb)(void);
 
+//TODO: big/little endian
+typedef union {
+	u64 val;
+	struct {
+		u32 para;
+		u32 feat;
+	} s;
+} STP_PROC_TYPE;
+
+enum stp_proc_feature {
+	KERNEL_STP_SCAN = 0,
+	HARDEN_DBLFREE_CHECK = 1,
+};
+
 enum stp_status {
     STP_SAFE = 0, /* safe */
     STP_RISK = 1, /* risk */
@@ -72,66 +86,13 @@ enum stp_item_category{
     CFI,
     ITRUSTEE,
     DOUBLE_FREE,
+
+    STP_ITEM_MAX,
 };
 
 struct stp_item_info {
 	unsigned int 		id;
 	char 				name[STP_ITEM_NAME_LEN];
-};
-
-static struct stp_item_info item_info[] = {
-	{
-		STP_ID_KCODE,
-		STP_NAME_KCODE,
-	},
-	{
-		STP_ID_KCODE_SYSCALL,
-		STP_NAME_KCODE_SYSCALL,
-	},
-	{
-		STP_ID_SE_ENFROCING,
-		STP_NAME_SE_ENFROCING,
-	},
-	{
-		STP_ID_SE_HOOK,
-		STP_NAME_SE_HOOK,
-	},
-	{
-		STP_ID_ROOT_PROCS,
-		STP_NAME_ROOT_PROCS,
-	},
-	{
-		STP_ID_SETIDS,
-		STP_NAME_SETIDS,
-	},
-	{
-		STP_ID_EIMA,
-		STP_NAME_EIMA,
-	},
-	{
-		STP_ID_MOD_SIGN,
-		STP_NAME_MOD_SIGN,
-	},
-	{
-		STP_ID_PTRACE,
-		STP_NAME_PTRACE,
-	},
-	{
-		STP_ID_HKIP,
-		STP_NAME_HKIP,
-	},
-	{
-		STP_ID_CFI,
-		STP_NAME_CFI,
-	},
-	{
-		STP_ID_ITRUSTEE,
-		STP_NAME_ITRUSTEE,
-	},
-	{
-		STP_ID_DOUBLE_FREE,
-		STP_NAME_DOUBLE_FREE,
-	},
 };
 
 struct stp_item
@@ -162,12 +123,36 @@ struct stp_item
  */
 #ifdef CONFIG_HW_KERNEL_STP
 int kernel_stp_scanner_register(stp_cb callbackfunc);
-
+/*the caller needed to check the return value */
+extern struct stp_item_info *get_item_info_by_idx(int idx);
+/* to be deleted later */
+extern struct stp_item_info item_info[];
 #else
 static inline int kernel_stp_scanner_register(stp_cb callbackfunc)
 {
 	return 0;
 }
+/*the caller needed to check the return value */
+static inline struct stp_item_info *get_item_info_by_idx(int idx)
+{
+	return NULL;
+}
+/* to be deleted later */
+static struct stp_item_info item_info[]={
+	[KCODE]        = { STP_ID_KCODE, STP_NAME_KCODE },
+	[SYSCALL]      = { STP_ID_KCODE_SYSCALL, STP_NAME_KCODE_SYSCALL },
+	[SE_ENFROCING] = { STP_ID_SE_ENFROCING, STP_NAME_SE_ENFROCING },
+	[SE_HOOK]      = { STP_ID_SE_HOOK, STP_NAME_SE_HOOK },
+	[ROOT_PROCS]   = { STP_ID_ROOT_PROCS, STP_NAME_ROOT_PROCS },
+	[SETIDS]       = { STP_ID_SETIDS, STP_NAME_SETIDS },
+	[EIMA]         = { STP_ID_EIMA, STP_NAME_EIMA },
+	[MOD_SIGN]     = { STP_ID_MOD_SIGN, STP_NAME_MOD_SIGN },
+	[PTRACE]       = { STP_ID_PTRACE, STP_NAME_PTRACE },
+	[HKIP]         = { STP_ID_HKIP, STP_NAME_HKIP },
+	[CFI]          = { STP_ID_CFI, STP_NAME_CFI },
+	[ITRUSTEE]     = { STP_ID_ITRUSTEE, STP_NAME_ITRUSTEE },
+	[DOUBLE_FREE]  = { STP_ID_DOUBLE_FREE, STP_NAME_DOUBLE_FREE },
+};
 #endif
 
 /*

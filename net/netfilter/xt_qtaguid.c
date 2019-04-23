@@ -29,7 +29,7 @@
 #include <net/tcp.h>
 #include <net/udp.h>
 #ifdef CONFIG_HUAWEI_BASTET
-#include <huawei_platform/power/bastet/bastet.h>
+#include <huawei_platform/net/bastet/bastet.h>
 #endif
 #if defined(CONFIG_IP6_NF_IPTABLES) || defined(CONFIG_IP6_NF_IPTABLES_MODULE)
 #include <linux/netfilter_ipv6/ip6_tables.h>
@@ -1210,11 +1210,6 @@ static void get_dev_and_dir(const struct sk_buff *skb,
 		*direction = IFS_TX;
 	} else {
 		pr_err("qtaguid[%d]: %s(): no par->in/out?!!\n",
-		       par->hooknum, __func__);
-		BUG();
-	}
-	if (unlikely(!(*el_dev)->name)) {
-		pr_err("qtaguid[%d]: %s(): no dev->name?!!\n",
 		       par->hooknum, __func__);
 		BUG();
 	}

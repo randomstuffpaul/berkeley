@@ -169,23 +169,6 @@ static int device_capture_touch_report_config(unsigned int count)
 
 	if (device_hcd->raw_mode) {
 		return -EINVAL; // leon add
-		if (count < 3) {
-			TS_LOG_ERR("Invalid write data\n");
-			return -EINVAL;
-		}
-
-		size = le2_to_uint(&device_hcd->out.buf[1]);
-
-		if (count - 3 < size) {
-			TS_LOG_ERR("Incomplete write data\n");
-			return -EINVAL;
-		}
-
-		if (!size)
-			return 0;
-
-		data = &device_hcd->out.buf[3];
-		buf_size = device_hcd->out.buf_size - 3;
 	} else {
 		size = count - 1;
 

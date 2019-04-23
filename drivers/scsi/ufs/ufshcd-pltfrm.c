@@ -187,10 +187,6 @@ static void ufshcd_pltfrm_shutdown(struct platform_device *pdev)
 
 	ufshcd_shutdown(hba);
 
-#ifdef CONFIG_SCSI_UFS_ENHANCED_INLINE_CRYPTO_V2
-	uie_close_session();
-#endif
-
 	dev_err(&pdev->dev, "%s --\n", __func__);
 }
 

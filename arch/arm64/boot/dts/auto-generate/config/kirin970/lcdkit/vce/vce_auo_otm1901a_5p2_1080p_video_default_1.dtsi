@@ -88,8 +88,8 @@
 		hw,lcdkit-panel-bpp = <0>;
 		hw,lcdkit-panel-bgrfmt = <0>;
 		hw,lcdkit-panel-bl-type = <4>;
-		hw,lcdkit-panel-blmin = <100>;
-		hw,lcdkit-panel-blmax = <9260>;
+		hw,lcdkit-panel-blmin = <25>;
+		hw,lcdkit-panel-blmax = <7350>;
 		hw,lcdkit-mask-delay-time-before-fp = <16666>;
 		hw,lcdkit-mask-delay-time-after-fp = <16666>;
 		hw,lcdkit-panel-bl-def = <4000>;
@@ -347,5 +347,8 @@
 		hw_lm36274,lcdkit-bl-ic-bl-enhance-cur-ramp-cmd = <0x01 0x03 0xad 0xff>;
 		hw_lm36274,lcdkit-bl-ic-bl-enhance-boost-cur-cmd = <0x01 0x11 0x36 0xff>;
 		hw_lm36274,lcdkit-bl-ic-bl-enhance-sink-cmd = <0x01 0x08 0x17 0xff>;
+		hw_lm36274,lcdkit-bl-ovp-bit = <0>;
+		hw_lm36274,lcdkit-bl-ocp-bit = <0>;
+		hw_lm36274,lcdkit-bl-tsd-bit = <0>;
     };
 };

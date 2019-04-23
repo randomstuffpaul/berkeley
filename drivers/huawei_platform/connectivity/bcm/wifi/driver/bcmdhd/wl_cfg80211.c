@@ -2378,7 +2378,7 @@ wl_cfg80211_del_virtual_iface(struct wiphy *wiphy, bcm_struct_cfgdev *cfgdev)
 #endif /* DUAL_STA */
 
 	if (wl_cfgp2p_find_idx(cfg, dev, &index) != BCME_OK) {
-		WL_ERR(("Find p2p index from ndev(%p) failed\n", dev));
+		WL_ERR(("Find p2p index from ndev(%pK) failed\n", dev));
 		return BCME_ERROR;
 	}
 	if (cfg->p2p_supported) {
@@ -3638,6 +3638,23 @@ wl_do_escan(struct bcm_cfg80211 *cfg, struct wiphy *wiphy, struct net_device *nd
 	}
 #endif
 	err = wl_run_escan(cfg, ndev, request, WL_SCAN_ACTION_START);
+#ifdef HW_PATCH_FOR_HANG
+	if (hw_need_hang_with_scanbusy(err)) {
+		hw_need_hang_with_scanbusy(BCME_OK); //reset counter to zero
+		dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
+		if (dhd) {
+			WL_ERR(("SCAN failed with BCME_BUSY. send hang event\n"));
+#ifdef BRCM_RSDB
+			dhd->hang_reason = HANG_REASON_WLC_MEMORY_LEAK;
+#endif
+			dhd_os_send_hang_message(dhd);
+#ifdef HW_WIFI_DMD_LOG
+			hw_wifi_dsm_client_notify(DSM_WIFI_WLC_SCAN_ERROR, "SCAN failed with BCME_BUSY\n");
+#endif
+		}
+		goto exit;
+	}
+#endif /* HW_PATCH_FOR_HANG */
 #ifdef HW_PATCH_SCAN_RETRY_WLC_UP
         if (BCME_NOTUP == err) {
             s32 val = 1;
@@ -4543,7 +4560,7 @@ bcm_cfg80211_add_ibss_if(struct wiphy *wiphy, char *name)
 	/* generate a new MAC address for the IBSS interface */
 	get_primary_mac(cfg, &cfg->ibss_if_addr);
 	cfg->ibss_if_addr.octet[4] ^= 0x40;
-	memset(&aibss_if, sizeof(aibss_if), 0);
+	memset(&aibss_if, 0, sizeof(aibss_if));
 	memcpy(&aibss_if.addr, &cfg->ibss_if_addr, sizeof(aibss_if.addr));
 	aibss_if.chspec = 0;
 	aibss_if.len = sizeof(aibss_if);
@@ -12644,7 +12661,7 @@ wl_cfg80211_sched_scan_start(struct wiphy *wiphy,
 #else
 	if (!request->n_ssids || !request->n_match_sets) {
 #endif
-		WL_ERR(("Invalid sched scan req!! n_ssids:%d \n", request->n_ssids));
+		WL_ERR(("Invalid sched scan req!!"));
 		return -EINVAL;
 	}
 
@@ -15809,7 +15826,7 @@ static s32 wl_ch_to_chanspec(struct net_device *dev, int ch, struct wl_join_para
 static s32 wl_update_bss_info(struct bcm_cfg80211 *cfg, struct net_device *ndev, bool roam)
 {
 #ifndef  BRCM_RSDB
-	struct cfg80211_bss *bss;
+	struct cfg80211_bss *bss = NULL;
 #endif
 	struct wl_bss_info *bi;
 #ifndef  BRCM_RSDB
@@ -15840,14 +15857,17 @@ static s32 wl_update_bss_info(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	curbssid = wl_read_prof(cfg, ndev, WL_PROF_BSSID);
 	ASSERT(curbssid);
 #ifndef  BRCM_RSDB
-	bss = cfg80211_get_bss(wiphy, NULL, curbssid,
+        if (ssid) {
+	        bss = cfg80211_get_bss(wiphy, NULL, curbssid,
 		ssid->SSID, ssid->SSID_len, WLAN_CAPABILITY_ESS,
 		WLAN_CAPABILITY_ESS);
+        }
 #endif
 	mutex_lock(&cfg->usr_sync);
 	buf = kzalloc(WL_EXTRA_BUF_MAX, GFP_ATOMIC);
 	if (!buf) {
 		WL_ERR(("buffer alloc failed.\n"));
+                mutex_unlock(&cfg->usr_sync);
 		return BCME_NOMEM;
 	}
 	*(u32 *)buf = htod32(WL_EXTRA_BUF_MAX);
@@ -16050,9 +16070,9 @@ wl_bss_connect_done(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	struct wl_connect_info *conn_info = wl_to_conn(cfg);
 	struct wl_security *sec = wl_read_prof(cfg, ndev, WL_PROF_SEC);
 #if (defined(ROAM_ENABLE) && defined(ROAM_AP_ENV_DETECTION)) || \
-	defined(CUSTOM_SET_CPUCORE)
+	defined(CUSTOM_SET_CPUCORE) || defined(HW_PATCH_FOR_HANG)
 	dhd_pub_t *dhd = (dhd_pub_t *)(cfg->pub);
-#endif /* (ROAM_ENABLE && ROAM_AP_ENV_DETECTION) || CUSTOM_SET_CPUCORE */
+#endif /* (ROAM_ENABLE && ROAM_AP_ENV_DETECTION) || CUSTOM_SET_CPUCORE || HW_PATCH_FOR_HANG */
 	s32 err = 0;
 	u8 *curbssid = wl_read_prof(cfg, ndev, WL_PROF_BSSID);
 #ifdef HW_WIFI_ASSOC_STATUS
@@ -16143,6 +16163,18 @@ wl_bss_connect_done(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 			}
 			WL_ERR(("connection failed - status: %u\n", hwstatus));
 		}
+#ifdef HW_PATCH_FOR_HANG
+		if (dhd && hw_need_hang_with_assoc_status(hwstatus)) {
+			WL_ERR(("hw_need_hang_with_assoc_status: %u\n", hwstatus));
+#ifdef BRCM_RSDB
+			dhd->hang_reason = HANG_REASON_WLC_MEMORY_LEAK;
+#endif
+			dhd_os_send_hang_message(dhd);
+#ifdef HW_WIFI_DMD_LOG
+			hw_wifi_dsm_client_notify(DSM_WIFI_WLC_SET_SSID_ERROR, "hang for assoc status %d", hwstatus);
+#endif
+		}
+#endif /* HW_PATCH_FOR_HANG */
 #endif
 		cfg80211_connect_result(ndev,
 			curbssid,
@@ -18413,11 +18445,8 @@ static s32 wl_escan_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 			wl_notify_escan_complete(cfg, ndev, false, false);
 		}
 		wl_escan_increment_sync_id(cfg, SCAN_BUF_NEXT);
-#ifndef  BRCM_RSDB
-	}
-	else if (status == WLC_E_STATUS_ABORT) {
-#else
-	#ifdef CUSTOMER_HW4_DEBUG
+
+#ifdef CUSTOMER_HW4_DEBUG
 		if (wl_scan_timeout_dbg_enabled)
 			wl_scan_timeout_dbg_clear();
 #endif /* CUSTOMER_HW4_DEBUG */
@@ -18428,13 +18457,12 @@ static s32 wl_escan_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 		(status == WLC_E_STATUS_11HQUIET) || (status == WLC_E_STATUS_CS_ABORT) ||
 		(status == WLC_E_STATUS_NEWASSOC)) {
 		/* Handle all cases of scan abort */
-#endif
+
 		cfg->escan_info.escan_state = WL_ESCAN_STATE_IDLE;
 		wl_escan_print_sync_id(status, escan_result->sync_id,
 			cfg->escan_info.cur_sync_id);
-#ifdef  BRCM_RSDB
-		WL_DBG(("ESCAN ABORT reason: %d\n", status));
-#endif
+		WL_ERR(("ESCAN ABORT reason: %d\n", status));
+
 		if (wl_get_drv_status_all(cfg, FINDING_COMMON_CHANNEL)) {
 			WL_INFORM(("ACTION FRAME SCAN DONE\n"));
 			wl_clr_drv_status(cfg, SCANNING, cfg->afx_hdl->dev);
@@ -18477,12 +18505,6 @@ static s32 wl_escan_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 #endif
 		}
 		wl_escan_increment_sync_id(cfg, SCAN_BUF_CNT);
-#ifndef  BRCM_RSDB
-	} else if (status == WLC_E_STATUS_NEWSCAN) {
-		WL_ERR(("WLC_E_STATUS_NEWSCAN : scan_request[%p]\n", cfg->scan_request));
-		WL_ERR(("sync_id[%d], bss_count[%d]\n", escan_result->sync_id,
-			escan_result->bss_count));
-#endif
 	} else if (status == WLC_E_STATUS_TIMEOUT) {
 		WL_ERR(("WLC_E_STATUS_TIMEOUT : scan_request[%p]\n", cfg->scan_request));
 		WL_ERR(("reason[0x%x]\n", e->reason));

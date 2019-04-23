@@ -1,3 +1,4 @@
+
 /*
  * hi_cdc_ctrl.h -- hisilicon codec controller
  *
@@ -28,6 +29,12 @@ enum bustype_select {
 	BUSTYPE_SELECT_NULL = 0,
 	BUSTYPE_SELECT_SLIMBUS = 1,
 	BUSTYPE_SELECT_SSI = 2,
+};
+
+enum {
+	HI64XX_CODEC_TYPE_6402,
+	HI64XX_CODEC_TYPE_6403,
+	HI64XX_CODEC_TYPE_BUTT,
 };
 
 struct hi_cdc_ctrl {

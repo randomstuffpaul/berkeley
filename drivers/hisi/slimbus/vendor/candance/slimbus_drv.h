@@ -83,7 +83,7 @@ extern volatile bool slimbus_int_need_clear_get(void);
 
 extern void slimbus_int_need_clear_set(volatile bool flag);
 
-extern int slimbus_drv_track_update(int cg, int sm, int track, uint32_t ch_num, slimbus_channel_property_t *channel);
+extern int slimbus_drv_track_update(int cg, int sm, int track, struct slimbus_device_info *dev, uint32_t ch_num, slimbus_channel_property_t *channel);
 
 extern void slimbus_drv_get_params_la(int track_type, uint8_t *source_la, uint8_t *sink_la, slimbus_transport_protocol_t *tp);
 

@@ -80,6 +80,7 @@ struct hisi_pmic_info {
 	unsigned int intr;
 	unsigned int irq;
 	unsigned int flag;
+	int mutex_flag;
 };
 
 struct hisi_pmic_ctrl_t;

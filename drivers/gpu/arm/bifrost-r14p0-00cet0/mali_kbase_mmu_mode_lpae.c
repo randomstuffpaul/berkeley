@@ -38,6 +38,7 @@
 #define ENTRY_ACCESS_BIT (1ULL << 10)
 #define ENTRY_NX_BIT (1ULL << 54)
 #define ENTRY_SCRAMBLE_BIT (1ULL<<39)
+#define ENTRY_LB_MASK    (7ULL << 36) /* bits 36:38*/
 
 #define ENTRY_FLAGS_MASK (ENTRY_ATTR_BITS | ENTRY_RD_BIT | ENTRY_WR_BIT | \
 		ENTRY_SHARE_BITS | ENTRY_ACCESS_BIT | ENTRY_NX_BIT)
@@ -49,7 +50,7 @@
 static inline void page_table_entry_set(u64 *pte, u64 phy)
 {
 #if KERNEL_VERSION(3, 18, 13) <= LINUX_VERSION_CODE
-	WRITE_ONCE(*pte, phy);
+	WRITE_ONCE(*pte, phy);//lint !e1058
 #else
 #ifdef CONFIG_64BIT
 	barrier();
@@ -176,23 +177,42 @@ static u64 get_mmu_flags(unsigned long flags)
 		mmu_flags |= SHARE_INNER_BITS;
 	}
 
+	/*last buffer flags*/
+#ifdef CONFIG_HISI_LAST_BUFFER
+	mmu_flags |= (flags & ENTRY_LB_MASK);
+#endif
+
 	return mmu_flags;
 }
 
-static void entry_set_ate(u64 *entry,
+static void entry_set_ate(struct kbase_device *kbdev, u64 *entry,
 		struct tagged_addr phy,
 		unsigned long flags,
 		unsigned int level)
 {
+#ifdef CONFIG_HISI_LAST_BUFFER
+	struct memory_group_manager_ops *mgm_ops = kbdev->hisi_dev_data.mgm_ops;
+	KBASE_DEBUG_ASSERT(mgm_ops);
+	u64 lb_flag = mgm_ops->gpu_map_page(level, as_phys_addr_t(phy));
+	flags |= lb_flag;
+#endif
+
 	page_table_entry_set(entry, as_phys_addr_t(phy) | get_mmu_flags(flags) |
 			     ENTRY_IS_ATE);
 }
 
-static void entry_set_ate_scramble_bit(u64 *entry,
+static void entry_set_ate_scramble_bit(struct kbase_device *kbdev, u64 *entry,
 		struct tagged_addr phy,
 		unsigned long flags,
 		unsigned int level)
 {
+#ifdef CONFIG_HISI_LAST_BUFFER
+	struct memory_group_manager_ops *mgm_ops = kbdev->hisi_dev_data.mgm_ops;
+	KBASE_DEBUG_ASSERT(mgm_ops);
+	u64 lb_flag = mgm_ops->gpu_map_page(level, as_phys_addr_t(phy));
+	flags |= lb_flag;
+#endif
+
 	page_table_entry_set(entry, as_phys_addr_t(phy) | get_mmu_flags(flags) |
 			     ENTRY_IS_ATE | ENTRY_SCRAMBLE_BIT);
 #if MALI_GMC

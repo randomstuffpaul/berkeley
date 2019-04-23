@@ -305,6 +305,31 @@ VOS_UINT32 diag_GetPrintCfg(VOS_UINT32 ulModuleId, VOS_UINT32 ulLevel)
 
 #define LTE_DIAG_PRINTF_LEN             (256+sizeof(VOS_UINT32)+sizeof(VOS_UINT32))
 
+VOS_UINT32 DIAG_GetLogIDSwitch(VOS_UINT32 ulModuleId, VOS_UINT32 ulPid);
+
+VOS_UINT32 DIAG_GetLogIDSwitch(VOS_UINT32 ulModuleId, VOS_UINT32 ulPid)
+{
+    VOS_UINT32 ret;
+
+    if(!DIAG_IS_POLOG_ON)
+    {
+        /*检查DIAG是否初始化且HSO是否连接上*/
+        if(!DIAG_IS_CONN_ON)
+        {
+            DIAG_DEBUG_SDM_FUN(EN_SDM_DIAG_DOT_ERR, ERR_MSP_NO_INITILIZATION, 0, 1);
+            return ERR_MSP_NO_INITILIZATION;
+        }
+
+        ret = diag_GetPrintCfg(ulPid, DIAG_GET_PRINTF_LEVEL(ulModuleId));
+        if(ERR_MSP_SUCCESS != ret)
+        {
+            DIAG_DEBUG_SDM_FUN(EN_SDM_DIAG_DOT_ERR, ERR_MSP_UNAVAILABLE, 0, 2);
+            return ERR_MSP_UNAVAILABLE;
+        }
+    }
+
+    return ERR_MSP_SUCCESS;
+}
 
 
 
@@ -332,28 +357,17 @@ VOS_INT32 DIAG_LogIdReport(VOS_UINT32 ulModuleId, VOS_UINT32 ulPid,
     VOS_INT32 val, i, lTmpLen, lSpareLen, lOccupyLen;
     va_list vl;
     VOS_UINT32 paranum;
-
     DIAG_MSG_REPORT_HEAD_STRU stDiagHead;
 
     /* 只记录调用次数*/
     DIAG_DEBUG_SDM_FUN(EN_SDM_DIAG_DOT, ulLogId, 0, 0);
 
-    if(!DIAG_IS_POLOG_ON)
+    ret = DIAG_GetLogIDSwitch(ulModuleId, ulPid);
+    if(ret)
     {
-        /*检查DIAG是否初始化且HSO是否连接上*/
-        if(!DIAG_IS_CONN_ON)
-        {
-            DIAG_DEBUG_SDM_FUN(EN_SDM_DIAG_DOT_ERR, ERR_MSP_NO_INITILIZATION, ulLogId, 1);
-            return ERR_MSP_NO_INITILIZATION;
-        }
-
-        ret = diag_GetPrintCfg(ulPid, DIAG_GET_PRINTF_LEVEL(ulModuleId));
-        if(ERR_MSP_SUCCESS != ret)
-        {
-            DIAG_DEBUG_SDM_FUN(EN_SDM_DIAG_DOT_ERR, ERR_MSP_UNAVAILABLE, ulLogId, 2);
-            return ERR_MSP_UNAVAILABLE;
-        }
+        return (VOS_INT32)ret;
     }
+
     *((VOS_UINT32*)ucDiagPrintData) = ulPid;
     *(VOS_UINT32*)(ucDiagPrintData + sizeof(VOS_UINT32)) = DIAG_GET_PRINTF_LEVEL(ulModuleId);
 
@@ -369,7 +383,7 @@ VOS_INT32 DIAG_LogIdReport(VOS_UINT32 ulModuleId, VOS_UINT32 ulPid,
         return -1;
     }
     lOccupyLen += lTmpLen;
-    if(!(LTE_DIAG_PRINTF_LEN >= (VOS_UINT32)lOccupyLen))
+    if(!(LTE_DIAG_PRINTF_LEN >= (VOS_UINT32)lOccupyLen + 2))
     {
         vos_printf("LTE_LOG_ASSERT %d.\n", __LINE__);
         return -1;
@@ -398,6 +412,13 @@ VOS_INT32 DIAG_LogIdReport(VOS_UINT32 ulModuleId, VOS_UINT32 ulPid,
 
     for(i = 0; i < (VOS_INT32)paranum; i++)
     {
+        if(((VOS_UINT32)lSpareLen <= 1)||((VOS_UINT32)lOccupyLen >= LTE_DIAG_PRINTF_LEN))
+        {
+            vos_printf("LTE_LOG_ASSERT %d.\n", __LINE__);
+            va_end(vl);
+            return -1;
+        }
+
         val = va_arg(vl, int);
         /* coverity[overrun-local] */
         lTmpLen = VOS_nsprintf_s(ucDiagPrintData + lOccupyLen, (VOS_UINT32)lSpareLen, (VOS_UINT32)lSpareLen-1, "%d, ", val);
@@ -963,6 +984,11 @@ VOS_VOID DIAG_TraceReport(VOS_VOID *pMsg)
         return ;
     }
 
+    if(pDiagMsg->ulLength < sizeof(pDiagMsg->ulMsgId))
+    {
+        return;
+    }
+
     ulSrcModule = pDiagMsg->ulSenderPid;
     ulDstModule = pDiagMsg->ulReceiverPid;
     ulMsgId     = pDiagMsg->ulMsgId;
@@ -1043,6 +1069,11 @@ VOS_VOID DIAG_LayerMsgReport(VOS_VOID *pMsg)
     {
         DIAG_DEBUG_SDM_FUN(EN_DIAG_API_MSG_LAYER_ERR, ERR_MSP_INVALID_PARAMETER, 0, 1);
         return ;
+    }
+
+    if(pDiagMsg->ulLength < sizeof(pDiagMsg->ulMsgId))
+    {
+        return;
     }
 
     ulSrcModule = pDiagMsg->ulSenderPid;
@@ -1263,7 +1294,7 @@ VOS_UINT32 diag_SendMsg(VOS_UINT32 ulSenderId, VOS_UINT32 ulRecverId, VOS_UINT32
         ret = VOS_SendMsg(ulSenderId, pDataMsg);
         if (ret != VOS_OK)
         {
-            diag_printf("diag_SendMsg ulSenderId=%d,ulRecverId=%d,ulMsgId=0x%x,pDta=%p,dtaSize=%d!\n",ulSenderId,ulRecverId,ulMsgId,pDta,dtaSize);
+            diag_printf("diag_SendMsg ulSenderId=%d,ulRecverId=%d,ulMsgId=0x%x,dtaSize=%d!\n",ulSenderId,ulRecverId,ulMsgId,dtaSize);
         }
         else
         {

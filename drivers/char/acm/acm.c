@@ -257,9 +257,6 @@ static int do_cmd_search(unsigned long args)
 	int err = 0;
 	acm_hash_node_t *temp_hash_node = NULL;
 	acm_mp_node_t *acm_mp_node = NULL;
-#ifdef CONFIG_ACM_DSM
-	acm_list_node_t *new_dmd_node = NULL;
-#endif
 #ifdef CONFIG_ACM_TIME_COST
 	struct timespec start, end;
 
@@ -297,28 +294,6 @@ static int do_cmd_search(unsigned long args)
 	}
 	PRINT_ERR("Search result:pkgname=%s flag=%d\n", acm_mp_node->pkgname,
 		acm_mp_node->flag);
-
-#ifdef CONFIG_ACM_DSM
-	new_dmd_node = (acm_list_node_t *)kzalloc(sizeof(acm_list_node_t), GFP_KERNEL);
-	if (!new_dmd_node) {
-		PRINT_ERR("Failed to allocate memory for new_dmd_node!\n");
-		err = -ENOMEM;
-		goto do_cmd_search_ret;
-	}
-
-	memcpy(new_dmd_node->pkgname, acm_mp_node->pkgname, ACM_PKGNAME_MAX_LEN - 1);
-	new_dmd_node->pkgname[ACM_PKGNAME_MAX_LEN - 1] = '\0';
-
-	memcpy(new_dmd_node->path, acm_mp_node->path, ACM_PATH_MAX - 1);
-	new_dmd_node->path[ACM_PATH_MAX - 1] = '\0';
-
-	new_dmd_node->depth = DEPTH_INIT;
-	new_dmd_node->file_type = acm_mp_node->file_type;
-
-	acm_dmd_add(&acm_dmd_list.head, new_dmd_node);
-	if (likely(acm_dmd_task))
-		wake_up_process(acm_dmd_task);
-#endif
 
 do_cmd_search_ret:
 	kfree(acm_mp_node);
@@ -427,6 +402,50 @@ del_dir_ret:
 	return err;
 }
 
+static int do_cmd_add_dsm(unsigned long args)
+{
+#ifdef CONFIG_ACM_DSM
+	int err = 0;
+	acm_mp_node_t *acm_mp_node = NULL;
+	acm_list_node_t *new_dmd_node = NULL;
+
+	acm_mp_node = (acm_mp_node_t *)kzalloc(sizeof(acm_mp_node_t), GFP_KERNEL);
+	if (!acm_mp_node) {
+		PRINT_ERR("Failed to allocate memory for acm_mp_node!\n");
+		return -ENOMEM;
+	}
+	if (copy_from_user(acm_mp_node, (acm_mp_node_t *)args,
+		sizeof(acm_mp_node_t))) {
+		err = -EFAULT;
+		goto do_cmd_add_dsm_ret;
+	}
+
+	new_dmd_node = (acm_list_node_t *)kzalloc(sizeof(acm_list_node_t), GFP_KERNEL);
+	if (!new_dmd_node) {
+		PRINT_ERR("Failed to allocate memory for new_dmd_node!\n");
+		err = -ENOMEM;
+		goto do_cmd_add_dsm_ret;
+	}
+
+	memcpy(new_dmd_node->pkgname, acm_mp_node->pkgname, ACM_PKGNAME_MAX_LEN - 1);
+	new_dmd_node->pkgname[ACM_PKGNAME_MAX_LEN - 1] = '\0';
+
+	memcpy(new_dmd_node->path, acm_mp_node->path, ACM_PATH_MAX - 1);
+	new_dmd_node->path[ACM_PATH_MAX - 1] = '\0';
+
+	new_dmd_node->depth = DEPTH_INIT;
+	new_dmd_node->file_type = acm_mp_node->file_type;
+
+	acm_dmd_add(&acm_dmd_list.head, new_dmd_node);
+	if (likely(acm_dmd_task))
+		wake_up_process(acm_dmd_task);
+
+do_cmd_add_dsm_ret:
+	kfree(acm_mp_node);
+	return err;
+#endif
+}
+
 static long acm_ioctl(struct file *filp, unsigned int cmd, unsigned long args)
 {
 	int err = 0;
@@ -472,6 +491,11 @@ static long acm_ioctl(struct file *filp, unsigned int cmd, unsigned long args)
 	case ACM_DEL_DIR:
 		err = do_cmd_del_dir(args);
 		break;
+#ifdef CONFIG_ACM_DSM
+	case ACM_ADD_DSM:
+		err = do_cmd_add_dsm(args);
+		break;
+#endif
 	default:
 		PRINT_ERR("Unknown command!\n");
 		return -EINVAL;
@@ -686,8 +710,15 @@ acm_search_ret:
 static char *remain_first_dname(char *path)
 {
 	int i, len = 0;
+	char *pt;
 
 	len = get_valid_strlen(path, ACM_PATH_MAX);
+
+	pt = strstr(path, ".thumbnails");
+	if (pt != NULL) {
+		memset(pt + strlen(".thumbnails"), 0, len - (size_t)(pt - path) - strlen(".thumbnails"));
+		return path;
+	}
 
 	for (i = 0; i < len; i++) {
 		if (*(path + i) == '/') {

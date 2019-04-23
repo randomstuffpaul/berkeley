@@ -87,6 +87,7 @@ typedef struct
     uint32_t tuncate;
 } dump_zone_head_t;
 
+int thp_prox_event_report(int value[], int length);
 extern int iom3_need_recovery(int modid, exp_source_t f);
 extern int recovery_init(void);
 extern int register_iom3_recovery_notifier(struct notifier_block *nb);

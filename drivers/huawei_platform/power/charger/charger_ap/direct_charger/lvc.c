@@ -107,7 +107,7 @@ void direct_charge_lvc_check(void)
 		}
 		return;
 	}
-	if (0 == di->sysfs_enable_charger ||0 == di->vbat_ovp_enable_charger)
+	if (0 == di->sysfs_enable_charger)
 	{
 		hwlog_info("%s direct_charge is disabled\n",__func__);
 		di->direct_charge_succ_flag = DIRECT_CHARGE_ERROR_CHARGE_DISABLED;
@@ -587,7 +587,6 @@ static int direct_charge_lvc_probe(struct platform_device	*pdev)
 	direct_charge_get_g_cable_detect_ops(&g_cable_detect_ops);
 	di->scp_ops = g_scp_ops;
 	di->scp_ps_ops = g_scp_ps_ops;
-	di->vbat_ovp_enable_charger = 1;
 	di->ls_ops = g_lvc_ops;
 	di->bi_ops = g_bi_lvc_ops;
 	di->direct_charge_cable_detect = g_cable_detect_ops;
@@ -598,7 +597,6 @@ static int direct_charge_lvc_probe(struct platform_device	*pdev)
 	di->direct_charge_succ_flag = DIRECT_CHARGE_ERROR_ADAPTOR_DETECT;
 	di->scp_stop_charging_complete_flag = 1;
 	di->dc_err_report_flag = FALSE;
-
 	if (INVALID == is_direct_charge_ops_valid(di))
 	{
 		hwlog_err("direct charge ops is	NULL!\n");
@@ -642,7 +640,7 @@ static int direct_charge_lvc_probe(struct platform_device	*pdev)
 		if (ret)
 		{
 			hwlog_err("create link to direct_charger_lvc fail.\n");
-			goto fail_0;
+			goto free_sysfs_group;
 		}
 	}
 	g_di = di;
@@ -687,6 +685,7 @@ static int direct_charge_lvc_probe(struct platform_device	*pdev)
 
 free_sysfs_group:
 	direct_charge_sysfs_remove_group(di);
+	wake_lock_destroy(&di->direct_charge_lock);
 fail_0:
 	devm_kfree(&pdev->dev, di);
 	di = NULL;
@@ -708,7 +707,7 @@ static int direct_charge_lvc_remove(struct platform_device *pdev)
 		hwlog_err("[%s]di is NULL!\n", __func__);
 		return -ENODEV;
 	}
-
+	wake_lock_destroy(&di->direct_charge_lock);
 	return 0;
 }
 /**********************************************************

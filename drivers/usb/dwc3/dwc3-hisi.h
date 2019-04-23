@@ -23,21 +23,6 @@
 #define PCTRL_PERI_CTRL24				(0x64)
 #define PCTRL_PERI_CTRL48				(0xC54)
 
-#define IP_RST_USB3OTG_MUX				(1 << 8)
-#define IP_RST_USB3OTG_AHBIF				(1 << 7)
-#define IP_RST_USB3OTG_32K				(1 << 6)
-#define IP_RST_USB3OTG					(1 << 5)
-#define IP_RST_USB3OTGPHY_POR				(1 << 3)
-
-/*
- * hisi dwc3 phy registers
- */
-#define DWC3_PHY_RX_OVRD_IN_HI	0x1006
-#define DWC3_PHY_RX_SCOPE_VDCC	0x1026
-
-/* DWC3_PHY_RX_SCOPE_VDCC */
-#define RX_SCOPE_LFPS_EN	(1 << 0)
-
 /*
  * hisi dwc3 otg bc registers
  */
@@ -148,17 +133,6 @@
 # define BC_STS0_BC_RID_A		(1 << 1)
 # define BC_STS0_BC_SESSVLD		(1 << 0)
 
-/* USB3PHY_CR_STS */
-#define USB3OTG_PHY_CR_DATA_OUT(x)	(((x) >> 1) & 0xffff)
-#define USB3OTG_PHY_CR_ACK		(1 << 0)
-
-/* USB3PHY_CR_CTRL */
-#define USB3OTG_PHY_CR_DATA_IN(x)	(((x) << 4) & (0xffff << 4))
-#define USB3OTG_PHY_CR_WRITE		(1 << 3)
-#define USB3OTG_PHY_CR_READ		(1 << 2)
-#define USB3OTG_PHY_CR_CAP_DATA		(1 << 1)
-#define USB3OTG_PHY_CR_CAP_ADDR		(1 << 0)
-
 /* USBPHY vboost lvl default value */
 #define VBOOST_LVL_DEFAULT_PARAM	(5)
 
@@ -221,6 +195,7 @@ struct hisi_dwc3_device {
 	void __iomem *bc_ctrl_reg;
 	void __iomem *mmc0crg_reg_base;
 	void __iomem *hsdt_sctrl_reg_base;
+	void __iomem *usb_dp_ctrl_base;
 
 	struct regulator *usb_regu;
 	unsigned int is_regu_on;
@@ -276,10 +251,7 @@ struct hisi_dwc3_device {
 	unsigned int bc_again_delay_time;
 	spinlock_t bc_again_lock;
 	struct delayed_work bc_again_work;
-	struct notifier_block conndone_nb;
-	struct notifier_block setconfig_nb;
-
-	struct notifier_block reset_nb;
+	struct notifier_block event_nb;
 	struct notifier_block xhci_nb;
 	unsigned int vdp_src_enable;
 
@@ -330,10 +302,12 @@ struct usb3_phy_ops {
 	int (*get_dts_resource)(struct hisi_dwc3_device *hisi_dwc3);
 	void (*set_hi_impedance)(struct hisi_dwc3_device *hisi_dwc3);
 	void (*notify_speed)(struct hisi_dwc3_device *hisi_dwc3);
+	void (*cmd_tmo_dbg_print)(struct hisi_dwc3_device *hisi_dwc3);
 	void (*check_voltage)(struct hisi_dwc3_device *hisi_dwc3);
 	int (*cptest_enable)(struct hisi_dwc3_device *hisi_dwc3);
 	void (*lscdtimer_set)(void);
 	int (*tcpc_is_usb_only)(void);
+	void (*disable_usb3)(void);
 };
 
 #ifdef CONFIG_HISI_DEBUG_FS
@@ -356,7 +330,6 @@ void hisi_usb_unreset_phy_if_fpga(void);
 void hisi_usb_switch_sharedphy_if_fpga(int to_hifi);
 int get_hisi_dwc3_power_flag(void);
 int hisi_dwc3_is_powerdown(void);
-void config_femtophy_param(struct hisi_dwc3_device *hisi_dwc);
 int hisi_dwc3_probe(struct platform_device *pdev, struct usb3_phy_ops *phy_ops);
 int hisi_dwc3_remove(struct platform_device *pdev);
 

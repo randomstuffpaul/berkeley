@@ -847,7 +847,10 @@ static int focal_firmware_update_outcell(
 	cmd[1] = (u8) ((fw_len >> 16) & 0xFF);
 	cmd[2] = (u8) ((fw_len >> 8) & 0xFF);
 	cmd[3] = (u8) (fw_len & 0xFF);
-	focal_write(cmd, 4);
+	ret = focal_write(cmd, 4);
+	if(ret){
+		TS_LOG_ERR("%s wrtte fail, ret=%d\n", __func__, ret);
+	}
 	TS_LOG_INFO("%s: send fw_len:%d\n", __func__, fw_len);
 
 	/*4. write firmware(FW) to ctpm flash*/
@@ -1141,6 +1144,7 @@ static int focal_flash_read_fw_file(
 	off_t fsize = 0;
 	mm_segment_t old_fs;
 	unsigned long magic = 0;
+	int32_t read_ret = 0;
 
 	struct file *pfile = NULL;
 	struct inode *inode = NULL;
@@ -1163,7 +1167,10 @@ static int focal_flash_read_fw_file(
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 	pos = 0;
-	vfs_read(pfile, fw_buf, fsize, &pos);
+	read_ret = vfs_read(pfile, fw_buf, fsize, &pos);
+	if(read_ret < 0){
+		TS_LOG_ERR("%s: read fail!ret=%d\n", __func__, read_ret);
+	}
 	filp_close(pfile, NULL);
 	set_fs(old_fs);
 
@@ -1720,6 +1727,8 @@ static int  focal_get_lcd_module_name(void)
 	for(i=0;i<LCD_PANEL_INFO_MAX_LEN-1;i++)
 	{
 		if(temp[i] == '_') {
+			break;
+		} else if(temp[i] == '-'){
 			break;
 		}
 		focal_pdata->lcd_module_name[i] = tolower(temp[i]);

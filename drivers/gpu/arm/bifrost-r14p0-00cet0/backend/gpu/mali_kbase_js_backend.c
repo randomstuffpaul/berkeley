@@ -117,7 +117,6 @@ static enum hrtimer_restart timer_callback(struct hrtimer *timer)
 			 * Soft-Stop */
 			if (!kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_5736)) {
 				u32 ticks = atom->ticks++;
-
 #ifndef CONFIG_MALI_JOB_DUMP
 				u32 soft_stop_ticks, hard_stop_ticks,
 								gpu_reset_ticks;
@@ -196,7 +195,7 @@ static enum hrtimer_restart timer_callback(struct hrtimer *timer)
 								/ 1000000u;
 					dev_warn(kbdev->dev, "JS: Job Hard-Stopped (took more than %lu ticks at %lu ms/tick\n)",
 							(unsigned long)ticks,
-							(unsigned long)ms);
+							(unsigned long)ms);//lint !e571
 					dev_warn(kbdev->dev, "protected mode = 0x%x, rb_status=%d status = %d\n",atom->atom_flags, atom->gpu_rb_state, atom->status);
 					kbase_job_slot_hardstop(atom->kctx, s,
 									atom);
@@ -262,7 +261,7 @@ static enum hrtimer_restart timer_callback(struct hrtimer *timer)
 #ifdef CONFIG_HISI_ENABLE_HPM_DATA_COLLECT
 		/*benchmark data collect */
 		if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0009)) {
-			BUG_ON(1); //lint !e730
+			BUG_ON(1);//lint !e730
 		}
 #endif
 		if (kbase_prepare_to_reset_gpu_locked(kbdev))

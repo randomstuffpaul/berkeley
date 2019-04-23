@@ -24,6 +24,11 @@ enum apbl31panic_subtype
  HI_APBL31PANIC_RESERVED = 0x0,
  HI_APBL31PANIC_ASSERT = 0x1,
 };
+enum apvndpanic_subtype
+{
+ HI_APVNDPANIC_RESERVED = 0x0,
+ HI_APVNDPANIC_CFI = 0x1,
+};
 enum apwdt_subtype
 {
  HI_APWDT_HW = 0x0,
@@ -208,6 +213,11 @@ enum hisee_subtype
  EXC_NV_COUNTER,
  EXC_SWP,
  EXC_COS,
+ EXC_BB,
+ EXC_MNTN_COS,
+ EXC_MNTN_COS_RESET,
+ EXC_LIBC,
+ EXC_NVM,
  EXC_SECENG_TRNG,
  EXC_SECENG_TRIM,
  EXC_SECENG_SCE,

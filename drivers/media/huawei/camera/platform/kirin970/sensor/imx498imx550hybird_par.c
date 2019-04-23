@@ -75,18 +75,18 @@ static struct sensor_power_setting imx498imx550hybird_power_setting [] = {
         .delay = DELAY_0MS,
     },
 
-    //M0 DVDD0  1.05V  [PMU-LDO19]
+    //M0 DVDD0  1.1V  [PMU-LDO19]
     {
         .seq_type = SENSOR_DVDD,
-        .config_val = LDO_VOLTAGE_1P05V,
+        .config_val = LDO_VOLTAGE_1P1V,
         .sensor_index = SENSOR_INDEX_INVALID,
         .delay = DELAY_0MS,
     },
 
-    //M1 DVDD1  1.05V  [PMU-LDO20]
+    //M1 DVDD1  1.1V  [PMU-LDO20]
     {
         .seq_type = SENSOR_DVDD2,
-        .config_val = LDO_VOLTAGE_1P05V,
+        .config_val = LDO_VOLTAGE_1P1V,
         .sensor_index = SENSOR_INDEX_INVALID,
         .delay = DELAY_0MS,
     },

@@ -170,6 +170,24 @@ static struct hisi_rproc_info rproc_table[] = {
 	 },
 	{
 	 .rproc_id = HISI_RPROC_AO_MBX5,
+	 },
+     {
+	 .rproc_id = HISI_RPROC_NPU_MBX0,
+	 },
+	{
+	 .rproc_id = HISI_RPROC_NPU_MBX1,
+	 },
+	{
+	 .rproc_id = HISI_RPROC_NPU_MBX2
+	 },
+	{
+	 .rproc_id = HISI_RPROC_NPU_MBX3,
+	 },
+	{
+	 .rproc_id = HISI_RPROC_NPU_MBX4,
+	 },
+	{
+	 .rproc_id = HISI_RPROC_NPU_MBX5,
 	 }
 };
 

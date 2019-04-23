@@ -267,32 +267,61 @@ VOS_UINT32 PAM_OM_AcpuPihToAtMsgFilter(
 
     pstEventCnf = (MN_APP_PIH_AT_CNF_STRU *)pMsg;
 
-    if (PIH_AT_EVENT_CNF != pstEventCnf->ulMsgId)
+    if (PIH_AT_EVENT_CNF == pstEventCnf->ulMsgId)
     {
-        return VOS_FALSE;
+        OM_NORMAL_LOG1("PAM_OM_AcpuAtToPihMsgFilter: The filter EventType is :", pstEventCnf->stPIHAtEvent.EventType);
+
+        return VOS_TRUE;
     }
 
-    switch (pstEventCnf->stPIHAtEvent.EventType)
+    return VOS_FALSE;
+}
+
+
+VOS_UINT32 PAM_OM_AcpuPihToPCSCMsgFilter(
+    const VOS_VOID                      *pMsg
+)
+{
+    MSG_HEADER_STRU                     *pstMsg;
+
+    pstMsg = (MSG_HEADER_STRU *)pMsg;
+
+    if (USIMM_CARDSTATUS_IND == pstMsg->ulMsgName)
     {
-        case SI_PIH_EVENT_CGLA_SET_CNF:
-        case SI_PIH_EVENT_CRSM_SET_CNF:
-        case SI_PIH_EVENT_CRLA_SET_CNF:
-        case SI_PIH_EVENT_CIMI_QRY_CNF:
-        case SI_PIH_EVENT_CCIMI_QRY_CNF:
-        case SI_PIH_EVENT_SIM_ICCID_IND:
-        case SI_PIH_EVENT_GENERIC_ACCESS_CNF:
-        case SI_PIH_EVENT_ISDB_ACCESS_CNF:
-        case SI_PIH_EVENT_PRIVATECGLA_SET_CNF:
-        case SI_PIH_EVENT_URSM_CNF:
-        case SI_PIH_EVENT_PRIVATECGLA_SET_IND:
-        case SI_PIH_EVENT_UICCAUTH_CNF:
-            OM_NORMAL_LOG1("PAM_OM_AcpuAtToPihMsgFilter: The filter EventType is :", pstEventCnf->stPIHAtEvent.EventType);
+        OM_NORMAL_LOG1("PAM_OM_AcpuPihToPCSCMsgFilter: The filter name is :", pstMsg->ulMsgName);
 
-            return VOS_TRUE;
-
-        default:
-            return VOS_FALSE;
+        return VOS_TRUE;
     }
+
+    return VOS_FALSE;
+}
+
+
+VOS_UINT32 PAM_OM_AcpuPihMsgFilter(
+    const VOS_VOID                      *pMsg
+)
+{
+    MSG_HEADER_STRU                    *pstMsg;
+    VOS_UINT32                          ulRet;
+
+    pstMsg = (MSG_HEADER_STRU *)pMsg;
+
+    switch (pstMsg->ulReceiverPid)
+    {
+        case WUEPS_PID_AT:
+            ulRet = PAM_OM_AcpuPihToAtMsgFilter(pMsg);
+            break;
+
+        case ACPU_PID_PCSC:
+            ulRet = PAM_OM_AcpuPihToPCSCMsgFilter(pMsg);
+            break;
+
+        default :
+            ulRet = VOS_FALSE;
+            break;
+    }
+
+    return ulRet;
 }
 
 
@@ -307,6 +336,7 @@ VOS_UINT32 PAM_OM_AcpuStkToAtMsgFilter(
     switch (pstEventCnf->ulMsgId)
     {
         case STK_AT_EVENT_CNF:
+        case STK_AT_DATAPRINT_CNF:
             OM_NORMAL_LOG1("PAM_OM_AcpuStkToAtMsgFilter: The filter ulMsgId is :", pstEventCnf->ulMsgId);
 
             return VOS_TRUE;
@@ -393,7 +423,7 @@ VOS_UINT32 PAM_OM_AcpuLayerMsgFilterOptProc(
      /* PIH ÏûÏ¢¹ýÂË */
     if (I0_MAPS_PIH_PID == ulSendI0Pid)
     {
-        return PAM_OM_AcpuPihToAtMsgFilter(pMsg);
+        return PAM_OM_AcpuPihMsgFilter(pMsg);
     }
 
     if ((WUEPS_PID_AT    == ulSendI0Pid)

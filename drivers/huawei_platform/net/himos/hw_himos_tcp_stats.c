@@ -43,6 +43,7 @@ void himos_tcp_stats(struct sock *sk, struct msghdr *old, struct msghdr *new,
 
 	switch(type) {
 	case HIMOS_STATS_TYPE_AWEME:
+	case HIMOS_STATS_TYPE_KWAI:
 		himos_aweme_tcp_stats(sk, old, new, inbytes, outbytes);
 		break;
 	default:

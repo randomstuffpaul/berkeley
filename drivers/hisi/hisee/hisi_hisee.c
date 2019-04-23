@@ -409,6 +409,22 @@ int send_smc_process(atf_message_header *p_message_header, phys_addr_t phy_addr,
 	set_errno_and_return(ret);
 }
 
+/***************************************************************************
+* 函数：int hisee_get_smx_cfg(unsigned int *p_smx_cfg)
+* 参数：无
+* 返回：获取smx状态:TRUE or FALSE;
+* 处理：通过SMC向ATF发出获取smx状态的命令；
+* 实现：
+***************************************************************************/
+void hisee_get_smx_cfg(unsigned int *p_smx_cfg)
+{
+	if (NULL == p_smx_cfg) {
+		pr_err("hisee:%s() input param error!\n", __func__);
+		return;
+	}
+	*p_smx_cfg = SMX_PROCESS_1;
+}
+
 static int write_apdu_command_func (char *apdu_buf, unsigned int apdu_len)
 {
 	atf_message_header *p_message_header;

@@ -3798,7 +3798,6 @@ retry:
 	 * orientated.
 	 */
 	if (!(alloc_flags & ALLOC_CPUSET) || (alloc_flags & ALLOC_NO_WATERMARKS)) {
-		ac->zonelist = node_zonelist(numa_node_id(), gfp_mask);
 		ac->preferred_zoneref = first_zones_zonelist(ac->zonelist,
 					ac->high_zoneidx, ac->nodemask);
 	}
@@ -4368,9 +4367,9 @@ long si_mem_available(void)
 	available += (long)global_page_state(NR_MALI_PAGES);
 #ifdef CONFIG_TASK_PROTECT_LRU
 	available -= (long)global_page_state(NR_PROTECT_ACTIVE_FILE) +
-		(long)global_page_state(NR_PROTECT_INACTIVE_FILE) +
-		(long)global_page_state(NR_PROTECT_ACTIVE_ANON) +
-		(long)global_page_state(NR_PROTECT_INACTIVE_ANON);
+		     (long)global_page_state(NR_PROTECT_INACTIVE_FILE) +
+		     (long)global_page_state(NR_PROTECT_ACTIVE_ANON) +
+		     (long)global_page_state(NR_PROTECT_INACTIVE_ANON);
 #endif
 
 	if (available < 0)

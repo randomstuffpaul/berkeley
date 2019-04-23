@@ -203,12 +203,60 @@ out:
 	return err;
 }
 
-static void recover_inode(struct inode *inode, struct page *page)
+static int recover_quota_data(struct inode *inode, struct page *page)
+{
+	struct f2fs_inode *raw = F2FS_INODE(page);
+	struct iattr attr;
+	uid_t i_uid = le32_to_cpu(raw->i_uid);
+	gid_t i_gid = le32_to_cpu(raw->i_gid);
+	int err;
+
+	memset(&attr, 0, sizeof(attr));
+
+	attr.ia_uid = make_kuid(inode->i_sb->s_user_ns, i_uid);
+	attr.ia_gid = make_kgid(inode->i_sb->s_user_ns, i_gid);
+
+	if (!uid_eq(attr.ia_uid, inode->i_uid))
+		attr.ia_valid |= ATTR_UID;
+	if (!gid_eq(attr.ia_gid, inode->i_gid))
+		attr.ia_valid |= ATTR_GID;
+
+	if (!attr.ia_valid)
+		return 0;
+
+	err = dquot_transfer(inode, &attr);
+	if (err)
+		set_sbi_flag(F2FS_I_SB(inode), SBI_QUOTA_NEED_REPAIR);
+	return err;
+}
+
+static int recover_inode(struct inode *inode, struct page *page)
 {
 	struct f2fs_inode *raw = F2FS_INODE(page);
 	char *name;
+	int err;
 
 	inode->i_mode = le16_to_cpu(raw->i_mode);
+
+	err = recover_quota_data(inode, page);
+	if (err)
+		return err;
+
+	i_uid_write(inode, le32_to_cpu(raw->i_uid));
+	i_gid_write(inode, le32_to_cpu(raw->i_gid));
+
+	if (raw->i_inline & F2FS_EXTRA_ATTR) {/*lint -save -e574*/
+		if (f2fs_sb_has_project_quota(F2FS_I_SB(inode)->sb) &&
+			F2FS_FITS_IN_INODE(raw, le16_to_cpu(raw->i_extra_isize),
+								i_projid)) {
+			projid_t i_projid;
+
+			i_projid = (projid_t)le32_to_cpu(raw->i_projid);
+			F2FS_I(inode)->i_projid =
+				make_kprojid(&init_user_ns, i_projid);
+		}
+	}/*lint -restore*/
+
 	f2fs_i_size_write(inode, le64_to_cpu(raw->i_size));
 	inode->i_atime.tv_sec = le64_to_cpu(raw->i_atime);
 	inode->i_ctime.tv_sec = le64_to_cpu(raw->i_ctime);
@@ -218,6 +266,11 @@ static void recover_inode(struct inode *inode, struct page *page)
 	inode->i_mtime.tv_nsec = le32_to_cpu(raw->i_mtime_nsec);
 
 	F2FS_I(inode)->i_advise = raw->i_advise;
+	F2FS_I(inode)->i_flags = le32_to_cpu(raw->i_flags);
+	F2FS_I(inode)->i_gc_failures =
+				le16_to_cpu(raw->i_gc_failures);
+
+	f2fs_mark_inode_dirty_sync(inode, true);
 
 	if (file_enc_name(inode))
 		name = "<encrypted>";
@@ -226,6 +279,7 @@ static void recover_inode(struct inode *inode, struct page *page)
 
 	f2fs_msg(inode->i_sb, KERN_NOTICE, "recover_inode: ino = %x, name = %s",
 			ino_of_node(page), name);
+	return 0;
 }
 
 static int find_fsync_dnodes(struct f2fs_sb_info *sbi, struct list_head *head,
@@ -570,8 +624,11 @@ static int recover_data(struct f2fs_sb_info *sbi, struct list_head *inode_list,
 		 * In this case, we can lose the latest inode(x).
 		 * So, call recover_inode for the inode update.
 		 */
-		if (IS_INODE(page))
-			recover_inode(entry->inode, page);
+		if (IS_INODE(page)) {
+			err = recover_inode(entry->inode, page);
+			if (err)
+				break;
+		}
 		if (entry->last_dentry == blkaddr) {
 			err = recover_dentry(entry->inode, page, dir_list);
 			if (err) {
@@ -668,11 +725,15 @@ skip:
 	/* let's drop all the directory inodes for clean checkpoint */
 	destroy_fsync_dnodes(&dir_list);
 
-	if (!err && need_writecp) {
-		struct cp_control cpc = {
-			.reason = CP_RECOVERY,
-		};
-		err = write_checkpoint(sbi, &cpc);
+	if (need_writecp) {
+		set_sbi_flag(sbi, SBI_IS_RECOVERED);
+
+		if (!err) {
+			struct cp_control cpc = {
+				.reason = CP_RECOVERY,
+			};
+			err = write_checkpoint(sbi, &cpc);
+		}
 	}
 
 	kmem_cache_destroy(fsync_entry_slab);

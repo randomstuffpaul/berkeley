@@ -49,7 +49,7 @@ static void swap_2byte(unsigned char *buf, unsigned int size)
 	}
 
 	for (i = 0; i < size; i += REG_SIZE)
-		be16_to_cpus(buf + i);
+		be16_to_cpus((__u16 *)(buf + i));
 }
 
 static int thp_bu21150_spi_transfer(struct thp_device *tdev,

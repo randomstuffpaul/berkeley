@@ -75,6 +75,7 @@ typedef struct _tag_hwsensor_info
 
     char                                        name[DEVICE_NAME_SIZE];
     char                                        vcm_name[DEVICE_NAME_SIZE];
+    char                                        extend_name[DEVICE_NAME_SIZE];
     int                                         vcm_enable;
     hwsensor_position_kind_t                    mount_position;
     uint32_t                                    mount_angle;
@@ -136,6 +137,9 @@ struct sensor_cfg_data {
         struct sensor_i2c_setting setting;
         //struct hisi_sensor_af_otp af_otp;
     } cfg;
+    union {
+         char extend_name[DEVICE_NAME_SIZE];
+    }info;
 };
 
 typedef enum _tag_sensor_otp_cfg_type_t

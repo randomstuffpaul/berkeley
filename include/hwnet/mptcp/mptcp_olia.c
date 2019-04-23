@@ -18,6 +18,7 @@
  * 2 of the License, or (at your option) any later version.
  */
 
+
 #include <net/tcp.h>
 #include <net/mptcp.h>
 
@@ -41,7 +42,7 @@ static inline int mptcp_olia_sk_can_send(const struct sock *sk)
 
 static inline u64 mptcp_olia_scale(u64 val, int scale)
 {
-	return (u64)val << scale;
+	return (u64) val << scale;
 }
 
 /* take care of artificially inflate (see RFC5681)
@@ -58,7 +59,7 @@ static u32 mptcp_get_crt_cwnd(struct sock *sk)
 }
 
 /* return the dominator of the first term of  the increasing term */
-static u64 mptcp_get_rate(const struct mptcp_cb *mpcb, u32 path_rtt)
+static u64 mptcp_get_rate(const struct mptcp_cb *mpcb , u32 path_rtt)
 {
 	struct sock *sk;
 	u64 rate = 1; /* We have to avoid a zero-rate because it is used as a divisor */
@@ -73,7 +74,7 @@ static u64 mptcp_get_rate(const struct mptcp_cb *mpcb, u32 path_rtt)
 
 		tmp_cwnd = mptcp_get_crt_cwnd(sk);
 		scaled_num = mptcp_olia_scale(tmp_cwnd, scale) * path_rtt;
-		rate += div_u64(scaled_num, tp->srtt_us);
+		rate += div_u64(scaled_num , tp->srtt_us);
 	}
 	rate *= rate;
 	return rate;
@@ -254,26 +255,27 @@ static void mptcp_olia_cong_avoid(struct sock *sk, u32 ack, u32 acked)
 			inc_num = rate - ca->epsilon_den *
 				cwnd_scaled * cwnd_scaled;
 			ca->mptcp_snd_cwnd_cnt -= div64_u64(
-			    mptcp_olia_scale(inc_num, scale), inc_den);
+			    mptcp_olia_scale(inc_num , scale) , inc_den);
 		} else {
 			inc_num = ca->epsilon_den *
 			    cwnd_scaled * cwnd_scaled - rate;
 			ca->mptcp_snd_cwnd_cnt += div64_u64(
-			    mptcp_olia_scale(inc_num, scale), inc_den);
+			    mptcp_olia_scale(inc_num , scale) , inc_den);
 		}
 	} else {
 		inc_num = ca->epsilon_num * rate +
 		    ca->epsilon_den * cwnd_scaled * cwnd_scaled;
 		ca->mptcp_snd_cwnd_cnt += div64_u64(
-		    mptcp_olia_scale(inc_num, scale), inc_den);
+		    mptcp_olia_scale(inc_num , scale) , inc_den);
 	}
+
 
 	if (ca->mptcp_snd_cwnd_cnt >= (1 << scale) - 1) {
 		if (tp->snd_cwnd < tp->snd_cwnd_clamp)
 			tp->snd_cwnd++;
 		ca->mptcp_snd_cwnd_cnt = 0;
 	} else if (ca->mptcp_snd_cwnd_cnt <= 0 - (1 << scale) + 1) {
-		tp->snd_cwnd = max((int)1, (int)tp->snd_cwnd - 1);
+		tp->snd_cwnd = max((int) 1 , (int) tp->snd_cwnd - 1);
 		ca->mptcp_snd_cwnd_cnt = 0;
 	}
 }

@@ -277,6 +277,7 @@ struct g_sensor_platform_data {
 	int sensitivity_y;
 	int sensitivity_z;
 	uint8_t calibrate_style;
+	uint8_t data_convert;
 	uint8_t g_sensor_extend_data[SENSOR_PLATFORM_EXTEND_DATA_SIZE];
 };
 struct gyro_platform_data {
@@ -378,6 +379,7 @@ struct ps_platform_data {
 	int pwave_value;
 	int threshold_value;
 	int rdata_under_sun;
+	uint8_t ps_flag;
 	uint8_t ps_extend_data[SENSOR_PLATFORM_EXTEND_DATA_SIZE];
 };
 
@@ -458,6 +460,7 @@ struct semteck_sar_data {
 	uint32_t init_reg_val[17];
 	uint8_t ph;
 	uint16_t calibrate_thred[4];
+	uint16_t offset_check;
 };
 union sar_data {
 	struct cypress_sar_data cypress_data;
@@ -587,6 +590,11 @@ struct magn_bracket_platform_data {
 	int mag_y_change_upper;
 	int mag_z_change_lower;
 	int mag_z_change_upper;
+};
+
+struct motion_platform_data {
+	uint8_t pickup_data_flag;
+	int angle_gap;
 };
 
 typedef struct {

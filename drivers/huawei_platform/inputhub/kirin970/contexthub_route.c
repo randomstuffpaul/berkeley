@@ -402,6 +402,14 @@ int ap_color_report(int value[], int length)
 	return report_sensor_event(TAG_COLOR, value, length);
 }
 
+int thp_prox_event_report(int value[], int length)
+{
+	if (value == NULL)
+		return -EINVAL;
+
+	return 0;
+}
+
 bool ap_sensor_enable(int tag, bool enable)
 {
 	bool work_on_ap = false;
@@ -588,13 +596,18 @@ static int inputhub_mcu_send(const char* buf, unsigned int length)
 	return ret;
 }
 
-static const pkt_header_t *pack(const char *buf, unsigned int length)
+static const pkt_header_t *pack(const char *buf, unsigned int length, bool *is_notifier)
 {
 	const pkt_header_t *head = normalpack(buf, length);
 #ifdef CONFIG_CONTEXTHUB_SHMEM
-	if(head && (head->tag == TAG_SHAREMEM) && (head->cmd == CMD_SHMEM_AP_RECV_REQ))
+	if(head && (head->tag == TAG_SHAREMEM))
 	{
-	    head = shmempack(buf, length);
+		if (head->cmd == CMD_SHMEM_AP_RECV_REQ) {
+			head = shmempack(buf, length);
+		} else if (head->cmd == CMD_SHMEM_AP_SEND_RESP) {
+			shmem_send_resp(head);
+			*is_notifier = true;
+		}
 	}
 #endif
 	return head;
@@ -1919,7 +1932,7 @@ int inputhub_route_recv_mcu_data(const char *buf, unsigned int length)
 	const pkt_header_t* head = (const pkt_header_t*)buf;
 	bool is_notifier = false;
 
-	head = pack(buf, length);
+	head = pack(buf, length, &is_notifier);
 
 	if (NULL == head)
 		{ return 0; }	/*receive next partial package.*/

@@ -33,7 +33,7 @@
 #include <linux/hisi/rdr_hisi_ap_hook.h>
 #endif
 #ifdef CONFIG_TZDRIVER
-#include <linux/hisi/hisi_teeos.h>
+#include <chipset_common/security/itrustee.h>
 #endif
 #ifdef CONFIG_HW_ZEROHUNG
 #include <chipset_common/hwzrhung/zrhung.h>
@@ -219,7 +219,7 @@ static int whitelist_panic_cnt = DEFAULT_WHITE_PANIC_CNT;
 static int jankproc_pids[JANK_TASK_MAXNUM];
 static int jankproc_pids_size;
 static int topapp_pid;
-static int last_topapp_pid;
+//static int last_topapp_pid;
 static int found_in_topapp = TOPAPP_HUNG_INIT;
 static int topapp_hung_times = 0;
 static int janklist_dump_cnt = DEFAULT_JANK_DUMP_CNT;
@@ -248,7 +248,7 @@ static int hung_task_dump_and_upload = 0;
 static int time_since_upload = 0;
 static int hung_task_must_panic = 0;
 static int zrhung_WPhungtask_enable;
-static struct task_hung_upload upload_hungtask = {0};
+static struct task_hung_upload upload_hungtask;
 static bool in_suspend = false;
 static struct rtc_time jank_last_tm = {0};
 static struct rtc_time jank_tm = {0};
@@ -543,10 +543,10 @@ static bool insert_task(struct task_item *item, struct rb_root *root)
 	}
 	rb_link_node(&item->node, parent, p);
 	rb_insert_color(&item->node, root);
-	if (item->task_type & (TASK_TYPE_WHITE | TASK_TYPE_JANK)) {
+	/*if (item->task_type & (TASK_TYPE_WHITE | TASK_TYPE_JANK)) {
 		pr_info("hungtask: insert success pid=%d,tgid=%d,name=%s,"
 		"type=%d\n", item->pid, item->tgid, item->name, item->task_type);
-	}
+	}*/
 	return true;
 }
 
@@ -610,7 +610,6 @@ void show_state_filter_ext(unsigned long state_filter)
 	}
 	touch_all_softlockup_watchdogs();
 #ifdef CONFIG_SCHED_DEBUG
-	sysrq_sched_debug_show();
 #endif
 	rcu_read_unlock();
 	/*
@@ -786,10 +785,10 @@ static void generate_ignorelist(struct task_struct *t)
 }
 static void remove_list_tasks(struct task_item *item)
 {
-	if(item->task_type & (TASK_TYPE_WHITE | TASK_TYPE_JANK)) {
+	/*if(item->task_type & (TASK_TYPE_WHITE | TASK_TYPE_JANK)) {
 		pr_info("hungtask: remove from list_tasks pid=%d,tgid=%d,"
 			"name=%s\n", item->pid, item->tgid, item->name);
-	}
+	}*/
 	rb_erase(&item->node, &list_tasks);
 	kfree(item);
 }
@@ -840,6 +839,7 @@ static void hungtask_report_zrhung(int event)
 	char report_buf_tag_cmd[REPORT_MSGLENGTH + 2] = {0};
 	char report_buf_text[REPORT_MSGLENGTH] = {0};
 	char report_name[TASK_COMM_LEN + 1] = {0};
+	char cmd[MAX_ZRHUNG_CMD_BUF_SIZE] = {0};
 	int report_pid = 0, report_hungtime = 0, report_tasktype = 0;
 
 	if (zrhung_WPhungtask_enable != ZRHUNG_HUNGTASK_ENABLE)
@@ -878,7 +878,6 @@ static void hungtask_report_zrhung(int event)
 		pr_err("hungtask: HUNGTASK_EVENT_WHITELIST happens , report to zrhung!\n");
 	if (event & HUNGTASK_EVENT_LAZYWATCHDOG) {
 		pr_err("hungtask: HUNGTASK_EVENT_LAZYWATCHDOG happens in this cycle!\n");
-		char cmd[MAX_ZRHUNG_CMD_BUF_SIZE] = {0};
 		snprintf(cmd, MAX_ZRHUNG_CMD_BUF_SIZE, "P=%d", systemserver_pid);
 		zrhung_send_event(ZRHUNG_WP_HUNGTASK, cmd, "hungtask: vmreboot watchdog not scheduled for 39s.");
 	}
@@ -917,7 +916,9 @@ static int hungtask_check_topapp(void)
 static int watchdog_nosched_check(void)
 {
 	int ret = 0;
-
+#ifdef CONFIG_HW_ZEROHUNG
+	char cmd[MAX_ZRHUNG_CMD_BUF_SIZE] = {0};
+#endif
 	if (!hungtask_watchdog_nosched_enable || !hungtask_watchdog_nosched_firstkick)
 		return ret;
 
@@ -940,7 +941,6 @@ static int watchdog_nosched_check(void)
 			pr_err("hungtask: vmreboot watchdog not scheduled for more"
 				"than %d seconds.\n", noschedule_panic_cnt * HEARTBEAT_TIME);
 #ifdef CONFIG_HW_ZEROHUNG
-			char cmd[MAX_ZRHUNG_CMD_BUF_SIZE] = {0};
 			snprintf(cmd, MAX_ZRHUNG_CMD_BUF_SIZE, "S,P=%d", systemserver_pid);
 			zrhung_send_event(ZRHUNG_WP_HUNGTASK, cmd, "hungtask: vmreboot watchdog not scheduled for 120s.");
 #endif
@@ -1061,9 +1061,11 @@ static int dump_task_wa(struct task_item *item, int dump_cnt,
 		item->dump_wa = 1;
 		if (!hung_task_dump_and_upload) {
 			if (task->flags & PF_FROZEN) {
+#ifndef CONFIG_FINAL_RELEASE
 				pr_err("hungtask: Task %s:%d tgid:%d type:%d is FROZEN for %ds.\n",
 						item->name, item->pid, item->tgid, item->task_type,
 						item->time_in_D_state * HEARTBEAT_TIME);
+#endif
 			} else {
 				pr_err("hungtask: Ready to dump a task %s.\n", item->name);
 				do_dump(task, flag, item->time_in_D_state);
@@ -1128,8 +1130,10 @@ static void deal_task(struct task_item *item, struct task_struct *task, bool is_
 		}
 	} else if (!(item->task_type & (TASK_TYPE_WHITE | TASK_TYPE_APP))) {
 		if (item->dump_wa > other_log_cnt && item->time_in_D_state < HUNG_ONE_HOUR) {
+#ifndef CONFIG_FINAL_RELEASE
 			pr_err("hungtask: Unconcerned task %s:%d blocked more than %d seconds\n",
 				item->name, item->pid, item->time_in_D_state * HEARTBEAT_TIME);
+#endif
 			item->dump_wa = 1;
 			any_dumped_num++;
 		}

@@ -881,7 +881,7 @@ static void sdhci_arasan_hw_reset(struct sdhci_host *host)
 	sdhci_of_arasan_PHY_init(host);
 }
 
-void sdhci_of_arasan_chk_busy_before_send_cmd(struct sdhci_host *host,
+int sdhci_of_arasan_chk_busy_before_send_cmd(struct sdhci_host *host,
 	struct mmc_command* cmd)
 {
 	unsigned long timeout;
@@ -894,15 +894,15 @@ void sdhci_of_arasan_chk_busy_before_send_cmd(struct sdhci_host *host,
 			if (timeout == 0) {
 				pr_err("%s: wait busy 10s time out.\n", mmc_hostname(host->mmc));
 				sdhci_dumpregs(host);
-				cmd->error = -EIO;
+				cmd->error = -ENOMSG;
 				tasklet_schedule(&host->finish_tasklet);
-				return;
+				return -ENOMSG;
 			}
 			timeout--;
 			mdelay(1);
 		}
 	}
-	return;
+	return 0;
 }
 
 int sdhci_arasan_enable_dma(struct sdhci_host *host)
@@ -1310,6 +1310,13 @@ void sdhci_dsm_handle(struct sdhci_host *host, struct mmc_request *mrq)
 		}
 	}
 }
+
+void sdhci_dsm_report(struct mmc_host *host, struct mmc_request *mrq)
+{
+	struct sdhci_host *sdhci_host = mmc_priv(host);
+	sdhci_dsm_set_host_status(sdhci_host, SDHCI_INT_TIMEOUT);
+	sdhci_dsm_handle(sdhci_host, mrq);
+}
 #endif
 
 #ifdef CONFIG_HISI_MMC
@@ -1448,6 +1455,7 @@ static int sdhci_arasan_probe(struct platform_device *pdev)
 		goto clk_disable_all;
 	}
 
+	sdhci_of_arasan_platform_init(host);
 	g_sdhci_for_mmctrace = host;
 
 	sdhci_get_of_property(pdev);

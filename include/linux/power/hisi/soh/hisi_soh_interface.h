@@ -1,11 +1,11 @@
 #ifndef _HISI_SOH_INTERFACE_H_
 #define _HISI_SOH_INTERFACE_H_
 
-#define ACR_CHECK_CYCLE_S           20*60
-#define ACR_MAX_BATTERY_CURRENT_MA   100
+#define ACR_CHECK_CYCLE_S           (20*60)
+#define ACR_MAX_BATTERY_CURRENT_MA   (100)
 
-#define DCR_CHECK_CYCLE_S           20*60
-#define DCR_MAX_BATTERY_CURRENT_MA   100
+#define DCR_CHECK_CYCLE_S           (20*60)
+#define DCR_MAX_BATTERY_CURRENT_MA   (100)
 
 /**
  * struct acr_info - Basic representation of an acr info.

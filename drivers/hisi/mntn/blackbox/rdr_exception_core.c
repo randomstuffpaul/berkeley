@@ -116,64 +116,6 @@ u32 rdr_check_modid(u32 modid, u32 modid_end)
 }
 
 /*
- * func name: rdr_check_exception info
- * func args:
- *  rdr_exception_info_s  e;
- *	!= 0 error
- *	= 0 success
- */
-int rdr_check_exception_info(struct rdr_exception_info_s *e)
-{
-	BB_PRINT_START();
-	if (e->e_process_priority >= RDR_PPRI_MAX) {
-		BB_PRINT_ERR("invaild e_process_priority\n");
-		BB_PRINT_END();
-		return -1;
-	}
-	if (e->e_reboot_priority > RDR_REBOOT_MAX) {
-		BB_PRINT_ERR("invaild e_reboot_priority\n");
-		BB_PRINT_END();
-		return -1;
-	}
-	if (e->e_notify_core_mask >= 1 << RDR_CORE_MAX) {
-		BB_PRINT_ERR("invaild e_notify_core_mask\n");
-		BB_PRINT_END();
-		return -1;
-	}
-	if (e->e_reset_core_mask >= 1 << RDR_CORE_MAX) {
-		BB_PRINT_ERR("invaild e_reset_core_mask\n");
-		BB_PRINT_END();
-		return -1;
-	}
-	if (e->e_from_core >= 1 << RDR_CORE_MAX) {
-		BB_PRINT_ERR("invaild e_from_core\n");
-		BB_PRINT_END();
-		return -1;
-	}
-	if (e->e_reentrant != (u32)RDR_REENTRANT_ALLOW &&
-	    e->e_reentrant != (u32)RDR_REENTRANT_DISALLOW) {
-		BB_PRINT_ERR("invaild e_reentrant\n");
-		BB_PRINT_END();
-		return -1;
-	}
-	if (e->e_upload_flag != (u32)RDR_UPLOAD_YES &&
-	    e->e_upload_flag != (u32)RDR_UPLOAD_NO) {
-		BB_PRINT_ERR("invaild e_upload_flag\n");
-		BB_PRINT_END();
-		return -1;
-	}
-/*
-if(e->e_exce_type > ) {
-	BB_PRINT_ERR("invaild e_exce_type\n");
-	BB_PRINT_END();
-	return -1;
-}
-*/
-	BB_PRINT_END();
-	return 0;
-}
-
-/*
  *   u32 modid,			exception id;
  *		if modid equal 0, will auto generation modid, and return it.
  *   u32 modid_end,		can register modid region. [modid~modid_end];
@@ -228,12 +170,6 @@ u32 rdr_register_exception(struct rdr_exception_info_s *e)
 		BB_PRINT_PN("mod_id exist already\n");
 		return 0;
 	}
-
-	/* if (0 != rdr_check_exception_info(e)) {
-	   BB_PRINT_ERR("mod_id exist already\n");
-	   BB_PRINT_END();
-	   return 0;
-	   } */
 
 	e_type_info = kmalloc(sizeof(struct rdr_exception_info_s), GFP_ATOMIC);
 	if (e_type_info == NULL) {

@@ -2474,16 +2474,16 @@ static int exfat_fill_super(struct super_block *sb, void *data, int silent)
 	 * it and have no inodes etc active!
 	 */
 	sbi = kzalloc(sizeof(struct exfat_sb_info), GFP_KERNEL);
-	if (!sbi)
-	{
+	if (!sbi) {
 		printk(KERN_ERR "[EXFAT] exfat_fill_super kzalloc failed\n");
 		sbi = vzalloc(sizeof(struct exfat_sb_info));
 	}
-	if (!sbi)
-	{
+
+	if (!sbi) {
 		printk(KERN_ERR "[EXFAT] exfat_fill_super vzalloc failed\n");
 		return -ENOMEM;
 	}
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,7,0)
 	mutex_init(&sbi->s_lock);
 #endif
@@ -2507,6 +2507,9 @@ static int exfat_fill_super(struct super_block *sb, void *data, int silent)
 
 	ret = FsMountVol(sb);
 	if (ret) {
+		if (ret == FFS_FORMATERR)
+			error = -EINVAL;
+
 		if (!silent)
 			printk(KERN_ERR "[EXFAT] FsMountVol failed\n");
 

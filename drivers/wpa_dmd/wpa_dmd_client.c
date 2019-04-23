@@ -61,9 +61,9 @@ static int __init wpa_dsm_init(void)
 	hw_register_wpa_dsm_client();
 	return 0;
 }
-static int __exit wpa_dsm_deinit(void)
+static void __exit wpa_dsm_deinit(void)
 {
-	return 0;
+	return;
 }
 module_init(wpa_dsm_init);
 module_exit(wpa_dsm_deinit);

@@ -40,6 +40,9 @@
 #include "himax_platform.h"
 #include <linux/regulator/consumer.h>
 #include <dsm/dsm_pub.h>
+#include <linux/ctype.h>
+#include "../../huawei_ts_kit_algo.h"
+#include "../../huawei_ts_kit.h"
 
 #if defined(CONFIG_FB)
 #include <linux/notifier.h>
@@ -126,6 +129,7 @@
 #define GEST_PT_MAX_NUM     			 128
 #define IS_APP_ENABLE_GESTURE(x)  ((u32)(1<<x))
 
+#define HIMAX_THRESHOLD_NAME_LEN		100
 
 enum himax_hand_shaking_result{
 	HX_HAND_SHAKING_RUNNING=0,
@@ -191,6 +195,11 @@ enum himax_HW_reset_eunm{
 #define	HX_REG_SET_FLASH_EN			0x43//HX_REG_SET_FLASH_EN
 #define	HX_REG_SET_FLASH_ADDR		0x44
 #define	HX_REG_SET_CLK_ADDR 		0x97
+
+#define HXXES_ADDR_SMWP	0x8F
+#define HXXES_DATA_SMWP_ON	0x20
+#define HXXES_DATA_SMWP_OFF	0x00
+
 /*
 R44:
 1st parameter:reserve reserve reserve BYTES_ADDR[4:0]
@@ -321,6 +330,7 @@ R44:
 
 #define CMDLINE_PANEL_CHOPIN_BLACK_NAME  "auo_nt51021b_8p0_1200p_video"
 #define CMDLINE_PANEL_CHOPIN_WHITE_NAME  "auo_nt51021_8p0_1200p_video"
+#define HX_IC_RAWDATA_PROC_PRINTF	"hx_ic_rawdata_proc_printf"
 #define WHITE	0xE1
 #define BLACK	0xD2
 #define TP_COLOR_SIZE   15
@@ -450,6 +460,9 @@ struct himax_ts_data {
 
 	bool firmware_updating;
 	uint32_t p2p_test_sel;
+	uint32_t threshold_associated_with_projectid;
+	uint8_t touch_switch_scene_reg;
+	unsigned int support_retry_self_test;
 };
 
 struct himax_touching_data

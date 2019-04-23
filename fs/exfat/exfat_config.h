@@ -49,10 +49,6 @@
 #define CONFIG_EXFAT_DISCARD		1	/* mount option -o discard support */
 #endif
 
-#ifndef CONFIG_EXFAT_DELAYED_SYNC
-#define CONFIG_EXFAT_DELAYED_SYNC 0
-#endif
-
 #ifndef CONFIG_EXFAT_KERNEL_DEBUG
 #define CONFIG_EXFAT_KERNEL_DEBUG	1	/* kernel debug features via ioctl */
 #endif

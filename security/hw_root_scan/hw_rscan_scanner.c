@@ -30,6 +30,45 @@ static int rs_data_init = RSCAN_UNINIT;
 int root_scan_hot_fix = 0;
 int ree_status = 0;
 
+struct item_bits itembits[MAX_NUM_OF_ITEM] = {
+	//kcode
+	{
+		RS_KCODE,
+		KERNELCODEBIT,
+		D_RSOPID_KCODE,
+	},
+	//syscall
+	{
+		RS_SYS_CALL,
+		SYSTEMCALLBIT,
+		D_RSOPID_SYS_CALL,
+	},
+	//selinux
+	{
+		RS_SE_STATUS,
+		SESTATUSBIT,
+		D_RSOPID_SE_STATUS,
+	},
+	//se_hook
+	{
+		RS_SE_HOOKS,
+		SEHOOKBIT,
+		D_RSOPID_SE_HOOKS,
+	},
+	//root_proc
+	{
+		RS_RRPOCS,
+		ROOTPROCBIT,
+		D_RSOPID_RRPOCS,
+	},
+	//set_id
+	{
+		RS_SETID,
+		SETIDBIT,
+		D_RSOPID_SETID,
+	},
+};
+
 struct rscan_skip_flags g_rscan_skip_flag = {
 	.skip_kcode = NOT_SKIP,
 	.skip_syscall = NOT_SKIP,
@@ -131,10 +170,10 @@ static void upload_to_stp(int ree_status, int tee_status, char *rootproc, unsign
 	int item_version = 0;
 	int item_credible = STP_REFERENCE;
 	int item_tee_status = 0;
-	int ret = 0;
 	int need_upload = 0;
 	int i = 0;
-
+	
+	struct stp_item_info *stp_item_info = NULL;
 	struct stp_item item;
 
 	for (i = 0; i < MAX_NUM_OF_ITEM; ++i) {
@@ -143,7 +182,7 @@ static void upload_to_stp(int ree_status, int tee_status, char *rootproc, unsign
 		need_upload = need_to_upload(mask, itembits[i].item_ree_mask, item_status, item_tee_status, flag);
 		if (need_upload != 0) {
 			item_credible = get_credible_of_item(item_status, item_tee_status);
-			if ( i == ROOT_PROCS) {
+			if ( i == ROOT_PROCS || i == SE_HOOK) {
 				/*
 				if (rootproc != NULL && strstr(rootproc, "adbd") != NULL)
 					item_credible = STP_CREDIBLE;
@@ -157,12 +196,16 @@ static void upload_to_stp(int ree_status, int tee_status, char *rootproc, unsign
 				if (item_credible == STP_REFERENCE && root_scan_hot_fix != 0)
 					item_credible = STP_CREDIBLE;
 			}
-			set_stp_item(&item, item_info[i].id, item_status, item_credible, item_version, item_info[i].name);
+			stp_item_info = get_item_info_by_idx(i);
+			if(!stp_item_info){
+				RSLogError(TAG,"idx is %d, get item info by index failed", i);
+				return;
+			}
+			set_stp_item(&item, stp_item_info->id, item_status, item_credible, item_version, stp_item_info->name);
 			if ( i == ROOT_PROCS)
 				(void)kernel_stp_upload(item, rootproc);
 			else
 				(void)kernel_stp_upload(item, NULL);
-
 		}
 	}
 
@@ -448,11 +491,11 @@ int rscan_get_status(struct rscan_status *status)
 
 int load_rproc_whitelist(char *whitelist, size_t len)
 {
+	size_t min_len = strlen(G_WHITELIST_PROC);
         if (NULL == whitelist) {
                 RSLogError(TAG, "input parameter is invalid");
                 return -EINVAL;
         }
-        size_t min_len = strlen(G_WHITELIST_PROC);
         if (min_len >= len)
         {
                 RSLogWarning(TAG, "The G_WHITELIST_PROC lenth is too long");
@@ -563,9 +606,9 @@ static int __root_scan_pause(unsigned int op_mask, void *reserved)
 
 static int __root_scan_resume(unsigned int op_mask, void *reserved)
 {
+	unsigned int resume_mask = 0;
 	VAR_NOT_USED(reserved);
 
-	unsigned int resume_mask = 0;
 #ifdef CONFIG_HW_ROOT_SCAN_ENG_DEBUG
 	r_p_flag = 0;
 #endif
@@ -587,8 +630,6 @@ static int __root_scan_resume(unsigned int op_mask, void *reserved)
 
 int root_scan_pause(unsigned int op_mask, void *reserved)
 {
-	VAR_NOT_USED(reserved);
-
 	int result = 0;
 	int scan_err_code = 0;
 	int root_status = 0;
@@ -596,6 +637,7 @@ int root_scan_pause(unsigned int op_mask, void *reserved)
 	struct rscan_result_dynamic *scan_result_buf = NULL;
 
 	struct timeval tv;
+	VAR_NOT_USED(reserved);
 
 	do_gettimeofday(&tv);
 	RSLogTrace(TAG, "pause item:%d, time:%ld:%ld", op_mask,
@@ -631,13 +673,13 @@ int root_scan_pause(unsigned int op_mask, void *reserved)
 }
 
 int root_scan_resume(unsigned int op_mask, void *reserved)
-{
+{	
+	int result = 0;
+	struct timeval tv;
+
 	VAR_NOT_USED(reserved);
 
-	int result = 0;
-
 	root_scan_hot_fix = 1;
-	struct timeval tv;
 
 	do_gettimeofday(&tv);
 	RSLogTrace(TAG, "resume item:%d, time:%ld:%ld",

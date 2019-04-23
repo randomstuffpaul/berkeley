@@ -100,6 +100,13 @@ struct need_fsck_work_struct {
 #endif
 #endif
 
+#define f2fs_restart() do { \
+	if (system_state > SYSTEM_RUNNING) \
+		WARN_ON(1); \
+	else \
+		BUG_ON(1); \
+} while (0)
+
 #ifdef CONFIG_F2FS_FAULT_INJECTION
 enum {
 	FAULT_KMALLOC,
@@ -665,6 +672,9 @@ enum {
 					 */
 };
 
+/* maximum retry quota flush count */
+#define DEFAULT_RETRY_QUOTA_FLUSH_COUNT		4
+
 #define F2FS_LINK_MAX	0xffffffff	/* maximum link count per file */
 
 #define MAX_DIR_RA_PAGES	4	/* maximum ra pages of dir */
@@ -718,6 +728,7 @@ struct extent_tree {
 	struct list_head list;		/* to be used by sbi->zombie_list */
 	rwlock_t lock;			/* protect extent info rb-tree */
 	atomic_t node_cnt;		/* # of extent node in rb-tree*/
+	bool largest_updated;		/* largest extent updated */
 };
 
 /*
@@ -744,6 +755,7 @@ enum {
 	F2FS_GET_BLOCK_DEFAULT,
 	F2FS_GET_BLOCK_FIEMAP,
 	F2FS_GET_BLOCK_BMAP,
+	F2FS_GET_BLOCK_DIO,
 	F2FS_GET_BLOCK_PRE_DIO,
 	F2FS_GET_BLOCK_PRE_AIO,
 };
@@ -897,12 +909,12 @@ static inline bool __is_front_mergeable(struct extent_info *cur,
 }
 
 extern void f2fs_mark_inode_dirty_sync(struct inode *inode, bool sync);
-static inline void __try_update_largest_extent(struct inode *inode,
-			struct extent_tree *et, struct extent_node *en)
+static inline void __try_update_largest_extent(struct extent_tree *et,
+						struct extent_node *en)
 {
 	if (en->ei.len > et->largest.len) {
 		et->largest = en->ei;
-		f2fs_mark_inode_dirty_sync(inode, true);
+		et->largest_updated = true;
 	}
 }
 
@@ -1275,6 +1287,10 @@ enum {
 	SBI_POR_DOING,				/* recovery is doing or not */
 	SBI_NEED_SB_WRITE,			/* need to recover superblock */
 	SBI_NEED_CP,				/* need to checkpoint */
+	SBI_IS_RECOVERED,			/* recovered orphan/data */
+	SBI_QUOTA_NEED_FLUSH,			/* need to flush quota info in CP */
+	SBI_QUOTA_SKIP_FLUSH,			/* skip flusing quota in current CP */
+	SBI_QUOTA_NEED_REPAIR,			/* quota file may be corrupted */
 };
 
 enum {
@@ -1316,6 +1332,13 @@ struct f2fs_hot_cold_params {
 	unsigned int warm_node_lower_limit;
 	unsigned int warm_node_waterline;
 };
+
+enum gc_test_type {
+	GC_TEST_DISABLE_IO_AWARE,
+	GC_TEST_DISABLE_SYNCFS,
+	GC_TEST_DISABLE_FRAG_URGENT,
+};
+#define is_gc_test_set(sbi, type) ((sbi)->gc_test_cond & (1 << (type)))
 
 struct f2fs_sb_info {
 	struct super_block *sb;			/* pointer to VFS super block */
@@ -1403,6 +1426,7 @@ struct f2fs_sb_info {
 	int active_logs;			/* # of active logs */
 	int dir_level;				/* directory level */
 	int readdir_ra;				/* readahead in readdir */
+	unsigned int gc_test_cond;		/* condition for gc test */
 	int inline_xattr_size;			/* inline xattr size */
 	unsigned int trigger_ssr_threshold;	/* threshold to trigger ssr */
 
@@ -1954,65 +1978,45 @@ static inline bool __exist_node_summaries(struct f2fs_sb_info *sbi)
 }
 
 /*
- * Check whether the given nid is within node id range.
- */
-static inline int check_nid_range(struct f2fs_sb_info *sbi, nid_t nid)
-{
-	if (unlikely(nid < F2FS_ROOT_INO(sbi)))
-		return -EINVAL;
-	if (unlikely(nid >= NM_I(sbi)->max_nid))
-		return -EINVAL;
-	return 0;
-}
-
-/*
  * Handling some dquot errors caused by quota file inconsistency
  */
 static inline int f2fs_dquot_initialize(struct inode *inode)
 {
-	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
 	int err = dquot_initialize(inode);
 
-	if (err == -EIO) {
+	if (err == -EDQUOT || err == -EIO || err == -ENOSPC)
 		err = 0;
-		set_sbi_flag(sbi, SBI_NEED_FSCK);
-	}
+
 	return err;
 }
 
 static inline int f2fs_dquot_transfer(struct inode *inode, struct iattr *iattr)
 {
-	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
 	int err = dquot_transfer(inode, iattr);
 
-	if (err == -EIO) {
+	if (err == -EDQUOT || err == -EIO || err == -ENOSPC)
 		err = 0;
-		set_sbi_flag(sbi, SBI_NEED_FSCK);
-	}
+
 	return err;
 }
 
 static inline int f2fs_dquot_alloc_inode(struct inode *inode)
 {
-	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
 	int err = dquot_alloc_inode(inode);
 
-	if (err == -EIO) {
+	if (err == -EDQUOT || err == -EIO || err == -ENOSPC)
 		err = 0;
-		set_sbi_flag(sbi, SBI_NEED_FSCK);
-	}
+
 	return err;
 }
 
 static inline int f2fs_dquot_reserve_block(struct inode *inode, qsize_t count)
 {
-	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
 	int err = dquot_reserve_block(inode, count);
 
-	if (err == -EIO) {
+	if (err == -EDQUOT || err == -EIO || err == -ENOSPC)
 		err = 0;
-		set_sbi_flag(sbi, SBI_NEED_FSCK);
-	}
+
 	return err;
 }
 
@@ -2204,12 +2208,18 @@ static inline int inc_valid_node_count(struct f2fs_sb_info *sbi,
 {
 	block_t	valid_block_count;
 	unsigned int valid_node_count;
-	bool quota = inode && !is_inode;
+	int err;
 
-	if (quota) {
-		int ret = f2fs_dquot_reserve_block(inode, 1);
-		if (ret)
-			return ret;
+	if (is_inode) {
+		if (inode) {
+			err = f2fs_dquot_alloc_inode(inode);
+			if (err)
+				return err;
+		}
+	} else {
+		err = f2fs_dquot_reserve_block(inode, 1);
+		if (err)
+			return err;
 	}
 
 #ifdef CONFIG_F2FS_FAULT_INJECTION
@@ -2253,8 +2263,12 @@ static inline int inc_valid_node_count(struct f2fs_sb_info *sbi,
 	return 0;
 
 enospc:
-	if (quota)
+	if (is_inode) {
+		if (inode)
+			dquot_free_inode(inode);
+	} else {
 		dquot_release_reservation_block(inode, 1);
+	}
 	return -ENOSPC;
 }
 
@@ -2275,7 +2289,9 @@ static inline void dec_valid_node_count(struct f2fs_sb_info *sbi,
 
 	spin_unlock(&sbi->stat_lock);
 
-	if (!is_inode)
+	if (is_inode)
+		dquot_free_inode(inode);
+	else
 		f2fs_i_blocks_write(inode, 1, false, true);
 }
 
@@ -3090,7 +3106,7 @@ static inline block_t device_free_space_threshold(struct f2fs_sb_info *sbi)
  */
 int f2fs_sync_file(struct file *file, loff_t start, loff_t end, int datasync);
 void truncate_data_blocks(struct dnode_of_data *dn);
-int truncate_blocks(struct inode *inode, u64 from, bool lock);
+int truncate_blocks(struct inode *inode, u64 from, bool lock, bool buf_write);
 int f2fs_truncate(struct inode *inode);
 int f2fs_getattr(struct vfsmount *mnt, struct dentry *dentry,
 			struct kstat *stat);
@@ -3178,13 +3194,13 @@ static inline int f2fs_add_link(struct dentry *dentry, struct inode *inode)
 int f2fs_inode_dirtied(struct inode *inode, bool sync);
 void f2fs_inode_synced(struct inode *inode);
 int f2fs_enable_quota_files(struct f2fs_sb_info *sbi, bool rdonly);
+int f2fs_quota_sync(struct super_block *sb, int type);
 void f2fs_quota_off_umount(struct super_block *sb);
 int f2fs_commit_super(struct f2fs_sb_info *sbi, bool recover);
 int f2fs_sync_fs(struct super_block *sb, int sync);
 extern __printf(3, 4)
 void f2fs_msg(struct super_block *sb, const char *level, const char *fmt, ...);
 int sanity_check_ckpt(struct f2fs_sb_info *sbi);
-extern void f2fs_add_restart_wq(void);
 
 /*
  * hash.c
@@ -3198,6 +3214,7 @@ f2fs_hash_t f2fs_dentry_hash(const struct qstr *name_info,
 struct dnode_of_data;
 struct node_info;
 
+int check_nid_range(struct f2fs_sb_info *sbi, nid_t nid);
 bool available_free_memory(struct f2fs_sb_info *sbi, int type);
 int need_dentry_mark(struct f2fs_sb_info *sbi, nid_t nid);
 bool is_checkpointed_node(struct f2fs_sb_info *sbi, nid_t nid);
@@ -3303,7 +3320,9 @@ int allocate_data_block(struct f2fs_sb_info *sbi, struct page *page,
 			int contig_level);
 void f2fs_wait_on_page_writeback(struct page *page,
 			enum page_type type, bool ordered);
-void f2fs_wait_on_block_writeback(struct f2fs_sb_info *sbi, block_t blkaddr);
+void f2fs_wait_on_block_writeback(struct inode *inode, block_t blkaddr);
+void f2fs_wait_on_block_writeback_range(struct inode *inode, block_t blkaddr,
+								block_t len);
 void init_virtual_curseg(struct f2fs_sb_info *sbi);
 void write_data_summaries(struct f2fs_sb_info *sbi, block_t start_blk);
 void write_node_summaries(struct f2fs_sb_info *sbi, block_t start_blk);
@@ -3385,6 +3404,7 @@ struct page *get_lock_data_page(struct inode *inode, pgoff_t index,
 struct page *get_new_data_page(struct inode *inode,
 			struct page *ipage, pgoff_t index, bool new_i_size);
 int do_write_data_page(struct f2fs_io_info *fio);
+void __do_map_lock(struct f2fs_sb_info *sbi, int flag, bool lock);
 int f2fs_map_blocks(struct inode *inode, struct f2fs_map_blocks *map,
 			int create, int flag);
 int f2fs_fiemap(struct inode *inode, struct fiemap_extent_info *fieinfo,
@@ -3948,6 +3968,19 @@ static inline int f2fs_sb_has_quota_ino(struct super_block *sb)
 static inline int f2fs_sb_has_inode_crtime(struct super_block *sb)
 {
 	return F2FS_HAS_FEATURE(sb, F2FS_FEATURE_INODE_CRTIME);
+}
+
+static inline bool is_journalled_quota(struct f2fs_sb_info *sbi)
+{
+#ifdef CONFIG_QUOTA
+	if (f2fs_sb_has_quota_ino(sbi->sb))
+		return true;
+	if (sbi->s_qf_names[USRQUOTA] ||
+		sbi->s_qf_names[GRPQUOTA] ||
+		sbi->s_qf_names[PRJQUOTA])
+		return true;
+#endif
+	return false;
 }
 
 #ifdef CONFIG_BLK_DEV_ZONED

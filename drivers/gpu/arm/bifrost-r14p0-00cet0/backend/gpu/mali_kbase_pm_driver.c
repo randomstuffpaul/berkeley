@@ -196,7 +196,7 @@ static void kbase_pm_invoke(struct kbase_device *kbdev,
 			state |= cores;
 		else if (action == ACTION_PWROFF)
 			state &= ~cores;
-		KBASE_TLSTREAM_AUX_PM_STATE(core_type, state);
+		KBASE_TLSTREAM_AUX_PM_STATE(core_type, state);//lint !e648
 	}
 
 	/* Tracing */
@@ -611,7 +611,7 @@ u64 kbase_pm_core_stack_mask(u64 cores)
 	return stack_mask;
 }
 #endif /* CONFIG_MALI_CORESTACK */
-
+/*lint -e648*/
 bool
 MOCKABLE(kbase_pm_check_transitions_nolock) (struct kbase_device *kbdev)
 {
@@ -701,7 +701,7 @@ MOCKABLE(kbase_pm_check_transitions_nolock) (struct kbase_device *kbdev)
 	in_desired_state &= kbase_pm_transition_core_type(kbdev,
 			KBASE_PM_CORE_L2, desired_l2_state, l2_inuse_bitmap,
 			&l2_available_bitmap,
-			&kbdev->pm.backend.powering_on_l2_state);
+			&kbdev->pm.backend.powering_on_l2_state);//lint !e514
 
 	if(kbdev->as_stuck_hard_reset) {
 		dev_err(kbdev->dev, "in_desired_state = %d, desired_l2_state = %016llx, l2_inuse_bitmap=%016llx \n",in_desired_state,desired_l2_state,l2_inuse_bitmap);
@@ -728,12 +728,12 @@ MOCKABLE(kbase_pm_check_transitions_nolock) (struct kbase_device *kbdev)
 				KBASE_PM_CORE_TILER,
 				kbdev->pm.backend.desired_tiler_state,
 				0, &tiler_available_bitmap,
-				&kbdev->pm.backend.powering_on_tiler_state);
+				&kbdev->pm.backend.powering_on_tiler_state);//lint !e514
 		in_desired_state &= kbase_pm_transition_core_type(kbdev,
 				KBASE_PM_CORE_SHADER,
 				kbdev->pm.backend.desired_shader_state,
 				0, &shader_available_bitmap,
-				&kbdev->pm.backend.powering_on_shader_state);
+				&kbdev->pm.backend.powering_on_shader_state);//lint !e514
 
 		if (kbdev->shader_available_bitmap != shader_available_bitmap) {
 			KBASE_TRACE_ADD(kbdev, PM_CORES_CHANGE_AVAILABLE, NULL,
@@ -826,7 +826,6 @@ MOCKABLE(kbase_pm_check_transitions_nolock) (struct kbase_device *kbdev)
 							KBASE_PM_CORE_STACK));
 #endif /* CONFIG_MALI_CORESTACK */
 #endif
-
 		KBASE_TLSTREAM_AUX_PM_STATE(
 				KBASE_PM_CORE_L2,
 				kbase_pm_get_ready_cores(
@@ -889,6 +888,7 @@ MOCKABLE(kbase_pm_check_transitions_nolock) (struct kbase_device *kbdev)
 
 	return cores_are_available;
 }
+/*lint +e648*/
 KBASE_EXPORT_TEST_API(kbase_pm_check_transitions_nolock);
 
 static void kbase_jd_atoms_show(struct kbase_device *kbdev)
@@ -914,8 +914,9 @@ static void kbase_jd_atoms_show(struct kbase_device *kbdev)
 			/* start_timestamp is cleared as soon as the atom leaves UNUSED state
 			 * and set before a job is submitted to the h/w, a non-zero value means
 			 * it is valid */
-			if (ktime_to_ns(atom->start_timestamp))
-				start_timestamp = ktime_to_ns(ktime_sub(ktime_get(), atom->start_timestamp));
+
+			if (ktime_to_ns(atom->start_timestamp))//lint !e446
+				start_timestamp = ktime_to_ns(ktime_sub(ktime_get(), atom->start_timestamp));//lint !e446
 
 			dev_warn(kbdev->dev, "%i,(protected)%u,%u,(status)%u,(rb_state)%u,%u,(atom_flags)%u, (core_req)%u,%u %u,%lli\n",
 				i, kbase_jd_katom_is_protected(atom), atom->core_req, atom->status, atom->gpu_rb_state, atom->coreref_state,
@@ -1570,7 +1571,7 @@ static int kbase_pm_do_reset(struct kbase_device *kbdev)
 	else {
 	KBASE_TRACE_ADD(kbdev, CORE_GPU_SOFT_RESET, NULL, NULL, 0u, 0);
 
-	KBASE_TLSTREAM_JD_GPU_SOFT_RESET(kbdev);
+	KBASE_TLSTREAM_JD_GPU_SOFT_RESET(kbdev);//lint !e648
 
 	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_COMMAND),
 						GPU_COMMAND_SOFT_RESET);
@@ -1683,7 +1684,7 @@ static int kbase_pm_do_reset(struct kbase_device *kbdev)
 #ifdef CONFIG_HISI_ENABLE_HPM_DATA_COLLECT
 		/*benchmark data collect */
 		if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0009)) {
-			BUG_ON(1); //lint !e730
+			BUG_ON(1);//lint !e730
 		}
 #endif
 	}

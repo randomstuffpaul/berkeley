@@ -426,7 +426,7 @@ static void fsa9685_intb_work(struct work_struct *work)
                 hwlog_info("%s: FSA9685_DEVICE_TYPE2_UNAVAILABLE_DETECTED\n", __func__);
             }
             if (reg_dev_type3 & FSA9685_CUSTOMER_ACCESSORY7) {
-                fsa9685_manual_sw(FSA9685_USB1_ID_TO_IDBYPASS);
+                usbswitch_common_manual_sw(FSA9685_USB1_ID_TO_IDBYPASS);
                 hwlog_info("%s:Enter FSA9685_CUSTOMER_ACCESSORY7\n", __func__);
             }
             if (reg_dev_type3 & FSA9685_CUSTOMER_ACCESSORY5) {
@@ -435,12 +435,12 @@ static void fsa9685_intb_work(struct work_struct *work)
             }
             if (reg_dev_type3 & FSA9685_FM8_ACCESSORY) {
                 hwlog_info("%s: FSA9685_FM8_DETECTED\n", __func__);
-                fsa9685_manual_sw(FSA9685_USB1_ID_TO_IDBYPASS);
+                usbswitch_common_manual_sw(FSA9685_USB1_ID_TO_IDBYPASS);
             }
             if (reg_dev_type3 & FSA9685_DEVICE_TYPE3_UNAVAILABLE) {
                 id_valid_status = ID_INVALID;
                 if (reg_intrpt & FSA9685_VBUS_CHANGE) {
-                    fsa9685_manual_sw(FSA9685_USB1_ID_TO_IDBYPASS);
+                    usbswitch_common_manual_sw(FSA9685_USB1_ID_TO_IDBYPASS);
                 }
                 hwlog_info("%s: FSA9685_DEVICE_TYPE3_UNAVAILABLE_DETECTED\n", __func__);
             }
@@ -449,7 +449,7 @@ static void fsa9685_intb_work(struct work_struct *work)
         if (reg_intrpt & FSA9685_RESERVED_ATTACH) {
             id_valid_status = ID_INVALID;
             if (reg_intrpt & FSA9685_VBUS_CHANGE) {
-                fsa9685_manual_sw(FSA9685_USB1_ID_TO_IDBYPASS);
+                usbswitch_common_manual_sw(FSA9685_USB1_ID_TO_IDBYPASS);
             }
             hwlog_info("%s: FSA9685_RESERVED_ATTACH\n", __func__);
         }
@@ -593,14 +593,14 @@ static ssize_t jigpin_ctrl_store(struct device *dev,
             hwlog_info("%s:pull down jig pin to default state\n", __func__);
             if (FSA9683_I2C_ADDR == switch_fsa9685_data.cfg.i2c_address) {
                 ret = fsa9685_write_reg_mask(FSA9685_REG_MANUAL_SW_2,
-                            FSA9683_REG_JIG_DEFAULT_DOWN, REG_JIG_MASK);
+                            FSA9683_REG_JIG_DEFAULT_DOWN, FSA9685_REG_JIG_MASK);
                 if (ret < 0) {
                     hwlog_err("%s:write FSA9685_REG_MANUAL_SW_2 error!\n",__func__);
                     break;
                 }
             } else {
                 ret = fsa9685_write_reg_mask(FSA9685_REG_MANUAL_SW_2,
-                            REG_JIG_DEFAULT_DOWN, REG_JIG_MASK);
+                            FSA9685_REG_JIG_DEFAULT_DOWN, FSA9685_REG_JIG_MASK);
                 if (ret < 0) {
                     hwlog_err("%s:write FSA9685_REG_MANUAL_SW_2 error!\n",__func__);
                     break;
@@ -611,13 +611,13 @@ static ssize_t jigpin_ctrl_store(struct device *dev,
             hwlog_info("%s:pull up jig pin to cut battery\n", __func__);
             if(FSA9683_I2C_ADDR == switch_fsa9685_data.cfg.i2c_address){
                 ret = fsa9685_write_reg_mask(FSA9685_REG_MANUAL_SW_2,
-                            FSA9683_REG_JIG_UP, REG_JIG_MASK);
+                            FSA9683_REG_JIG_UP, FSA9685_REG_JIG_MASK);
                 if (ret < 0) {
                     hwlog_err("%s:write FSA9685_REG_MANUAL_SW_2 error!\n",__func__);
                 }
             }else {
                 ret = fsa9685_write_reg_mask(FSA9685_REG_MANUAL_SW_2,
-                            REG_JIG_UP, REG_JIG_MASK);
+                            FSA9685_REG_JIG_UP, FSA9685_REG_JIG_MASK);
                 if (ret < 0) {
                     hwlog_err("%s:write FSA9685_REG_MANUAL_SW_2 error!\n",__func__);
                 }
@@ -655,11 +655,11 @@ static ssize_t switchctrl_store(struct device *dev,
     switch (action) {
         case MANUAL_DETACH:
             hwlog_info("%s:manual_detach\n", __func__);
-            fsa9685_manual_detach();
+            usbswitch_common_manual_detach();
             break;
         case MANUAL_SWITCH:
             hwlog_info("%s:manual_switch\n", __func__);
-            fsa9685_manual_sw(FSA9685_USB1_ID_TO_VBAT);
+            usbswitch_common_manual_sw(FSA9685_USB1_ID_TO_VBAT);
             break;
         default:
             hwlog_err("%s:Wrong input action!\n", __func__);
@@ -922,9 +922,15 @@ struct fcp_adapter_device_ops sh_fcp_fsa9688_ops = {
 	.is_support_fcp = is_sh_support_fcp,
 };
 
-static struct switch_extra_ops huawei_switch_extra_ops = {
+static int fsa9685_dcd_timeout_status(void)
+{
+	return 0;
+}
+
+static struct usbswitch_common_ops huawei_switch_extra_ops = {
 	.manual_switch = fsa9685_manual_switch,
 	.dcd_timeout_enable = fsa9685_dcd_timeout,
+	.dcd_timeout_status = fsa9685_dcd_timeout_status,
 	.manual_detach = fsa9685_manual_detach_work,
 };
 
@@ -992,7 +998,7 @@ static int fsa9685_probe(struct platform_device *pdev)
     /* interrupt register */
     INIT_WORK(&g_intb_work_sh, fsa9685_intb_work);
 
-    ret = switch_extra_ops_register(&huawei_switch_extra_ops);
+    ret = usbswitch_common_ops_register(&huawei_switch_extra_ops);
     if (ret) {
     	hwlog_err("register extra switch ops failed!\n");
     }

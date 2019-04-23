@@ -139,7 +139,7 @@ extern "C" {
 #define IS_UEPS_PID_GAS(x)              ((I0_UEPS_PID_GAS == x)    || (I1_UEPS_PID_GAS == x) || (I2_UEPS_PID_GAS == x))
 #define IS_UEPS_PID_GPHY(x)             ((I0_DSP_PID_GPHY == x)    || (I1_DSP_PID_GPHY == x) || (I2_DSP_PID_GPHY == x))
 #define IS_UEPS_PID_WPHY(x)             ((I0_DSP_PID_WPHY == x)    || (I1_DSP_PID_WPHY == x))
-#define IS_WUEPS_PID_WAS(x)             ((WUEPS_PID_WRR == x)      || (WUEPS_PID_WCOM == x))
+#define IS_WUEPS_PID_WAS(x)             ((I0_WUEPS_PID_WRR == x)   || (I1_WUEPS_PID_WRR == x) || (I0_WUEPS_PID_WCOM == x) || (I1_WUEPS_PID_WCOM == x))
 
 /*****************************************************************************
   3 Ã¶¾Ù¶¨Òå

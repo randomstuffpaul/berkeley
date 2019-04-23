@@ -7,4 +7,7 @@ config HW_WIFIPRO_PROC
 	depends on HW_WIFIPRO
 	default n
 
+config WIFI_DELAY_STATISTIC
+	bool "wifi delay statistic"
+	default n
 

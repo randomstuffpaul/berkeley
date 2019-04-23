@@ -8,7 +8,7 @@ extern "C" {
 #define MAX_FDLEAK_PID_NUM         5
 #define MAX_PROBE_COUNT            3
 #define MAX_STACK_TRACE_COUNT    20
-#define MAX_STACK_TRACE_DEPTH    64
+#define FDLEAK_MAX_STACK_TRACE_DEPTH    64
 #define MAX_FDLEAK_WP_NAME_LEN     256
 
 typedef enum {
@@ -47,7 +47,7 @@ typedef struct {
 }fdleak_op;
 
 typedef struct{
-    unsigned long long stack[MAX_STACK_TRACE_DEPTH];
+    unsigned long long stack[FDLEAK_MAX_STACK_TRACE_DEPTH];
 }stack_item;
 
 typedef struct {

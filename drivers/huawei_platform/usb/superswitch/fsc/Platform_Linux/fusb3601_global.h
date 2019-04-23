@@ -3,7 +3,7 @@
 */
 
 #ifndef FUSB3601_GLOBAL_H_
-#define FUSB3601_GLOBAL_H
+#define FUSB3601_GLOBAL_H_
 
 #include <linux/i2c.h>                      /* i2c_client, spinlock_t */
 #include <linux/hrtimer.h>                  /* hrtimer */

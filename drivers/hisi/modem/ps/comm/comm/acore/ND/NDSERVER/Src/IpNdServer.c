@@ -1515,6 +1515,12 @@ VOS_UINT32 NdSer_CheckIpv6PdnInfo(AT_NDIS_IPV6_PDN_INFO_STRU *pstIpv6PdnInfo)
     VOS_UINT32                          ulIndex       = IP_NULL;
     ND_IP_IPV6_PREFIX_STRU             *pstIpv6Prefix = IP_NULL_PTR;
 
+    if (AT_NDIS_MAX_PREFIX_NUM_IN_RA <= pstIpv6PdnInfo->ulPrefixNum)
+    {
+        IPND_ERROR_LOG1(NDIS_NDSERVER_PID, "NdSer_CheckIpv6PdnInfo: Invalid IPV6 PrefixNum!", pstIpv6PdnInfo->ulPrefixNum);
+        return IP_FAIL;
+    }
+
     /* 遍历前缀列表，查找A标识为1，前缀长度为64的前缀 */
     for (ulIndex = IP_NULL; ulIndex < pstIpv6PdnInfo->ulPrefixNum; ulIndex++)
     {
@@ -2714,8 +2720,8 @@ VOS_UINT32  IP_NDSERVER_SendDhcp6Reply
     NDIS_IP6_HDR_STRU                  *pstDhcpReplyIpv6Hdr;
     UDP_HEAD_ST                        *pstDhcpReplyUdpHdr;
     IPV6_DHCP_DNS_OPTION_STRU           stIpv6DhcpDnsOpt;
-    IPV6_PKT_DHCP_OPT_HDR_STRU         *pstDhcpClientIdOpt;
-    IPV6_PKT_DHCP_OPT_HDR_STRU         *pstDhcpRequestOpt;
+    IPV6_PKT_DHCP_OPT_HDR_STRU         *pstDhcpClientIdOpt = VOS_NULL_PTR;
+    IPV6_PKT_DHCP_OPT_HDR_STRU         *pstDhcpRequestOpt = VOS_NULL_PTR;
     IPV6_PKT_DHCP_DUID_LL_OPT_STRU      stDhcpDuidLLOpt;
     VOS_UINT8                          *pDhcpReplyDhcpHdrOffset;/* 移动指针 */
     VOS_UINT16                          usReplyUdpDataLen;
@@ -2883,6 +2889,11 @@ VOS_UINT32  IP_NDSERVER_SendDhcp6Reply
     ulTmpDestLen = IP_IPM_MTU - IP_ETHERNET_HEAD_LEN - sizeof(NDIS_IP6_HDR_STRU) - sizeof(UDP_HEAD_ST) - IP_IPV6_DHCP6_REPLY_HDR_LEN - IP_IPV6_DHCP_DUID_LL_OPT_LEN;
     if ( VOS_NULL_PTR != pstDhcpClientIdOpt )
     {
+        if(((VOS_UINT32)(VOS_NTOHS(pstDhcpClientIdOpt->usDhcpOptLen) + 4)) > ulTmpDestLen)
+        {
+            IPND_ERROR_LOG(NDIS_NDSERVER_PID, "IP_NDSERVER_SendDhcp6Reply, DHCP CLient ID option is err!");
+            return PS_FAIL;
+        }
         IP_MEM_CPY_S(pDhcpReplyDhcpHdrOffset,
                      ulTmpDestLen,
                      (VOS_UINT8 *)pstDhcpClientIdOpt,
@@ -3529,7 +3540,7 @@ VOS_VOID  IP_NDSERVER_ShowAddrInfo( VOS_UINT32 ulIndex )
     vos_printf("TE地址状态: %d\r\n",pstInfoAddr->stTeAddrInfo.enTeAddrState);
 
     vos_printf("************定时器状态************\r\n");
-    vos_printf("系统定时器地址: %p\r\n",pstInfoAddr->stTimerInfo.hTm);
+    /*vos_printf("系统定时器地址: %p\r\n",pstInfoAddr->stTimerInfo.hTm);*/
     vos_printf("定时器类型: %d\r\n",pstInfoAddr->stTimerInfo.ulName);
     vos_printf("定时器超时次数: %d\r\n",pstInfoAddr->stTimerInfo.ucLoopTimes);
     vos_printf("周期性路由公告时间计数: %d\r\n",g_aulPeriodicRaTimeCnt[ulIndex]);

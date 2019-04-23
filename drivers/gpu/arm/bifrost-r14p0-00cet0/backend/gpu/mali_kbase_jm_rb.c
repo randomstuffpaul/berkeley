@@ -119,7 +119,7 @@ struct kbase_jd_atom *kbase_gpu_inspect(struct kbase_device *kbdev, int js,
 	if ((SLOT_RB_ENTRIES(rb) - 1) < idx)
 		return NULL; /* idx out of range */
 
-	return rb->entries[(rb->read_idx + idx) & SLOT_RB_MASK].katom;
+	return rb->entries[(rb->read_idx + idx) & SLOT_RB_MASK].katom;//lint !e571
 }
 
 struct kbase_jd_atom *kbase_backend_inspect_head(struct kbase_device *kbdev,
@@ -435,7 +435,8 @@ static void kbasep_js_job_check_deref_cores_nokatom(struct kbase_device *kbdev,
 		break;
 	}
 }
-
+/*lint -e648*/
+/*lint -e616*/
 static void kbase_gpu_release_atom(struct kbase_device *kbdev,
 					struct kbase_jd_atom *katom,
 					ktime_t *end_timestamp)
@@ -466,7 +467,6 @@ static void kbase_gpu_release_atom(struct kbase_device *kbdev,
 		KBASE_TLSTREAM_TL_NRET_CTX_LPU(kctx,
 			&kbdev->gpu_props.props.raw_props.js_features
 				[katom->slot_nr]);
-
 	case KBASE_ATOM_GPU_RB_READY:
 		/* ***FALLTHROUGH: TRANSITION TO LOWER STATE*** */
 
@@ -517,7 +517,8 @@ static void kbase_gpu_release_atom(struct kbase_device *kbdev,
 	katom->gpu_rb_state = KBASE_ATOM_GPU_RB_WAITING_BLOCKED;
 	katom->protected_state.exit = KBASE_ATOM_EXIT_PROTECTED_CHECK;
 }
-
+/*lint +e616*/
+/*lint +e648*/
 static void kbase_gpu_mark_atom_for_return(struct kbase_device *kbdev,
 						struct kbase_jd_atom *katom)
 {
@@ -1137,7 +1138,7 @@ void kbase_backend_run_atom(struct kbase_device *kbdev,
 
 #define HAS_DEP(katom) (katom->pre_dep || katom->atom_flags & \
 	(KBASE_KATOM_FLAG_X_DEP_BLOCKED | KBASE_KATOM_FLAG_FAIL_BLOCKER))
-
+/*lint -e648*/
 bool kbase_gpu_irq_evict(struct kbase_device *kbdev, int js,
 				u32 completion_code)
 {
@@ -1176,7 +1177,7 @@ bool kbase_gpu_irq_evict(struct kbase_device *kbdev, int js,
 
 	return false;
 }
-
+/*lint +e648*/
 void kbase_gpu_complete_hw(struct kbase_device *kbdev, int js,
 				u32 completion_code,
 				u64 job_tail,
@@ -1257,7 +1258,7 @@ void kbase_gpu_complete_hw(struct kbase_device *kbdev, int js,
 #ifdef CONFIG_HISI_ENABLE_HPM_DATA_COLLECT
 				/*benchmark data collect */
 				if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0009)) {
-					BUG_ON(1);  //lint !e730
+					BUG_ON(1);//lint !e730
 				}
 #endif
 		}
@@ -1515,7 +1516,7 @@ static void kbase_job_evicted(struct kbase_jd_atom *katom)
 	kbase_timeline_job_slot_done(katom->kctx->kbdev, katom->kctx, katom,
 			katom->slot_nr, KBASE_JS_ATOM_DONE_EVICTED_FROM_NEXT);
 }
-
+/*lint -e613*/
 bool kbase_backend_soft_hard_stop_slot(struct kbase_device *kbdev,
 					struct kbase_context *kctx,
 					int js,
@@ -1717,7 +1718,7 @@ bool kbase_backend_soft_hard_stop_slot(struct kbase_device *kbdev,
 
 	return ret;
 }
-
+/*lint +e613*/
 void kbase_gpu_cacheclean(struct kbase_device *kbdev)
 {
 	/* Limit the number of loops to avoid a hang if the interrupt is missed

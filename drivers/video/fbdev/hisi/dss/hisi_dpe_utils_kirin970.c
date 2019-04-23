@@ -417,7 +417,7 @@ int dpe_set_clk_rate(struct platform_device *pdev)
 #define PERI_VOLTAGE_LEVEL0_065V		(0) // 0.65v
 #define PERI_VOLTAGE_LEVEL1_075V		(2) // 0.75v
 #define PERI_VOLTAGE_LEVEL2_080V		(3) // 0.80v
-int dpe_get_voltage_value(struct hisi_fb_data_type *hisifd, dss_vote_cmd_t *vote_cmd)
+int dpe_get_voltage_value(dss_vote_cmd_t *vote_cmd)
 {
 	if (!vote_cmd) {
 		HISI_FB_ERR("vote_cmd is null\n");
@@ -437,7 +437,7 @@ int dpe_get_voltage_value(struct hisi_fb_data_type *hisifd, dss_vote_cmd_t *vote
 	}
 }
 
-int dpe_get_voltage_level(struct hisi_fb_data_type *hisifd, int votage_value)
+int dpe_get_voltage_level(int votage_value)
 {
 	switch (votage_value) {
 		case PERI_VOLTAGE_LEVEL0_065V: // 0.65v

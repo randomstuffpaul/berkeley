@@ -57,8 +57,6 @@
 /*lcd panel version*/
 #define VERSION_VALUE_NUM_MAX 10
 #define VERSION_NUM_MAX 10
-/*gamma max len, store tpic*/
-#define GAMMA_MAX	146
 
 /*enum*/
 enum {
@@ -179,6 +177,7 @@ struct lcd_kit_ldo_check {
 
 struct lcd_kit_project_id {
 	u32 support;
+	char* default_project_id;
 	char id[LCD_DDIC_INFO_LEN];
 	struct lcd_kit_dsi_panel_cmds cmds;
 };
@@ -254,13 +253,6 @@ struct lcd_kit_quickly_sleep_out {
 	struct timeval panel_on_record_tv;
 };
 
-struct lcd_kit_otp_gamma {
-	u32 support;
-	u8 gamma[GAMMA_MAX + 1];
-	struct lcd_kit_dsi_panel_cmds elvss_cmds;
-	struct lcd_kit_dsi_panel_cmds gamma_cmds;
-};
-
 /*function declare*/
 extern int mipi_dsi_ulps_cfg(struct hisi_fb_data_type *hisifd, int enable);
 struct hisi_fb_data_type* dev_get_hisifd(struct device* dev);
@@ -301,5 +293,4 @@ void lcd_kit_set_mipi_tx_link(struct hisi_fb_data_type *hisifd, struct lcd_kit_d
 void lcd_kit_set_mipi_rx_link(struct hisi_fb_data_type *hisifd, struct lcd_kit_dsi_panel_cmds* cmds);
 void lcd_kit_set_mipi_clk(struct hisi_fb_data_type* hisifd, uint32_t clk);
 int lcd_kit_get_value_from_dts(char *compatible, char *dts_name, u32 *value);
-int lcd_kit_write_otp_gamma(u8 *buf);
 #endif

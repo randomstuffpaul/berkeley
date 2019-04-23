@@ -70,7 +70,3 @@
 #include <bsp_nvim.h>
 #include "securec.h"
 
-void dump_save_rfdsp_tcm(char* dst_path)
-{
-}
-

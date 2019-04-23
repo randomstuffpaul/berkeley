@@ -178,6 +178,7 @@ extern void hisi_blk_latency_writeback_bio(struct request *req, struct bio *bio)
 
 extern void hisi_blk_queue_async_flush_init(struct request_queue *q);
 extern bool hisi_blk_flush_sync_dispatch(struct request_queue *q, struct bio *bio);
+extern void hisi_blk_flush_update(struct request *req, int error);
 
 extern void hisi_blk_dump_register_queue(struct request_queue *q);
 extern void hisi_blk_dump_unregister_queue(struct request_queue *q);
@@ -210,6 +211,7 @@ extern ssize_t hisi_queue_busy_idle_multi_nb_tst_enable_store(struct request_que
 extern ssize_t hisi_queue_busy_idle_tst_proc_result_simulate_store(struct request_queue *q, const char *page, size_t count);
 extern ssize_t hisi_queue_busy_idle_tst_proc_latency_simulate_store(struct request_queue *q, const char *page, size_t count);
 extern ssize_t hisi_queue_apd_tst_enable_store(struct request_queue *q, const char *page, size_t count);
+extern ssize_t hisi_queue_suspend_tst_store(struct request_queue *q, const char *page, size_t count);
 #endif
 extern ssize_t queue_var_store(unsigned long *var, const char *page, size_t count);
 #endif

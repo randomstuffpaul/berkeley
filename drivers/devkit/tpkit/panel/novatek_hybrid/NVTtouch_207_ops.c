@@ -233,6 +233,7 @@ return:
 *******************************************************/
 void nvt_hybrid_set_i2c_debounce(void)
 {
+	int ret = 0;
 	uint8_t buf[8] = {0};
 	uint8_t reg1_val = 0;
 	uint8_t reg2_val = 0;
@@ -245,12 +246,18 @@ void nvt_hybrid_set_i2c_debounce(void)
 		buf[0] = 0xFF;
 		buf[1] = 0x01;
 		buf[2] = 0xF0;
-		nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_FW_Address, buf, 3);
+		ret = nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_FW_Address, buf, 3);
+		if (ret) {
+			TS_LOG_ERR("%s: nvt i2c write fail\n", __func__);
+		}
 
 		// set i2c debounce 34ns
 		buf[0] = 0x15;
 		buf[1] = 0x17;
-		nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_FW_Address, buf, 2);
+		ret = nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_FW_Address, buf, 2);
+		if (ret) {
+			TS_LOG_ERR("%s: nvt i2c write fail\n", __func__);
+		}
 
 		buf[0] = 0x15;
 		buf[1] = 0x00;
@@ -260,7 +267,10 @@ void nvt_hybrid_set_i2c_debounce(void)
 		// set schmitt trigger enable
 		buf[0] = 0x3E;
 		buf[1] = 0x07;
-		nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_FW_Address, buf, 2);
+		ret = nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_FW_Address, buf, 2);
+		if (ret) {
+			TS_LOG_ERR("%s: nvt i2c write fail\n", __func__);
+		}
 
 		buf[0] = 0x3E;
 		buf[1] = 0x00;
@@ -284,12 +294,16 @@ return:
 *******************************************************/
 void nvt_hybrid_sw_reset_idle(void)
 {
+	int ret = 0;
 	uint8_t buf[4]={0};
 
 	//---write i2c cmds to reset idle---
 	buf[0]=0x00;
 	buf[1]=0xA5;
-	nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_HW_Address, buf, 2);
+	ret = nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_HW_Address, buf, 2);
+	if (ret) {
+		TS_LOG_ERR("%s: nvt i2c write fail\n", __func__);
+	}
 
 	msleep(10);
 	nvt_hybrid_set_i2c_debounce();
@@ -298,11 +312,18 @@ void nvt_hybrid_sw_reset_idle(void)
 	buf[0]=0xFF;
 	buf[1]=0x01;
 	buf[2]=0xF0;
-	nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_HW_Address, buf,3);
+	ret = nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_HW_Address, buf,3);
+	if (ret) {
+		TS_LOG_ERR("%s: nvt i2c write fail\n", __func__);
+	}
 
 	buf[0]=0x39;
 	buf[1]=0x04;
-	nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_HW_Address, buf,2);
+	ret = nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_HW_Address, buf,2);
+	if (ret) {
+		TS_LOG_ERR("%s: nvt i2c write fail\n", __func__);
+	}
+
 }
 
 /*******************************************************
@@ -314,12 +335,16 @@ return:
 *******************************************************/
 void nvt_hybrid_sw_reset(void)
 {
+	int ret = 0;
 	uint8_t buf[8] = {0};
 
 	//---write i2c cmds to reset---
 	buf[0] = 0x00;
 	buf[1] = 0x5A;
-	nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_HW_Address, buf, 2);
+	ret = nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_HW_Address, buf, 2);
+	if (ret) {
+		TS_LOG_ERR("%s: nvt i2c write fail\n", __func__);
+	}
 
 	// need 5ms delay after sw reset
 	msleep(5);
@@ -334,6 +359,7 @@ return:
 *******************************************************/
 void nvt_hybrid_bootloader_reset(void)
 {
+	int ret = 0;
 	uint8_t buf[8] = {0};
 	
 	TS_LOG_INFO("%s ---enter\n", __func__);
@@ -341,7 +367,10 @@ void nvt_hybrid_bootloader_reset(void)
 	//---write i2c cmds to reset---
 	buf[0] = 0x00;
 	buf[1] = 0x69;
-	nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_HW_Address, buf, 2);
+	ret = nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_HW_Address, buf, 2);
+	if (ret) {
+		TS_LOG_ERR("%s: nvt i2c write fail\n", __func__);
+	}
 
 	// need 50ms delay after bootloader reset
 	msleep(50);
@@ -390,6 +419,7 @@ int32_t nvt_hybrid_clear_fw_status(void)
 {
 	uint8_t buf[8] = {0};
 	int32_t i = 0;
+	int ret = 0;
 	const int32_t retry = 10;
 
 	//---dummy read to resume TP before writing command---
@@ -400,12 +430,18 @@ int32_t nvt_hybrid_clear_fw_status(void)
 		buf[0] = 0xFF;
 		buf[1] = 0x01;
 		buf[2] = 0x47;
-		nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_FW_Address, buf, 3);
+		ret = nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_FW_Address, buf, 3);
+		if (ret) {
+			TS_LOG_ERR("%s: nvt i2c write fail\n", __func__);
+		}
 
 		//---clear fw status---
 		buf[0] = 0x51;
 		buf[1] = 0x00;
-		nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_FW_Address, buf, 2);
+		ret = nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_FW_Address, buf, 2);
+		if (ret) {
+			TS_LOG_ERR("%s: nvt i2c write fail\n", __func__);
+		}
 
 		//---read fw status---
 		buf[0] = 0x51;
@@ -435,6 +471,7 @@ return:
 *******************************************************/
 int32_t nvt_hybrid_check_fw_status(void)
 {
+	int ret = 0;
 	uint8_t buf[8] = {0};
 	int32_t i = 0;
 	const int32_t retry = 20;
@@ -447,7 +484,10 @@ int32_t nvt_hybrid_check_fw_status(void)
 		buf[0] = 0xFF;
 		buf[1] = 0x01;
 		buf[2] = 0x47;
-		nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_FW_Address, buf, 3);
+		ret = nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_FW_Address, buf, 3);
+		if (ret) {
+			TS_LOG_ERR("%s: nvt i2c write fail\n", __func__);
+		}
 
 		//---read fw status---
 		buf[0] = 0x51;
@@ -751,9 +791,19 @@ static int nvt_hybrid_pinctrl_select_lowpower(void)
 
 static void nvt_hybrid_power_on_gpio_set(void)
 {
+	int retval = 0;
+
 	nvt_hybrid_pinctrl_select_normal();
-	gpio_direction_input(nvt_hybrid_ts->chip_data->ts_platform_data->irq_gpio);
-	gpio_direction_output(nvt_hybrid_ts->chip_data->ts_platform_data->reset_gpio, 1);
+	retval = gpio_direction_input(nvt_hybrid_ts->chip_data->ts_platform_data->irq_gpio);
+	if (retval) {
+		TS_LOG_ERR("%s: gpio_direction_input for reset gpio failed\n", __func__);
+	}
+
+	retval = gpio_direction_output(nvt_hybrid_ts->chip_data->ts_platform_data->reset_gpio, 1);
+	if (retval) {
+		TS_LOG_ERR("%s: gpio_direction_output for reset gpio failed\n", __func__);
+	}
+
 }
 
 static void nvt_hybrid_vci_on(void)
@@ -811,9 +861,14 @@ static void nvt_hybrid_power_on(void)
 
 static void nvt_hybrid_power_off_gpio_set(void)
 {
+	int retval = 0;
 	TS_LOG_INFO("%s enter\n", __func__);
 
-	gpio_direction_output(nvt_hybrid_ts->chip_data->ts_platform_data->reset_gpio, 0);
+	retval = gpio_direction_output(nvt_hybrid_ts->chip_data->ts_platform_data->reset_gpio, 0);
+	if (retval) {
+		TS_LOG_ERR("%s: gpio_direction_output for reset gpio failed\n", __func__);
+	}
+
 	nvt_hybrid_pinctrl_select_lowpower();
 	//gpio_direction_input(nvt_hybrid_ts->chip_data->ts_platform_data->reset_gpio);
 	mdelay(1);
@@ -967,6 +1022,7 @@ return:
 *******************************************************/
 void nvt_hybrid_get_fw_ver(void)
 {
+	int ret = 0;
 	uint8_t buf[3] = {0};
 
 	//---dummy read to resume TP before writing command---
@@ -976,7 +1032,10 @@ void nvt_hybrid_get_fw_ver(void)
 	buf[0] = 0xFF;
 	buf[1] = 0x01;
 	buf[2] = 0x47;
-	nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_FW_Address, buf, 3);
+	ret = nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_FW_Address, buf, 3);
+	if (ret) {
+		TS_LOG_ERR("%s: nvt i2c write fail\n", __func__);
+	}
 
 	//---read fw info---
 	buf[0] = 0x78;
@@ -997,6 +1056,7 @@ static uint8_t nvt_hybrid_ts_read_chipid(void)
 {
 	uint8_t buf[8] = {0};
 	int32_t retry = 0;
+	int ret = 0;
 
 	//---dummy read to resume TP before writing command---
 	nvt_hybrid_ts_i2c_dummy_read(nvt_hybrid_ts->client, NVT_HYBRID_I2C_HW_Address);
@@ -1004,7 +1064,10 @@ static uint8_t nvt_hybrid_ts_read_chipid(void)
 	// reset idle to keep default addr 0x01 to read chipid
 	buf[0] = 0x00;
 	buf[1] = 0xA5;
-	nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_HW_Address, buf, 2);
+	ret = nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_HW_Address, buf, 2);
+	if (ret) {
+		TS_LOG_ERR("%s: nvt i2c write fail\n", __func__);
+	}
 
 	msleep(10);
 
@@ -1013,7 +1076,10 @@ static uint8_t nvt_hybrid_ts_read_chipid(void)
 		buf[0] = 0xFF;
 		buf[1] = 0x01;
 		buf[2] = 0xF0;
-		nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, 0x01, buf, 3);
+		ret = nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, 0x01, buf, 3);
+		if (ret) {
+			TS_LOG_ERR("%s: nvt i2c write fail\n", __func__);
+		}
 
 		//read hw chip id
 		buf[0] = 0x00;
@@ -1532,8 +1598,6 @@ static int novatek_hybrid_irq_bottom_half(struct ts_cmd_node *in_cmd,
 			if (input_w_minor > 255)
 				input_w_minor = 255;
 
-			if ((input_x < 0) || (input_y < 0))
-				continue;
 			if ((input_x > nvt_hybrid_ts->abs_x_max)||(input_y > nvt_hybrid_ts->abs_y_max))
 				continue;
 
@@ -1872,6 +1936,7 @@ static int novatek_hybrid_before_suspend(void)
 
 static int novatek_hybrid_suspend(void)
 {
+	int ret = 0;
 	uint8_t buf[4] = {0};
 	int retval = NO_ERR;
 	
@@ -1900,7 +1965,10 @@ static int novatek_hybrid_suspend(void)
 			//---write i2c command to enter "deep sleep mode"---
 			buf[0] = 0x50;
 			buf[1] = 0x12;
-			nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_FW_Address, buf, 2);
+			ret = nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_FW_Address, buf, 2);
+			if (ret) {
+				TS_LOG_ERR("%s: nvt i2c write fail\n", __func__);
+			}
 		}
 	}
 	else
@@ -1911,7 +1979,10 @@ static int novatek_hybrid_suspend(void)
 		//---write i2c command to enter "deep sleep mode"---
 		buf[0] = 0x50;
 		buf[1] = 0x12;
-		nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_FW_Address, buf, 2);
+		ret = nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_FW_Address, buf, 2);
+		if (ret) {
+			TS_LOG_ERR("%s: nvt i2c write fail\n", __func__);
+		}
 		nvt_hybrid_power_off();
 	}
 	TS_LOG_INFO("%s exit\n", __func__);
@@ -2181,7 +2252,7 @@ static int32_t novatek_hybrid_regs_operators(struct ts_regs_info *info) {
 				if (info->values[0] == 0)
 					buf[1] = BitClear(buf[1], info->bit);
 				else if (info->values[0] == 1)
-					buf[1] = BitSet(buf[1], info->bit);
+					BitSet(buf[1], info->bit);
 			}
 
 			ret = nvt_hybrid_ts_i2c_write(nvt_hybrid_ts->client, NVT_HYBRID_I2C_FW_Address, buf, info->num+1);
@@ -2219,7 +2290,7 @@ static int32_t novatek_hybrid_regs_operators(struct ts_regs_info *info) {
 			TS_LOG_INFO("buf[0]=0x%02X, buf[1]=0x%02X \n",buf[0],buf[1]);
 			
 			if ((info->bit>0)&&(info->bit < 8) && (info->num == 1)) {
-				nvt_hybrid_ts->chip_data->reg_values[0] = buf[1] & (0x01 << info->bit);
+				nvt_hybrid_ts->chip_data->reg_values[0] = buf[1] & (0x01 << (unsigned int)(info->bit));
 			} else {
 				//copy buf to chip_data->reg_values[]
 				for (i = 0 ; i < info->num ; i++) {

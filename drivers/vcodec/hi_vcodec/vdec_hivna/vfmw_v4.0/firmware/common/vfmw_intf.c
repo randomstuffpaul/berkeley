@@ -74,7 +74,7 @@ static vdec_tvp_info vdec_tvp;
 Vfmw_Osal_Func_Ptr g_vfmw_osal_fun_ptr;
 
 #ifdef MSG_POOL_ADDR_CHECK
-SINT32 CheckFrmBufAddr(UINT32 SrcFrmAddr, MEM_BUFFER_S* pVdhMemMap)
+SINT32 CheckFrmBufAddr(UADDR SrcFrmAddr, MEM_BUFFER_S* pVdhMemMap)
 {
 	UINT32 index;
 	HI_S32 is_mapped = 0;
@@ -88,8 +88,8 @@ SINT32 CheckFrmBufAddr(UINT32 SrcFrmAddr, MEM_BUFFER_S* pVdhMemMap)
 		if (pVdhMemMap[index].u8IsMapped == 0)
 			break;
 
-		if ((SrcFrmAddr >= pVdhMemMap[index].u32StartPhyAddr)
-			&& (SrcFrmAddr <= (pVdhMemMap[index].u32StartPhyAddr
+		if ((SrcFrmAddr >= pVdhMemMap[index].startPhyAddr)
+			&& (SrcFrmAddr <= (pVdhMemMap[index].startPhyAddr
 				+ pVdhMemMap[index].u32Size))) {
 			is_mapped = 1;
 			break;
@@ -103,10 +103,10 @@ SINT32 CheckFrmBufAddr(UINT32 SrcFrmAddr, MEM_BUFFER_S* pVdhMemMap)
 	return VDMHAL_OK;
 }
 
-SINT32 CheckPmvBufAddr(UINT32 SrcPmvAddr, MEM_BUFFER_S* pVdhMemMap)
+SINT32 CheckPmvBufAddr(UADDR SrcPmvAddr, MEM_BUFFER_S* pVdhMemMap)
 {
-	if ((SrcPmvAddr < pVdhMemMap[VDH_SHAREFD_PMV_BUF].u32StartPhyAddr)
-		|| (SrcPmvAddr > (pVdhMemMap[VDH_SHAREFD_PMV_BUF].u32StartPhyAddr
+	if ((SrcPmvAddr < pVdhMemMap[VDH_SHAREFD_PMV_BUF].startPhyAddr)
+		|| (SrcPmvAddr > (pVdhMemMap[VDH_SHAREFD_PMV_BUF].startPhyAddr
 			+ pVdhMemMap[VDH_SHAREFD_PMV_BUF].u32Size))) {
 		return VDMHAL_ERR;
 	}
@@ -424,7 +424,7 @@ static SINT32 VCTRL_VDHGetAddrInfo(MEM_BUFFER_S* pMemMap, MEM_BUFFER_S* pComMsgM
 			continue;
 		}
 #ifdef MSG_POOL_ADDR_CHECK
-		if (index == VDH_SHAREFD_MESSAGE_POOL ) {
+		if (index == VDH_SHAREFD_MESSAGE_POOL) {
 			ret = VCTRL_GetMsgPoolAddr(&pMemMap[index], pComMsgMap,
 					share_fd[index], isVdhAllBufRemap);
 			VCTRL_ASSERT_RET((ret == VCTRL_OK), "msg sharefd map failed");
@@ -597,9 +597,7 @@ SINT32 VCTRL_VDMHal_Process(OMXVDH_REG_CFG_S *pVdmRegCfg, VDMHAL_BACKUP_S *pVdmR
 {
 	HI_S32 ret = HI_SUCCESS;
 	VDMDRV_SLEEP_STAGE_E sleepState;
-#ifdef HIVDEC_SMMU_SUPPORT
-	SMMU_ConfigSMR();
-#endif
+
 	sleepState = VDMHAL_GetSleepStage();
 	if (VDMDRV_SLEEP_STAGE_SLEEP == sleepState) {
 		dprint(PRN_ALWS, "vdm sleep state\n");
@@ -642,9 +640,7 @@ SINT32 VCTRL_SCDHal_Process(OMXSCD_REG_CFG_S *pScdRegCfg,SCD_STATE_REG_S *pScdSt
 	HI_S32 ret = HI_SUCCESS;
 	SCDDRV_SLEEP_STAGE_E sleepState;
 	CONFIG_SCD_CMD cmd = pScdRegCfg->cmd;
-#ifdef HIVDEC_SMMU_SUPPORT
-	SMMU_ConfigSMR();
-#endif
+
 	sleepState = SCDDRV_GetSleepStage();
 	if (SCDDRV_SLEEP_STAGE_SLEEP == sleepState) {
 		dprint(PRN_ALWS, "SCD sleep state\n");
@@ -680,7 +676,7 @@ SINT32 VCTRL_SCDHal_Process(OMXSCD_REG_CFG_S *pScdRegCfg,SCD_STATE_REG_S *pScdSt
 			dprint(PRN_ALWS, "VDEC_IOCTL_SCD_WAIT_HW_DONE  wait time out\n");
 			SCDDRV_ResetSCD();
 		}
-
+		WR_SCDREG(REG_SCD_INT_MASK, 1);
 		sleepState = SCDDRV_GetSleepStage();
 		if (sleepState == SCDDRV_SLEEP_STAGE_PREPARE) {
 			SCDDRV_SetSleepStage(SCDDRV_SLEEP_STAGE_SLEEP);
@@ -708,9 +704,11 @@ HI_BOOL VCTRL_Scen_Ident(HI_U32 cmd)
 #else
 	value = RD_SCDREG(SCEN_IDENT);
 #endif
-
-	if ((value != 0) && (value != current->tgid)
-		&& (cmd != VDEC_IOCTL_SET_CLK_RATE)) {
+#ifdef OMXVDEC_TVP_CONFLICT
+	if ((value != 0) && (value != current->tgid) && (cmd != VDEC_IOCTL_SET_CLK_RATE)) {
+#else
+    if (value == current->tgid) {
+#endif
 		return HI_TRUE;
 	}
 

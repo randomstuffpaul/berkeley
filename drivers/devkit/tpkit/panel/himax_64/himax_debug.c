@@ -237,6 +237,12 @@ static ssize_t himax_diag_show(struct device *dev,struct device_attribute *attr,
 	uint16_t mutual_num = 0;
 	int dsram_type = 0;
 
+	int loop_j = 0;;
+	unsigned int index = 0;
+	uint8_t info_data_hx102b[MUTUL_NUM_HX83102* 2] = {0};
+	uint8_t info_data_hx112a[MUTUL_NUM_HX83112* 2] = {0};
+	int16_t new_data = 0;
+
 	dsram_type = g_diag_command /10;
 
 	//check if devided by zero
@@ -292,6 +298,26 @@ static ssize_t himax_diag_show(struct device *dev,struct device_attribute *attr,
 	}
 	else if (dsram_type > 0 && dsram_type <= 8)
 	{
+		himax_burst_enable(1);
+		if(HX_83102B_SERIES_PWON ==IC_NC_TYPE)
+			himax_nc_get_DSRAM_data(info_data_hx102b);
+		else if(HX_83112A_SERIES_PWON ==IC_NC_TYPE)
+			himax_nc_get_DSRAM_data(info_data_hx112a);
+		for (loop_i = 0,index = 0; loop_i < HX_NC_TX_NUM; loop_i++)
+		{
+			for (loop_j = 0; loop_j < HX_NC_RX_NUM; loop_j++)
+			{
+				if(HX_83102B_SERIES_PWON ==IC_NC_TYPE)
+					new_data = (short)(info_data_hx102b[index + 1] << 8 | info_data_hx102b[index]);
+				else if(HX_83112A_SERIES_PWON ==IC_NC_TYPE)
+					new_data = (short)(info_data_hx112a[index + 1] << 8 | info_data_hx112a[index]);
+				if(dsram_type == 1)
+				{
+					diag_mutual[loop_i * HX_NC_RX_NUM+loop_j] = new_data;
+				}
+				index += 2;
+			}
+		}
 		for (loop_i = 0; loop_i < mutual_num; loop_i++)
 		{
 			count+=snprintf(buf+count, HX_MAX_PRBUF_SIZE-count,"%6d", diag_mutual[loop_i]);
@@ -314,156 +340,6 @@ static ssize_t himax_diag_show(struct device *dev,struct device_attribute *attr,
 	}
 
 	return count;
-}
-
-//DSRAM thread
-static void himax_ts_diag_func(void)
-{
-	char temp_buf[20] = {0};
-	char write_buf_hx102b[MUTUL_NUM_HX83102* 2* 3] = {0};
-	char write_buf_hx112a[MUTUL_NUM_HX83112* 2* 3] = {0};
-	uint8_t info_data_hx102b[MUTUL_NUM_HX83102* 2] = {0};
-	uint8_t info_data_hx112a[MUTUL_NUM_HX83112* 2] = {0};
-	int16_t new_data = 0;
-	int16_t *mutual_data = NULL;
-	int16_t *mutual_data_new = NULL;
-	int16_t *mutual_data_old = NULL;
-	int loop_i = 0;
-	int loop_j = 0;
-	int dsram_type = 0;
-	unsigned int index = 0;
-	struct himax_ts_data *ts;
-
-	ts = g_himax_nc_ts_data;
-	dsram_type = g_diag_command/10;
-
-	//check if devided by zero
-	if (x_channel == 0)
-	{
-		TS_LOG_ERR("%s devided by zero.");
-		return;
-	}
-
-	TS_LOG_INFO("%s:Entering g_diag_command=%d\n!",__func__,g_diag_command);
-
-	if(dsram_type == 8)
-	{
-		dsram_type = 1;
-		TS_LOG_INFO("%s Sorting Mode run sram type1 ! \n",__func__);
-	}
-
-	himax_burst_enable(1);
-	if(dsram_type == 1 || dsram_type == 2 || dsram_type == 4)
-	{
-		mutual_data = hx_nc_getMutualBuffer();
-	}
-	else if(dsram_type == 3)
-	{
-		mutual_data = hx_nc_getMutualBuffer();
-		mutual_data_new = hx_nc_getMutualNewBuffer();
-		mutual_data_old = hx_nc_getMutualOldBuffer();
-	}
-	if(HX_83102B_SERIES_PWON ==IC_NC_TYPE)
-		himax_nc_get_DSRAM_data(info_data_hx102b);
-	else if(HX_83112A_SERIES_PWON ==IC_NC_TYPE)
-		himax_nc_get_DSRAM_data(info_data_hx112a);
-
-	for (loop_i = 0,	index = 0; loop_i < HX_NC_TX_NUM; loop_i++)
-	{
-		for (loop_j = 0; loop_j < HX_NC_RX_NUM; loop_j++)
-		{
-			if(HX_83102B_SERIES_PWON ==IC_NC_TYPE)
-				new_data = (short)(info_data_hx102b[index + 1] << 8 | info_data_hx102b[index]);
-			else if(HX_83112A_SERIES_PWON ==IC_NC_TYPE)
-				new_data = (short)(info_data_hx112a[index + 1] << 8 | info_data_hx112a[index]);
-			if(dsram_type == 1 || dsram_type == 4)
-			{
-				mutual_data[loop_i * HX_NC_RX_NUM+loop_j] = new_data;
-			}
-			else if(dsram_type == 2)//Keep max data for 100 frame
-			{
-				if(mutual_data[loop_i * HX_NC_RX_NUM + loop_j] < new_data)
-				mutual_data[loop_i * HX_NC_RX_NUM + loop_j] = new_data;
-			}
-			else if(dsram_type == 3)//Cal data for [N]-[N-1] frame
-			{
-				mutual_data_new[loop_i * HX_NC_RX_NUM + loop_j] = new_data;
-				mutual_data[loop_i * HX_NC_RX_NUM + loop_j] = mutual_data_new[loop_i * HX_NC_RX_NUM + loop_j] - mutual_data_old[loop_i * HX_NC_RX_NUM + loop_j];
-			}
-			index += 2;
-		}
-	}
-	if(dsram_type == 3)
-	{
-		memcpy(mutual_data_old,mutual_data_new,x_channel * y_channel * sizeof(int16_t)); //copy N data to N-1 array
-	}
-	diag_max_cnt++;
-	if(dsram_type == 1 || dsram_type == 3 )
-	{
-		queue_delayed_work(ts->himax_diag_wq, &ts->himax_diag_delay_wrok, WORK_QUE_TIME_100MS);
-	}
-	else if(dsram_type == 4)
-	{
-		for(loop_i = 0; loop_i < x_channel * y_channel; loop_i++)
-		{
-			memset(temp_buf, '\0', sizeof(temp_buf));
-			if(loop_i == (x_channel * y_channel - 1))
-				snprintf(temp_buf, sizeof(temp_buf), "%4d\n\n", mutual_data[loop_i]);
-			else if(loop_i % x_channel == (x_channel - 1))
-				snprintf(temp_buf, sizeof(temp_buf), "%4d\n", mutual_data[loop_i]);
-			else
-				snprintf(temp_buf, sizeof(temp_buf), "%4d\t", mutual_data[loop_i]);
-
-			if(HX_83102B_SERIES_PWON ==IC_NC_TYPE)
-				strncat(write_buf_hx102b, temp_buf,sizeof(temp_buf));
-			else if(HX_83112A_SERIES_PWON ==IC_NC_TYPE)
-				strncat(write_buf_hx112a, temp_buf,sizeof(temp_buf));
-
-		}
-
-		//save raw data in file
-		if (!IS_ERR(diag_sram_fn))
-		{
-			TS_LOG_INFO("%s create file and ready to write\n",__func__);
-			if(HX_83102B_SERIES_PWON ==IC_NC_TYPE)
-				diag_sram_fn->f_op->write(diag_sram_fn, write_buf_hx102b, sizeof(write_buf_hx102b), &diag_sram_fn->f_pos);
-			else if(HX_83112A_SERIES_PWON ==IC_NC_TYPE)
-				diag_sram_fn->f_op->write(diag_sram_fn, write_buf_hx112a, sizeof(write_buf_hx112a), &diag_sram_fn->f_pos);
-			write_counter++;
-			if(write_counter < write_max_count)
-				queue_delayed_work(ts->himax_diag_wq, &ts->himax_diag_delay_wrok, WORK_QUE_TIME_100MS);
-			else
-			{
-				filp_close(diag_sram_fn,NULL);
-				write_counter = 0;
-			}
-		}
-	}
-	else if(dsram_type == 2)
-	{
-		if(diag_max_cnt > 100) //count for 100 frame
-		{
-			//Clear DSRAM flag
-			DSRAM_Flag = false;
-
-			//Enable ISR
-			himax_nc_int_enable(g_himax_nc_ts_data->tskit_himax_data->ts_platform_data->irq_id,1);
-
-			//=====================================
-			// test result command : 0x8002_0324 ==> 0x00
-			//=====================================
-			himax_nc_diag_register_set(DATA_DIAG_TEST_RESULT);
-		}
-		else
-		{
-			queue_delayed_work(ts->himax_diag_wq, &ts->himax_diag_delay_wrok, WORK_QUE_TIME_100MS);
-		}
-	}
-}
-
-void himax_nc_ts_diag_work_func(struct work_struct *work)
-{
-	himax_ts_diag_func();
 }
 
 static ssize_t himax_diag_dump(struct device *dev, struct device_attribute *attr,  const char *buff,  size_t len)
@@ -508,12 +384,11 @@ static ssize_t himax_diag_dump(struct device *dev, struct device_attribute *attr
 		{
 			//1. Clear DSRAM flag
 			DSRAM_Flag = false;
-			//2. Stop DSRAM thread
-			cancel_delayed_work(&ts->himax_diag_delay_wrok);
-			//3. Enable ISR
+
+			//2. Enable ISR
 			himax_nc_int_enable(g_himax_nc_ts_data->tskit_himax_data->ts_platform_data->irq_id,1);
 
-			/*(4) FW leave sram and return to event stack*/
+			/*3 FW leave sram and return to event stack*/
 			himax_nc_return_event_stack();
 		}
 
@@ -545,12 +420,10 @@ static ssize_t himax_diag_dump(struct device *dev, struct device_attribute *attr
 			//(1) Clear DSRAM flag
 			DSRAM_Flag = false;
 
-			//(2) Stop DSRAM thread
-			cancel_delayed_work(&ts->himax_diag_delay_wrok);
-			//(3) Enable ISR
+			//(2) Enable ISR
 			himax_nc_int_enable(g_himax_nc_ts_data->tskit_himax_data->ts_platform_data->irq_id,1);
 
-			/*(4) FW leave sram and return to event stack*/
+			/*(3) FW leave sram and return to event stack*/
 			himax_nc_return_event_stack();
 		}
 		/* close sorting if turn on*/
@@ -582,6 +455,7 @@ static ssize_t himax_diag_dump(struct device *dev, struct device_attribute *attr
 		himax_nc_int_enable(g_himax_nc_ts_data->tskit_himax_data->ts_platform_data->irq_id,0);
 
 		//Open file for save raw data log
+		#if 0
 		if (storage_type == 4)
 		{
 			switch (rawdata_type)
@@ -600,12 +474,10 @@ static ssize_t himax_diag_dump(struct device *dev, struct device_attribute *attr
 			}
 		}
 
-		//2. Start DSRAM thread
-		queue_delayed_work(ts->himax_diag_wq, &ts->himax_diag_delay_wrok, WORK_QUE_TIME_20MS);
-
 		TS_LOG_INFO("%s: Start get raw data in DSRAM\n", __func__);
 		if (storage_type == 4)
 			msleep(HX_SLEEP_6S);
+		#endif
 		//3. Set DSRAM flag
 		DSRAM_Flag = true;
 
@@ -619,11 +491,9 @@ static ssize_t himax_diag_dump(struct device *dev, struct device_attribute *attr
 		{
 			//1. Clear DSRAM flag
 			DSRAM_Flag = false;
-			//2. Stop DSRAM thread
-			cancel_delayed_work(&ts->himax_diag_delay_wrok);
-			//3. Enable ISR
+			//2. Enable ISR
 			himax_nc_int_enable(g_himax_nc_ts_data->tskit_himax_data->ts_platform_data->irq_id,1);
-			//4. FW leave sram and return to event stack
+			//3. FW leave sram and return to event stack
 			himax_nc_return_event_stack();
 		}
 
@@ -645,7 +515,6 @@ static ssize_t himax_diag_dump(struct device *dev, struct device_attribute *attr
 			himax_nc_diag_register_set(command[0]);
 		}
 
-		queue_delayed_work(ts->himax_diag_wq, &ts->himax_diag_delay_wrok, WORK_QUE_TIME_20MS);
 		DSRAM_Flag = true;
 
 	}
@@ -658,12 +527,10 @@ static ssize_t himax_diag_dump(struct device *dev, struct device_attribute *attr
 			//1. Clear DSRAM flag
 			DSRAM_Flag = false;
 
-			//2. Stop DSRAM thread
-			cancel_delayed_work(&ts->himax_diag_delay_wrok);
-			//3. Enable ISR
+			//2. Enable ISR
 			himax_nc_int_enable(g_himax_nc_ts_data->tskit_himax_data->ts_platform_data->irq_id,1);
 
-			//4. FW leave sram and return to event stack
+			//3. FW leave sram and return to event stack
 			himax_nc_return_event_stack();
 		}
 
@@ -1157,7 +1024,7 @@ static void himax_ts_flash_func(void)
 	if (local_flash_command == 1)
 		himax_ts_flash_print_func();
 	TS_LOG_INFO("Complete~~~~~~~~~~~~~~~~~~~~~~~\n");
-
+#if 0
 	if (local_flash_command == 2)
 	{
 		struct file *fn;
@@ -1177,7 +1044,7 @@ static void himax_ts_flash_func(void)
 			set_fs(old_fs);
 		}
 	}
-
+#endif
 	himax_nc_int_enable(g_himax_nc_ts_data->tskit_himax_data->ts_platform_data->irq_id,1);
 	setFlashDumpGoing(false);
 

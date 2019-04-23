@@ -419,6 +419,11 @@
 #define SEC_TS_EVENT_CONTINUE		1
 #define SEC_TS_EVENT_STOP		0
 
+#define USE_IN_RECOVERY_MODE		1
+#define USE_NOT_IN_RECOVERY_MODE	0
+
+#define USE_IC_RESOLUTION		1
+#define USE_LCD_RESOLUTION		0
 enum {
 	BUILT_IN = 0,
 	UMS,
@@ -854,6 +859,13 @@ struct sec_ts_plat_data {
 	bool support_mt_pressure;
 	bool support_dex;
 	bool support_sidegesture;
+    /* convert ic resolution to real lcd resolution, fix inaccurate touch in recovery mode,
+     * there is no coordinate conversion in recovery mode.
+     */
+	int in_recovery_mode;
+	int use_ic_res;
+	int x_max_rc;
+	int y_max_rc;
 };
 
 int sec_ts_stop_device(struct sec_ts_data *ts);

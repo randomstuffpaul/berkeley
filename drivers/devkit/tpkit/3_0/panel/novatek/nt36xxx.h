@@ -94,6 +94,8 @@ extern const uint16_t touch_key_array[TOUCH_KEY_NUM];
 #define POWER_SLEEP_MODE	1
 #define REAL_PROJECT_ID_LEN 10
 
+#define RBUF_LEN 1025
+
 struct nvt_ts_data {
 	struct ts_kit_device_data *chip_data;
 	struct platform_device *ts_dev;
@@ -165,12 +167,15 @@ struct nvt_ts_data {
 	struct mutex lock;
 	const struct nvt_ts_mem_map *mmap;
 	uint8_t carrier_system;
-	uint8_t rbuf[1025];
+	uint8_t rbuf[RBUF_LEN];
 	uint8_t power_sleep_mode;
 	bool gesture_module;
 	const char *default_project_id;
 	int use_dma_download_firmware;
 	int use_pinctrl;
+	int tp_status_report_support;
+	uint16_t abnormal_status;
+	int in_suspend;
 	int rawdate_pointer_to_pointer;
 	enum ts_bus_type btype;
 };
@@ -254,8 +259,34 @@ typedef enum {
 #define IS_APP_ENABLE_GESTURE(x)  ((u32)(1<<x))
 
 #define FLAG_EXIST	1
-#define U8_MIN		0
-#define U8_MAX		0xFF
+enum {
+	BIT0_GND_CONNECTION = 0,
+	BIT1_TX_SNS_CH,
+	BIT2_RX_SNS_CH,
+	BIT3_PIXEL_SNS,
+	BIT4_DISPLAY_NOISE,
+	BIT5_CHARGER_NOISE,
+	BIT6_CHARGER_NOISE_HOP,
+	BIT7_CHARGER_NOISE_EX,
+	BIT8_SELF_CAP_NOISE,
+	BIT9_MUTUAL_CAP_NOISE,
+	BIT10_HIGH_TEMP,
+	BIT11_LOW_TEMP,
+	BIT12_LARGE_BENDING,
+	BIT13_RESERVED,
+	BIT14_RESERVED,
+	BIT15_RESERVED,
+	BIT_MAX,
+};
+
+struct dmd_report_charger_status{
+	int charge_CHARGER_NOISE_HOP;
+	int charge_CHARGER_NOISE_EX;
+};
+struct tp_status_and_count{
+	int bit_status;
+	unsigned int bit_count;
+};
 
 //---extern functions---
 int32_t novatek_ts_kit_read(uint16_t i2c_addr, uint8_t *buf, uint16_t len);

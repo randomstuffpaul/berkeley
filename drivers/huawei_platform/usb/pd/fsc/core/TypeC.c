@@ -287,7 +287,7 @@ void InitializeTypeCVariables(void)
 
 #define HARD_RESET_REG_ADDR 0x09
 #define HARD_RESET_CONFIG    0x40
-static void fusb_pd_dpm_hard_reset(void)
+static void fusb_pd_dpm_hard_reset(void* client)
 {
 	FSC_BOOL ret = 0;
 	FSC_U8 data = HARD_RESET_CONFIG;
@@ -302,9 +302,9 @@ static void fusb_pd_dpm_hard_reset(void)
 
 static void fusb_pd_dpm_set_voltage(void* client, int set_voltage)
 {
-	FSC_PRINT("%s++\n", __func__);
-
 	struct fusb30x_chip* chip = fusb30x_GetChip();
+
+	FSC_PRINT("%s++\n", __func__);
 	if (!chip) {
 		FSC_PRINT("%s Chip structure is NULL!\n", __func__);
 		return;
@@ -327,11 +327,13 @@ static void fusb_pd_dpm_set_voltage(void* client, int set_voltage)
 
 extern bool fusb30x_pd_dpm_get_hw_dock_svid_exist(void* client);
 extern void fusb30x_set_cc_mode(int mode);
+extern int fusb30x_pd_dpm_get_cc_state(void);
 static struct pd_dpm_ops fusb_device_pd_dpm_ops = {
 	.pd_dpm_hard_reset = fusb_pd_dpm_hard_reset,
 	.pd_dpm_set_cc_mode = fusb30x_set_cc_mode,
 	.pd_dpm_get_hw_dock_svid_exist = fusb30x_pd_dpm_get_hw_dock_svid_exist,
 	.pd_dpm_set_voltage = fusb_pd_dpm_set_voltage,
+	.pd_dpm_get_cc_state = NULL,
 };
 
 void InitializeTypeC(void)
@@ -921,7 +923,7 @@ void StateMachineAttachedSource(void)
                 loopCounter = 0;
                 Registers.Mask.M_COMP_CHNG = 0;
                 DeviceWrite(regMask, 1, &Registers.Mask.byte);
-                platform_notify_cc_orientation(blnCCPinIsCC2);
+                platform_notify_cc_orientation((CC_ORIENTATION)blnCCPinIsCC2);
 #ifdef FSC_INTERRUPT_TRIGGERED
                 if((PolicyState == peSourceReady) || (USBPDEnabled == FALSE))
                 {
@@ -1623,7 +1625,7 @@ void SetStateDebugAccessorySink(void)
     {
         platform_double_56k_cable();
     }
-    platform_notify_debug_accessory_snk(blnCCPinIsCC2);
+    platform_notify_debug_accessory_snk((CC_ORIENTATION)blnCCPinIsCC2);
     platform_set_timer(&StateTimer, tOrientedDebug);
 }
 #endif // FSC_HAVE_SNK
@@ -1716,7 +1718,7 @@ void SetStateAttachedSource(void)
 
     //platform_notify_cc_orientation(blnCCPinIsCC2);
 
-    USBPDEnable(TRUE, TRUE);                                                    // Enable the USB PD state machine if applicable (no need to write to Device again), set as DFP
+    USBPDEnable(TRUE, (SourceOrSink)TRUE);                                                    // Enable the USB PD state machine if applicable (no need to write to Device again), set as DFP
     platform_set_timer(&StateTimer, tIllegalCable);                                                 // Start dangling illegal cable timeout
 	platform_stop_timer(&PDDebounceTimer);
 	audio_debounce = FALSE;
@@ -1758,11 +1760,11 @@ void SetStateAttachedSink(void)
 
     setStateSink();
     UpdateSinkCurrent();
-    platform_notify_cc_orientation(blnCCPinIsCC2);
+    platform_notify_cc_orientation((CC_ORIENTATION)blnCCPinIsCC2);
 
     FSC_PRINT("FUSB %s - C to A Cable Detected: %d\n", __func__, c2a_cable);
 
-    USBPDEnable(TRUE, FALSE);                                      // Enable the USB PD state machine (no need to write Device again since we are doing it here)
+    USBPDEnable(TRUE, (SourceOrSink)FALSE);                                      // Enable the USB PD state machine (no need to write Device again since we are doing it here)
     platform_set_timer(&StateTimer, T_TIMER_DISABLE);                                         // Disable the state timer, not used in this state
 }
 #endif // FSC_HAVE_SNK
@@ -1973,7 +1975,7 @@ void SetStateAudioAccessory(void)
 
 	updateSourceMDACHigh();
     platform_delay_10us(25);  // Delay to allow measurement to settle
-    platform_notify_audio_accessory(blnCCPinIsCC2);
+    platform_notify_audio_accessory((CC_ORIENTATION)blnCCPinIsCC2);
     CCDebounceTimer.expired = FALSE;
 }
 #endif /* FSC_HAVE_ACCMODE */
@@ -1997,9 +1999,9 @@ void SetStatePoweredAccessory(void)
         DeviceWrite(regControl0, 1, &Registers.Control.byte[0]);
     }
 
-    platform_notify_cc_orientation(blnCCPinIsCC2);
+    platform_notify_cc_orientation((CC_ORIENTATION)blnCCPinIsCC2);
 
-    USBPDEnable(TRUE, TRUE);
+    USBPDEnable(TRUE, (SourceOrSink)TRUE);
 
     platform_set_timer(&StateTimer, tAMETimeout);
 }
@@ -3193,8 +3195,9 @@ void ProcessReadTypeCStateLog(FSC_U8* MsgBuffer, FSC_U8* retBuffer)
 
 void SetStateIllegalCable(void)
 {
-FSC_PRINT("FUSB !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!%s\n", __func__);
     CCTermType CCTerm;
+
+    FSC_PRINT("FUSB !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!%s\n", __func__);
 
 #ifdef FSC_INTERRUPT_TRIGGERED
     g_Idle = TRUE;

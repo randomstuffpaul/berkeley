@@ -113,7 +113,8 @@ static bool align_and_check(unsigned long *gap_end, unsigned long gap_start,
  * Return: address of the found gap end (high limit) if area is found;
  *         -ENOMEM if search is unsuccessful
 */
-
+/*lint -e570*/
+/*lint -e527*/
 static unsigned long kbase_unmapped_area_topdown(struct vm_unmapped_area_info
 		*info, bool is_shader_code)
 {
@@ -211,7 +212,8 @@ check_current:
 
 	return -ENOMEM;
 }
-
+/*lint +e527*/
+/*lint +e570*/
 
 /* This function is based on Linux kernel's arch_get_unmapped_area, but
  * simplified slightly. Modifications come from the fact that some values
@@ -236,12 +238,12 @@ unsigned long kbase_get_unmapped_area(struct file *filp,
 
 	/* err on fixed address */
 	if ((flags & MAP_FIXED) || addr)
-		return -EINVAL;
+		return -EINVAL;//lint !e570
 
 #ifdef CONFIG_64BIT
 	/* too big? */
 	if (len > TASK_SIZE - SZ_2M)
-		return -ENOMEM;
+		return -ENOMEM;//lint !e570
 
 	if (!kbase_ctx_flag(kctx, KCTX_COMPAT)) {
 
@@ -266,11 +268,15 @@ unsigned long kbase_get_unmapped_area(struct file *filp,
 	if ((PFN_DOWN(BASE_MEM_COOKIE_BASE) <= pgoff) &&
 		(PFN_DOWN(BASE_MEM_FIRST_FREE_ADDRESS) > pgoff)) {
 			int cookie = pgoff - PFN_DOWN(BASE_MEM_COOKIE_BASE);
-			struct kbase_va_region *reg =
-					kctx->pending_regions[cookie];
+			struct kbase_va_region *reg;
 
-			if (!reg)
-				return -EINVAL;
+			/* Need to hold gpu vm lock when using reg */
+			kbase_gpu_vm_lock(kctx);
+			reg = kctx->pending_regions[cookie];
+			if (!reg) {
+				kbase_gpu_vm_unlock(kctx);
+				return -EINVAL;//lint !e570
+			}
 
 			if (!(reg->flags & KBASE_REG_GPU_NX)) {
 				if (cpu_va_bits > gpu_pc_bits) {
@@ -292,6 +298,7 @@ unsigned long kbase_get_unmapped_area(struct file *filp,
 				align_offset =
 				      extent_bytes - (reg->initial_commit << PAGE_SHIFT);
 			}
+			kbase_gpu_vm_unlock(kctx);
 #ifndef CONFIG_64BIT
 	} else {
 		return current->mm->get_unmapped_area(filp, addr, len, pgoff,

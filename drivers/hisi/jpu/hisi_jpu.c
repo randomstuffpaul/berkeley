@@ -170,6 +170,10 @@ static int hisi_jpu_set_platform(struct hisi_jpu_data_type *hisijd, struct devic
 		hisijd->jpu_support_platform = HISI_DSS_V501;
 		HISI_JPU_INFO("hisijd jpg platform is %d\n", hisijd->jpu_support_platform);
 		return ret;
+	}else if (strncmp(hisijd->jpg_platform_name, "dss_v510", 8) == 0) {
+		hisijd->jpu_support_platform = HISI_DSS_V510;
+		HISI_JPU_INFO("hisijd jpg platform is %d\n", hisijd->jpu_support_platform);
+		return ret;
 	}else {
 		hisijd->jpu_support_platform = UNSUPPORT_PLATFORM;
 		HISI_JPU_ERR("hisijd jpg platform is not support!\n");

@@ -22,10 +22,15 @@ struct hi64xx_resmgr;
 
 int hi64xx_update_bits(struct snd_soc_codec *codec, unsigned int reg,
 			unsigned int mask, unsigned int value);
-int hi64xx_utils_init(struct snd_soc_codec*, struct hi_cdc_ctrl*, const struct utils_config*, struct hi64xx_resmgr*);
+int hi64xx_utils_init(struct snd_soc_codec*, struct hi_cdc_ctrl*,
+	const struct utils_config*, struct hi64xx_resmgr*, unsigned int codec_type);
 
 void hi64xx_dump_debug_info(void);
 
 void hi64xx_utils_deinit(void);
+
+#ifdef CONFIG_HISI_DIEID
+int hisi_codec_get_dieid(char *dieid, unsigned int len);
+#endif
 
 #endif

@@ -54,6 +54,8 @@ int kirin_pcie_pm_control(int power_ops, u32 rc_idx);
 int kirin_pcie_ep_off(u32 rc_idx);
 int kirin_pcie_lp_ctrl(u32 rc_idx, u32 enable);
 int kirin_pcie_enumerate(u32 rc_idx);
+int kirin_pcie_remove_ep(u32 rc_idx);
+int kirin_pcie_rescan_ep(u32 rc_idx);
 int pcie_ep_link_ltssm_notify(u32 rc_id, u32 link_status);
 int kirin_pcie_power_notifiy_register(u32 rc_id, int (*poweron)(void* data),
 				int (*poweroff)(void* data), void* data);
@@ -85,6 +87,16 @@ static inline int kirin_pcie_lp_ctrl(u32 rc_idx, u32 enable)
 }
 
 static inline int kirin_pcie_enumerate(u32 rc_idx)
+{
+	return -EINVAL;
+}
+
+int kirin_pcie_remove_ep(u32 rc_idx)
+{
+	return -EINVAL;
+}
+
+int kirin_pcie_rescan_ep(u32 rc_idx)
 {
 	return -EINVAL;
 }

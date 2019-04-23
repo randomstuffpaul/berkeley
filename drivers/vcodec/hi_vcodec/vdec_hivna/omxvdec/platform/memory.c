@@ -182,9 +182,9 @@ HI_S32 VDEC_MEM_MapKernel(HI_S32 share_fd, MEM_BUFFER_S * psMBuf)
 #endif
 
 	psMBuf->pStartVirAddr = virt_addr;
-	psMBuf->u32StartPhyAddr = (HI_U32) phy_addr;
+	psMBuf->startPhyAddr = (UADDR) phy_addr;
 	psMBuf->u32Size = phy_size;
-	gIONMemNode[i].phys_addr = (HI_U32) phy_addr;
+	gIONMemNode[i].phys_addr = (UADDR) phy_addr;
 	gIONMemNode[i].virt_addr = psMBuf->pStartVirAddr;
 	gIONMemNode[i].handle = handle;
 	gIONMemNode[i].size = psMBuf->u32Size;
@@ -223,8 +223,8 @@ HI_S32 VDEC_MEM_UnmapKernel(MEM_BUFFER_S * psMBuf)
 	}
 
 	for (i = 0; i < MAX_ION_MEM_NODE; i++) {
-		if ((psMBuf->u32StartPhyAddr != 0)
-			&& (psMBuf->u32StartPhyAddr == gIONMemNode[i].phys_addr)
+		if ((psMBuf->startPhyAddr != 0)
+			&& (psMBuf->startPhyAddr == gIONMemNode[i].phys_addr)
 			&& (psMBuf->pStartVirAddr == gIONMemNode[i].virt_addr)
 			&& (gIONMemNode[i].handle != HI_NULL)) {
 			break;

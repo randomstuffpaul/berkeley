@@ -2882,6 +2882,8 @@ oal_uint32  dmac_switch_same_channel_off(
     /* 暂停vap业务 */
     dmac_vap_pause_tx(pst_mac_vap);
 
+    pst_mac_device->st_home_channel = pst_mac_vap->st_channel;
+
     if (WLAN_VAP_MODE_BSS_STA == pst_mac_vap->en_vap_mode)
     {
         pst_dmac_vap = (dmac_vap_stru *)pst_mac_vap;
@@ -2894,9 +2896,6 @@ oal_uint32  dmac_switch_same_channel_off(
         }
 #endif
     }
-
-    /* 记录切离的信道，供扫描完后切回 */
-    pst_mac_device->st_home_channel = pst_mac_vap->st_channel;
 
     pst_fcs_mgr = dmac_fcs_get_mgr_stru(pst_mac_device);
     pst_fcs_cfg = &(pst_mac_device->st_fcs_cfg);

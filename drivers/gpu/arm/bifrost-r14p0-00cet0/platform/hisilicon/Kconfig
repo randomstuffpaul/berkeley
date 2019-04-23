@@ -53,3 +53,10 @@ config HISI_GPU_CORESWITCH
 	default n
 	help
 		enable cores shutdown when low utilisation at low frequency to save power
+
+config HISI_LAST_BUFFER
+	bool "Last buffer"
+	depends on MALI_MIDGARD && MALI_EXPERT && MALI_PLATFORM_HISILICON && HISI_LB
+	default n
+	help
+	  Select  this option to enable last buffer support.

@@ -21,8 +21,8 @@ typedef struct {
 }VDEC_MEM_INFO;
 
 #ifdef MSG_POOL_ADDR_CHECK
-SINT32 CheckFrmBufAddr(UINT32 SrcPmvAddr,MEM_BUFFER_S* pVdhMemMap);
-SINT32 CheckPmvBufAddr(UINT32 SrcPmvAddr,MEM_BUFFER_S* pVdhMemMap);
+SINT32 CheckFrmBufAddr(UADDR  SrcPmvAddr,MEM_BUFFER_S* pVdhMemMap);
+SINT32 CheckPmvBufAddr(UADDR  SrcPmvAddr,MEM_BUFFER_S* pVdhMemMap);
 SINT32 VCTRL_VDHUnmapMessagePool(MEM_BUFFER_S *pMemMap);
 #endif
 

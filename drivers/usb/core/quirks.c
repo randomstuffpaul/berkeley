@@ -231,6 +231,10 @@ static const struct usb_device_id usb_quirk_list[] = {
 	/* Corsair K70 RGB */
 	{ USB_DEVICE(0x1b1c, 0x1b13), .driver_info = USB_QUIRK_DELAY_INIT },
 
+	/* Corsair Strafe */
+	{ USB_DEVICE(0x1b1c, 0x1b15), .driver_info = USB_QUIRK_DELAY_INIT |
+	  USB_QUIRK_DELAY_CTRL_MSG },
+
 	/* Corsair Strafe RGB */
 	{ USB_DEVICE(0x1b1c, 0x1b20), .driver_info = USB_QUIRK_DELAY_INIT |
 	  USB_QUIRK_DELAY_CTRL_MSG },
@@ -257,6 +261,17 @@ static const struct usb_device_id usb_quirk_list[] = {
 
 	/* INTEL VALUE SSD */
 	{ USB_DEVICE(0x8086, 0xf1a5), .driver_info = USB_QUIRK_RESET_RESUME },
+
+	/* */
+	{ USB_DEVICE(0x067b, 0x2731), .driver_info = USB_QUIRK_DELAY_INIT | USB_QUIRK_NO_LPM},
+
+	/* Delay Init */
+	{ USB_DEVICE(0x0781, 0x5596), .driver_info = USB_QUIRK_DELAY_INIT},
+	{ USB_DEVICE(0x1d6b, 0x0002), .driver_info = USB_QUIRK_DELAY_INIT},
+	{ USB_DEVICE(0x1d6b, 0x0003), .driver_info = USB_QUIRK_DELAY_INIT},
+	{ USB_DEVICE(0x2109, 0x2817), .driver_info = USB_QUIRK_DELAY_INIT},
+	{ USB_DEVICE(0x2109, 0x0817), .driver_info = USB_QUIRK_DELAY_INIT},
+	{ USB_DEVICE(0x090c, 0x1000), .driver_info = USB_QUIRK_DELAY_INIT},
 
 	/* Huawei TypeC Headset */
 	{ USB_DEVICE(0x12d1, 0x3a07), .driver_info = USB_QUIRK_PM_NO_RESET_RESUME},

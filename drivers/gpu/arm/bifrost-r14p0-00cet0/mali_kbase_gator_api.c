@@ -208,7 +208,7 @@ struct kbase_gator_hwcnt_handles *kbase_gator_hwcnt_init(struct kbase_gator_hwcn
 			core_mask = hand->kbdev->gpu_props.props.coherency_info.group[cg].core_mask;
 
 			for (j = 0; j < MALI_MAX_CORES_PER_GROUP; j++) {
-				if (core_mask & (1u << j))
+				if (core_mask & (1u << j))//lint !e647
 					in_out_info->hwc_layout[i++] = SHADER_BLOCK;
 				else
 					in_out_info->hwc_layout[i++] = RESERVED_BLOCK;

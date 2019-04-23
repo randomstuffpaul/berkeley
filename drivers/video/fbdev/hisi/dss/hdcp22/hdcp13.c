@@ -45,7 +45,7 @@ static int GetKSVListFromDPCD(struct dp_ctrl *dptx, uint8_t* sha1_buffer, uint32
     uint32_t len = 10;
     int retval;
 
-    if ((dptx == NULL) || (sha1_buffer == NULL)) {
+    if ((dptx == NULL) || (sha1_buffer == NULL) || (plength == NULL)) {
         HISI_FB_ERR("NULL Pointer\n");
         return -1;
     }
@@ -227,6 +227,11 @@ int HDCP_GetSHA1Buffer(uint8_t* pSHA1buffer, uint32_t* plength, uint8_t* pV_prim
 {
     struct hisi_fb_data_type *hisifd;
     struct dp_ctrl *dptx;
+
+	if(pSHA1buffer == NULL || plength == NULL || pV_prime == NULL){
+		HISI_FB_ERR("pSHA1buffer or plength or pV_prime is NULL!\n");
+		return -1;
+	}
   
     if (g_dp_pdev == NULL) {
 		HISI_FB_ERR("g_dp_pdev is NULL!\n");
@@ -268,6 +273,11 @@ static int hdcp_polling_thread(void *p)
     struct dp_ctrl *dptx;
 
     dptx = (struct dp_ctrl *)p;
+	if(!dptx){
+		HISI_FB_ERR("dptx is null!\n");
+		return -1;
+	}
+
     hparams = &dptx->hparams;
 
     while(!kthread_should_stop()) {

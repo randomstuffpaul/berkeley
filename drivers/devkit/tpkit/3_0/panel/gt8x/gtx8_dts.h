@@ -36,6 +36,7 @@
 #define GTP_EASY_WAKE_SUPPORTED		"easy_wakeup_supported"
 
 #define GTP_TOOL_SUPPORT		"tools_support"
+#define GTP_STATIC_PID_SUPPORT		"gtx8_static_pid_support"
 #define GTP_CHARGER_SUPPORT		"charger_supported"
 #define GTP_TP_TEST_TYPE		"tp_test_type"
 #define GTP_CHIP_NAME			"chip_name"

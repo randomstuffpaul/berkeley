@@ -261,14 +261,14 @@ static int mode_control_5_x(pro_fw_modes mode, u8 *data)
     u8 cmd[4] = { 0 };
     struct ilitek_report *p_rpt = g_ilitek_ts->rpt;
 
-    if (IS_ERR_OR_NULL(data)) {
-        ilitek_err("params from user space invaild\n");
-        ret = -EINVAL;
-        goto err_out;
-    }
-
     switch(mode) {
     case ILITEK_I2C_UART_MODE:
+        if (IS_ERR_OR_NULL(data)) {
+            ilitek_err("params from user space invaild\n");
+            ret = -EINVAL;
+            goto err_out;
+        }
+
         cmd[0] = g_ilitek_pro->cmd_i2cuart;
         cmd[1] = data[1];
         cmd[2] = data[2];

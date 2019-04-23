@@ -812,6 +812,20 @@ FSC_BOOL platform_discover_svid_supported(void)
 
     return chip->discover_svid_supported;
 }
+FSC_U32 platform_sink_pdo_number(void)
+{
+    struct fusb30x_chip* chip = NULL;
+
+    chip = fusb30x_GetChip();
+    if(!chip)
+    {
+        pr_err("FUSB %s - Error: Chip structure is NULL!\n", __func__);
+        return 0;
+    }
+
+    return chip->sink_pdo_number;
+}
+
 void platform_double_56k_cable(void)
 {
     struct pd_dpm_typec_state typec_state;

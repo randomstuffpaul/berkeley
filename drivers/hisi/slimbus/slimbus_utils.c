@@ -100,7 +100,6 @@ void slimbus_freq_request()
 	}
 	mutex_unlock(&slimbus_freq_mutex);
 }
-EXPORT_SYMBOL(slimbus_freq_request);
 
 void slimbus_freq_release()
 {
@@ -124,7 +123,6 @@ void slimbus_freq_release()
 	}
 	mutex_unlock(&slimbus_freq_mutex);
 }
-EXPORT_SYMBOL(slimbus_freq_release);
 
 uint32_t slimbus_asp_state_get(void __iomem *asppower_base_addr, uint32_t offset)
 {
@@ -158,9 +156,9 @@ void slimbus_module_enable(slimbus_device_info_t *dev, bool enable)
 		/* For FPGA */
 		if (SLIMBUS_RF_6144 == rf) {
 			/* IOMG slimbus clk*/
-			slimbus_reg_write((void __iomem *)((uint64_t)ioc_base_addr + dev->slimbusclk_offset), 0x00000001);
+			slimbus_reg_write((void __iomem *)((uint64_t)ioc_base_addr + dev->slimbusclk_offset), 0x00000003);
 			/* IOMG slimbus data*/
-			slimbus_reg_write((void __iomem *)((uint64_t)ioc_base_addr + dev->slimbusdata_offset), 0x00000001);
+			slimbus_reg_write((void __iomem *)((uint64_t)ioc_base_addr + dev->slimbusdata_offset), 0x00000003);
 			/* IOCG slimbus clk*/
 			slimbus_reg_write((void __iomem *)((uint64_t)ioc_base_addr + dev->slimbusclk_cfg_offset), 0x12);
 			/* IOCG slimbus data*/

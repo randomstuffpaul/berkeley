@@ -94,7 +94,6 @@ int mmc_start_cmdq_request(struct mmc_host *host,
 		mrq->data->mrq = mrq;
 	}
 
-	led_trigger_event(host->led, LED_FULL);
 
 #ifdef CONFIG_HW_MMC_MAINTENANCE_CMD
 	record_mmc_cmdq_cmd(mrq);

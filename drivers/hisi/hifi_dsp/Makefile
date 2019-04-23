@@ -40,7 +40,7 @@ endif
 EXTRA_CFLAGS += -Idrivers/hisi/hifi_mailbox/mailbox
 EXTRA_CFLAGS += -Idrivers/hisi/hifi_mailbox/ipcm
 EXTRA_CFLAGS += -Isound/usb/hifi/
-ifneq ($(TARGET_BUILD_VARIANT),user)
+ifeq ($(CONFIG_HISI_AUDIO_DEBUG),y)
 ifeq ($(kcov),true)
 EXTRA_CFLAGS += -DENABLE_AUDIO_KCOV
 else
@@ -51,7 +51,7 @@ endif
 obj-$(CONFIG_HIFI_DSP_ONE_TRACK)	+= hifi_lpp.o
 obj-$(CONFIG_HIFI_DSP_ONE_TRACK)	+= hifi_om.o
 
-ifneq ($(TARGET_BUILD_VARIANT),user)
+ifeq ($(CONFIG_HISI_AUDIO_DEBUG),y)
 obj-$(CONFIG_SND_SOC_CODEC_STUB)	+= memcpy_opt.o
 ifeq ($(CONFIG_SND_SOC_CODEC_STUB),y)
 EXTRA_CFLAGS += -DDYNAMIC_LOAD_HIFIIMG

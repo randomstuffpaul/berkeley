@@ -4213,7 +4213,7 @@ static int rgb_cal_result_write_file(char *filename, char *param)
 	if (IS_ERR_OR_NULL(fop)) {
 		set_fs(old_fs);
 		hwlog_err
-		    ("Create file error!! Path = %s IS_ERR_OR_NULL(fop) = %d fop = %Kp\n",
+		    ("Create file error!! Path = %s IS_ERR_OR_NULL(fop) = %d fop = %pK\n",
 		     filename, IS_ERR_OR_NULL(fop), fop);
 		return -1;
 	}

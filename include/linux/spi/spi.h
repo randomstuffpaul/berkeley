@@ -1323,4 +1323,5 @@ void show_spi_register(struct spi_master *master);
 void show_dma_register(struct spi_master *master, int channel_id);
 void pl022_resume_all(struct spi_master *master);
 bool spi_use_dma_transmode(struct spi_message *msg);
+void disable_spi(struct spi_master *master);
 #endif /* __LINUX_SPI_H */

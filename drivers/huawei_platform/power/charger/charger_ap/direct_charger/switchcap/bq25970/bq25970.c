@@ -16,12 +16,9 @@
 #include <linux/irq.h>
 #include <linux/notifier.h>
 #include <linux/mutex.h>
+#include <linux/raid/pq.h>
 
 #include <huawei_platform/log/hw_log.h>
-#ifdef CONFIG_HUAWEI_HW_DEV_DCT
-#include <huawei_platform/devdetect/hw_dev_dec.h>
-#endif
-#include <linux/raid/pq.h>
 #include <huawei_platform/power/direct_charger.h>
 #include "../switchcap.h"
 #include "bq25970.h"
@@ -40,6 +37,8 @@ static int tsbus_low_r_kohm = BQ2597X_RESISTORS_100KOHM;
 static int switching_frequency = BQ2597X_SWITCHING_FREQ_550KHZ;
 static int bq25970_init_finish_flag = BQ2597X_NOT_INIT;
 static int bq25970_interrupt_notify_enable_flag = BQ2597X_DISABLE_INTERRUPT_NOTIFY;
+
+#define MSG_LEN                      (2)
 
 /**********************************************************
 *  Function:       bq25970_write_block
@@ -96,9 +95,9 @@ static int bq25970_write_block(struct bq25970_device_info *di, u8 *value, u8 reg
 *                      num_bytes:bytes number
 *  return value:  0-sucess or others-fail
 **********************************************************/
-static int bq25970_read_block(struct bq25970_device_info *di,u8 *value, u8 reg, unsigned num_bytes)
+static int bq25970_read_block(struct bq25970_device_info *di, u8 *value, u8 reg, unsigned num_bytes)
 {
-	struct i2c_msg msg[2];
+	struct i2c_msg msg[MSG_LEN];
 	u8 buf = 0;
 	int ret = 0;
 
@@ -124,10 +123,10 @@ static int bq25970_read_block(struct bq25970_device_info *di,u8 *value, u8 reg, 
 	msg[1].buf = value;
 	msg[1].len = num_bytes;
 
-	ret = i2c_transfer(di->client->adapter, msg, 2);
+	ret = i2c_transfer(di->client->adapter, msg, MSG_LEN);
 
 	/* i2c_transfer returns number of messages transferred */
-	if (ret != 2) {
+	if (ret != MSG_LEN) {
 		hwlog_err("error: i2c_read failed to transfer all messages!\n");
 		if (ret < 0)
 			return ret;
@@ -149,7 +148,7 @@ static int bq25970_read_block(struct bq25970_device_info *di,u8 *value, u8 reg, 
 static int bq25970_write_byte(u8 reg, u8 value)
 {
 	struct bq25970_device_info *di = g_bq25970_dev;
-	u8 temp_buffer[2] = { 0 }; /* 2 bytes offset 1 contains the data offset 0 is used by i2c_write */
+	u8 temp_buffer[MSG_LEN] = { 0 }; /* 2 bytes offset 1 contains the data offset 0 is used by i2c_write */
 
 	if (NULL == di) {
 		hwlog_err("error: di is null!\n");
@@ -220,6 +219,7 @@ static void bq25970_dump_register(void)
 		hwlog_info("reg [%x]=0x%x\n", i, val);
 	}
 }
+
 static int bq25970_reg_reset(void)
 {
 	int ret;
@@ -1123,7 +1123,7 @@ static irqreturn_t bq25970_interrupt(int irq, void *_di)
 		bq25970_interrupt_notify_enable_flag = BQ2597X_ENABLE_INTERRUPT_NOTIFY;
 	}
 
-	hwlog_err("interrupt happened (%d)!\n", bq25970_init_finish_flag);
+	hwlog_info("bq25970 interrupt happened (%d)!\n", bq25970_init_finish_flag);
 
 	disable_irq_nosync(di->irq_int);
 	schedule_work(&di->irq_work);
@@ -1152,12 +1152,11 @@ static void bq25970_parse_dts(struct device_node *np, struct bq25970_device_info
 		switching_frequency = BQ2597X_SWITCHING_FREQ_550KHZ;
 	}
 	hwlog_info("switching_frequency=%d\n", switching_frequency);
-
 }
 
-static struct loadswitch_ops  bq25970_sysinfo_ops ={
+static struct loadswitch_ops bq25970_sysinfo_ops = {
 	.ls_init = bq25970_charge_init,
-	.ls_exit= bq25970_charge_exit,
+	.ls_exit = bq25970_charge_exit,
 	.ls_enable = bq25970_charge_enable,
 	.ls_discharge = bq25970_discharge,
 	.is_ls_close = bq25970_is_device_close,
@@ -1216,32 +1215,39 @@ static int bq25970_probe(struct i2c_client *client, const struct i2c_device_id *
 
 	bq25970_parse_dts(np, di);
 
-	di->gpio_int = of_get_named_gpio(np, "switchcap_int", 0);
-	hwlog_info("switchcap_int=%d\n", di->gpio_int);
+	di->gpio_int = of_get_named_gpio(np, "gpio_int", 0);
+	hwlog_info("gpio_int=%d\n", di->gpio_int);
 
 	if (!gpio_is_valid(di->gpio_int)) {
-		hwlog_err("error: gpio(switchcap_int) is not valid!\n");
+		hwlog_err("error: gpio(gpio_int) is not valid!\n");
 		ret = -EINVAL;
 		goto bq25970_fail_0;
 	}
 
-	ret = gpio_request(di->gpio_int, "switchcap_int");
+	ret = gpio_request(di->gpio_int, "bq25970_gpio_int");
 	if (ret < 0) {
-		hwlog_err("error: gpio(switchcap_int) request fail!\n");
+		hwlog_err("error: gpio(gpio_int) request fail!\n");
 		ret = -EINVAL;
 		goto bq25970_fail_0;
 	}
 
-	gpio_direction_input(di->gpio_int);
-	di->irq_int = gpio_to_irq(di->gpio_int);
-	if (di->irq_int < 0) {
-		hwlog_err("error: gpio_int(switchcap_int) map to irq fail!\n");
+	ret = gpio_direction_input(di->gpio_int);
+	if (ret) {
+		hwlog_err("error: gpio(gpio_int) set input fail!\n");
 		goto bq25970_fail_1;
 	}
 
-	ret = request_irq(di->irq_int, bq25970_interrupt, IRQF_TRIGGER_FALLING, "switchcap_int_irq", di);
+	di->irq_int = gpio_to_irq(di->gpio_int);
+	if (di->irq_int < 0) {
+		hwlog_err("error: gpio(gpio_int) map to irq fail!\n");
+		ret = -EINVAL;
+		goto bq25970_fail_1;
+	}
+
+	ret = request_irq(di->irq_int, bq25970_interrupt, IRQF_TRIGGER_FALLING, "bq25970_int_irq", di);
 	if (ret) {
-		hwlog_err("error: gpio_int(switchcap_int) irq request fail!\n");
+		hwlog_err("error: gpio(gpio_int) irq request fail!\n");
+		ret = -EINVAL;
 		di->irq_int = -1;
 		goto bq25970_fail_1;
 	}
@@ -1337,6 +1343,7 @@ static void bq25970_shutdown(struct i2c_client *client)
 }
 
 MODULE_DEVICE_TABLE(i2c, bq25970);
+
 static struct of_device_id bq25970_of_match[] = {
 	{
 		.compatible = "bq25970",
@@ -1370,6 +1377,7 @@ static struct i2c_driver bq25970_driver = {
 static int __init bq25970_init(void)
 {
 	int ret = 0;
+
 	ret = i2c_add_driver(&bq25970_driver);
 	if (ret) {
 		hwlog_err("error: bq25970 i2c_add_driver error!\n");

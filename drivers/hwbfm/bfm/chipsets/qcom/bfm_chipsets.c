@@ -714,6 +714,12 @@ int bfm_platform_process_boot_fail(bfm_process_bootfail_param_t *param)
 }
 
 
+int bfm_update_platform_logs(bfm_bootfail_log_info_t *pbootfail_log_info)
+{
+    return 0;
+}
+
+
 /**
     @function: int bfm_platform_process_boot_success(void)
     @brief: process boot success in chipsets module
@@ -1005,17 +1011,6 @@ void bfmr_update_raw_log_info(bfmr_log_src_t *psrc, bfmr_log_dst_t *pdst, unsign
 void bfmr_copy_data_from_dfx_to_bfmr_tmp_buffer(void)
 {
     return;
-}
-
-
-int bfm_get_kmsg_log_header_size(void)
-{
-    return 0;
-}
-
-bool bfm_is_beta_version(void)
-{
-    return false;
 }
 
 

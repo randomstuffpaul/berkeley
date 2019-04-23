@@ -20,6 +20,6 @@ ccflags-$(CONFIG_SENSORS_COLOR_AP)	+= -I$(src)
 
 #
 # Object Artifacts
-obj-$(CONFIG_SENSORS_COLOR_AP)	+= color_sensor.o rohm_bh1749.o ams_tcs3430.o
+obj-$(CONFIG_SENSORS_COLOR_AP)	+= color_sensor.o rohm_bh1749.o ams_tcs3430.o ams_tcs3707.o
 
 endif

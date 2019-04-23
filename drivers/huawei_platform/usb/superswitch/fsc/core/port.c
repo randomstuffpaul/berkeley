@@ -952,6 +952,20 @@ void FUSB3601_ResetProtocolLayer(struct Port *port)
 	FUSB3601_WriteRegister(port, regRXDETECT);
 }
 
+int FUSB3601_GetStateCC(struct Port *port)
+{
+	int val = 0;
+	if (port->double56k) {
+		val = 0x5;
+		return val;
+	} else {
+		FUSB3601_ReadRegister(port, regCCSTAT);
+		val = port->registers_.CCStat.byte;
+		pr_info("FUSB  %s - CCStat: [0x%x], val = %d\n", __func__, port->registers_.CCStat.byte, val);
+		return val;
+	}
+}
+
 void FUSB3601_set_policy_state(struct Port *port, PolicyState_t state)
 {
 	port->policy_state_ = state;

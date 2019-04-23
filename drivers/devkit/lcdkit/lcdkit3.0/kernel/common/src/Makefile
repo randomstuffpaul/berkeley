@@ -1,4 +1,12 @@
-obj-$(CONFIG_LCD_KIT_COMMON)	+= lcd_kit_debug.o
+
+ifneq ($(TARGET_BUILD_VARIANT),user)
+EXTRA_CFLAGS += -DLCD_KIT_DEBUG_ENABLE
+endif
+
+ifneq ($(TARGET_BUILD_VARIANT),user)
+	obj-y += lcd_kit_debug.o
+endif
+
 obj-$(CONFIG_LCD_KIT_COMMON)	+= lcd_kit_sysfs.o
 obj-$(CONFIG_LCD_KIT_COMMON)	+= lcd_kit_common.o
 obj-$(CONFIG_LCD_KIT_COMMON)	+= lcd_kit_parse.o

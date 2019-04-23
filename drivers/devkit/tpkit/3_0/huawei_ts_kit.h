@@ -21,9 +21,7 @@
 #include <huawei_platform/log/hw_log.h>
 #include <linux/wakelock.h>
 #include <linux/semaphore.h>
-#ifndef CONFIG_HUAWEI_DEVKIT_MTK_3_0
 #include <lcd_kit_core.h>
-#endif
 
 #define NO_ERR 0
 #define RESULT_ERR (-1)
@@ -44,8 +42,6 @@
 #define MAX_CAP_DATA_SIZE_FOR_EESHORT	8
 
 #define TS_CHIP_TYPE_MAX_SIZE 300
-#define TS_GAMMA_DATA_MAX_SIZE 500
-
 #define TS_CHIP_BUFF_MAX_SIZE 1024
 #define TS_CHIP_WRITE_MAX_TYPE_COUNT 4
 #define TS_CHIP_TYPE_RESERVED 6
@@ -261,7 +257,7 @@ enum ts_cmd {
 	TS_FREEBUFF,
 	TS_SET_SENSIBILITY,
 	TS_BOOT_DETECTION,
-	TS_GAMMA_INFO_SWITCH,
+	TS_PALM_KEY,
 	TS_INVAILD_CMD = 255,
 };
 
@@ -311,7 +307,7 @@ enum STYLUS_WAKEUP_CTRL {
 	STYLUS_WAKEUP_TESTMODE = 3,
 	MAX_STATUS = 255,
 };
-
+#define KEY_F26 196 /* ESD Key Event */
 #define KEY_F27  197
 #define KEY_F28  198
 enum ts_gesture_num {
@@ -327,6 +323,7 @@ enum ts_gesture_num {
 	TS_LETTER_m = KEY_F10,	/*8.Single finger write letter m:KEY_F10 */
 	TS_LETTER_w = KEY_F11,	/*9.Single finger write letter w:KEY_F11 */
 	TS_PALM_COVERED = KEY_F12,	/*10.Palm off screen:KEY_F12 */
+	TS_KEY_IRON = KEY_F26,	/* ESD_avoiding to report KEY_F26(196) */
 	TS_STYLUS_WAKEUP_TO_MEMO = KEY_F27,
 	TS_STYLUS_WAKEUP_SCREEN_ON = KEY_F28,
 	TS_GESTURE_INVALID = 0xFF,	/*FF.No gesture */
@@ -571,7 +568,7 @@ struct ts_oem_info_param {
 	int op_action;
 	u8 data_switch;
 	u8 buff[TS_CHIP_BUFF_MAX_SIZE];
-	u8 data[TS_GAMMA_DATA_MAX_SIZE];
+	u8 data[TS_CHIP_TYPE_MAX_SIZE];
 	u8 length;
 };
 struct ts_calibrate_info {
@@ -703,13 +700,10 @@ struct ts_cmd_param {
 		struct ts_fingers report_info;	//report input
 		struct ts_pens report_pen_info;	//report pen
 		struct fw_param firmware_info;	//firmware update
-#ifndef CONFIG_HUAWEI_DEVKIT_MTK_3_0
 		enum lcd_kit_ts_pm_type pm_type;
-#else
-		int pm_type;
-#endif
 		struct ts_kit_device_data *chip_data;
 		int sensibility_cfg;
+		unsigned int ts_key;
 	} pub_params;
 	void *prv_params;
 	void (*ts_cmd_freehook) (void *);
@@ -796,7 +790,6 @@ struct ts_device_ops {
 	int (*chip_debug_switch) (u8 loglevel);
 	void (*chip_shutdown) (void);
 	int (*oem_info_switch) (struct ts_oem_info_param * info);
-	int (*gamma_info_switch) (struct ts_oem_info_param * info);
 	int (*chip_get_info) (struct ts_chip_info_param * info);
 	int (*chip_set_info_flag) (struct ts_kit_platform_data * info);
 	int (*chip_fw_update_boot) (char *file_name);
@@ -1007,13 +1000,13 @@ struct ts_kit_device_data {
 	int fp_tp_report_touch_minor_event;
 	int read_2dbarcode_oem_type;
 	int support_2dbarcode_info;
-	int support_gammadata_in_tp;
 	int rawdata_report_type;
 	int suspend_no_config;
 	u8 game_control_bit;//the mask bit of touch_game_reg.
 	u8 rawdata_newformatflag;	// 0 - old format   1 - new format
 	u8 tui_set_flag;
 	u8 provide_panel_id_support;
+	u8 print_all_trx_diffdata_for_newformat_flag; /*print all tr&rx difference cap data (TX*RX) */
 	unsigned int boot_detection_addr;
 	unsigned int boot_detection_threshold;
 	u8 boot_detection_flag;
@@ -1095,11 +1088,7 @@ struct ts_kit_platform_data {
 	struct notifier_block charger_detect_notify;
 	u8 panel_id;
 };
-#ifndef CONFIG_HUAWEI_DEVKIT_MTK_3_0
-int ts_kit_power_control_notify(int pm_type, int timeout);
-#else
-int ts_kit_power_control_notify(int pm_type, int timeout);
-#endif
+
 int ts_kit_put_one_cmd(struct ts_cmd_node *cmd, int timeout);
 int register_ts_algo_func(struct ts_kit_device_data *chip_data,
 			  struct ts_algo_func *fn);

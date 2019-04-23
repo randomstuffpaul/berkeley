@@ -69,7 +69,7 @@ static inline bool is_region_free(struct kbase_va_region *reg)
 
 static inline struct gmc_storage_handle *kbase_get_gmc_handle(struct tagged_addr *p)
 {
-	return (struct gmc_storage_handle *)(p->tagged_addr);
+	return (struct gmc_storage_handle *)(uintptr_t)(p->tagged_addr);
 }
 
 #if MALI_GMC
@@ -91,7 +91,7 @@ static inline void kbase_clear_entry_compressed(struct tagged_addr *p)
 
 static inline void kbase_set_gmc_handle(struct gmc_storage_handle *handle, struct tagged_addr *p)
 {
-	p->tagged_addr = (phys_addr_t)handle;
+	p->tagged_addr = (phys_addr_t)(uintptr_t)handle;
 	p->gmc_flag |= KBASE_ENTRY_COMPRESSED;
 }
 

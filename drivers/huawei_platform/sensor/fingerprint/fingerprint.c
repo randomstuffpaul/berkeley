@@ -951,6 +951,13 @@ int fingerprint_get_dts_data(struct device* dev, struct fp_data* fp_data)
         hwlog_info("%s failed to get pen_anti_enable from device tree, just go on\n", __func__);
     }
 
+    ret = of_property_read_u32(np, "fingerprint,cts_home", (unsigned int *)&(fp_data->cts_home));
+    if (ret) {
+        fp_data->cts_home = 0; // set default not support for three key home
+        ret = 0;
+        hwlog_info("%s failed to get cts_home from device tree, just go on\n", __func__);
+    }
+
     ret = of_property_read_u32(np, "fingerprint,irq_custom_scheme", &(fp_data->irq_custom_scheme));
     if (ret)
     {
@@ -1532,8 +1539,9 @@ static int fingerprint_extern_power_en(struct fp_data* fingerprint)
             hwlog_err("%s something wrong with dts confing extern ldo\n", __func__);
             return -EINVAL;
         }
-
+        #if defined (CONFIG_USE_CAMERA3_ARCH)
         hw_extern_pmic_config(fingerprint->extern_ldo_num,  fingerprint->extern_vol, 1);
+        #endif
 
         //hwlog_info("ldo_num = %d, ldo_vol = %d", fingerprint->extern_ldo_num, fingerprint->extern_vol );
         return 0;
@@ -1956,6 +1964,12 @@ static int fingerprint_probe(struct platform_device* pdev)
     input_set_capability(fingerprint->input_dev, EV_KEY, EVENT_FINGER_IDENTIFY);
     input_set_capability(fingerprint->input_dev, EV_KEY, EVENT_IDENTIFY_END);
     input_set_capability(fingerprint->input_dev, EV_KEY, EVENT_FINGER_ENROLL);
+    if(fingerprint->cts_home > 0)
+    {
+        hwlog_info("%s fingerprint->cts_home=%d.\n", __func__, fingerprint->cts_home);
+        input_set_capability(fingerprint->input_dev, EV_KEY, EVENT_CTS_HOME);
+        set_bit(EVENT_CTS_HOME, fingerprint->input_dev->evbit);
+    }
     set_bit(EV_KEY, fingerprint->input_dev->evbit);
     set_bit(EVENT_UP, fingerprint->input_dev->evbit);
     set_bit(EVENT_DOWN, fingerprint->input_dev->evbit);

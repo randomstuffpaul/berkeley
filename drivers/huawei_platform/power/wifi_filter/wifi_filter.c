@@ -234,7 +234,7 @@ void get_filter_info(
         return;
     }
     indev = state->in ? state->in->name : "";
-    if (strcmp(indev, WLAN_NAME) != 0) {
+    if ( (strcmp(indev, WLAN_NAME) != 0)&&(strcmp(indev,"")!=0) ) {
     	 FILTER_LOGD("indevl name %s", indev);
         return;
     }
@@ -268,7 +268,7 @@ void get_filter_infoEx(struct sk_buff *skb)
         return;
     }
 
-    if (strcmp(skb->dev->name, WLAN_NAME) != 0) {
+    if ( (strcmp(skb->dev->name, WLAN_NAME)!=0)&&(strcmp(skb->dev->name,"")!=0) ){
     	 FILTER_LOGD("indevl name %s", skb->dev->name);
         return;
     }

@@ -1618,7 +1618,7 @@ struct ravg {
 	u32 prev_window_cpu[NR_CPUS];
 	u32 curr_window, prev_window;
 	u16 active_windows;
-#ifdef CONFIG_SCHED_HISI_MIGRATE_BACK_LOWER_LOAD
+#ifdef CONFIG_SCHED_HISI_MIGRATE_SPREAD_LOAD
 	cpumask_t prev_cpus, curr_cpus;
 #endif
 #ifdef CONFIG_SCHED_HISI_TOP_TASK
@@ -1941,7 +1941,7 @@ struct task_struct {
 
 	struct mm_struct *mm, *active_mm;
 	/* per-thread vma caching */
-	u32 vmacache_seqnum;
+	u64 vmacache_seqnum;
 	struct vm_area_struct *vmacache[VMACACHE_SIZE];
 #if defined(SPLIT_RSS_COUNTING)
 	struct task_rss_stat	rss_stat;
@@ -2757,6 +2757,8 @@ static inline void memalloc_noio_restore(unsigned int flags)
 #define PFA_SPREAD_PAGE  1      /* Spread page cache over cpuset */
 #define PFA_SPREAD_SLAB  2      /* Spread some slab caches over cpuset */
 #define PFA_LMK_WAITING  3      /* Lowmemorykiller is waiting */
+#define PFA_SPEC_SSB_DISABLE		4	/* Speculative Store Bypass disabled */
+#define PFA_SPEC_SSB_FORCE_DISABLE	5	/* Speculative Store Bypass force disabled*/
 
 #define PFA_SLEEP_ON_THROTL	25
 #define PFA_FLUSHER		26
@@ -2802,6 +2804,13 @@ TASK_PFA_CLEAR(IN_PAGEFAULT, in_pagefault)
 TASK_PFA_TEST(IN_WB_THRD, in_wb_thrd)
 TASK_PFA_SET(IN_WB_THRD, in_wb_thrd)
 TASK_PFA_CLEAR(IN_WB_THRD, in_wb_thrd)
+
+TASK_PFA_TEST(SPEC_SSB_DISABLE, spec_ssb_disable)
+TASK_PFA_SET(SPEC_SSB_DISABLE, spec_ssb_disable)
+TASK_PFA_CLEAR(SPEC_SSB_DISABLE, spec_ssb_disable)
+
+TASK_PFA_TEST(SPEC_SSB_FORCE_DISABLE, spec_ssb_force_disable)
+TASK_PFA_SET(SPEC_SSB_FORCE_DISABLE, spec_ssb_force_disable)
 
 /*
  * task->jobctl flags

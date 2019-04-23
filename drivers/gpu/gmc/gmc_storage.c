@@ -68,15 +68,19 @@ static struct kmem_cache *gmc_storage_handle_cache;
 
 static struct gmc_storage_handle *gmc_storage_handle_create(void)
 {
-	struct gmc_storage_handle *handle;
+	struct gmc_storage_handle *handle = NULL;
+	int ret = 0;
 
 	handle = kmem_cache_alloc(gmc_storage_handle_cache, GFP_KERNEL);
-	if (!handle) {
+	if (handle == NULL) {
 		pr_err("Unable to allocate storage handle.\n");
 		return ERR_PTR(-ENOMEM);
 	}
 
-	memset_s(handle, sizeof(*handle), 0, sizeof(*handle));
+	ret = memset_s(handle, sizeof(*handle), 0, sizeof(*handle));
+	if (ret != 0) {
+		pr_err("memset_s failed\n");
+	}
 	handle->size = PAGE_SIZE;
 
 	return handle;
@@ -84,7 +88,7 @@ static struct gmc_storage_handle *gmc_storage_handle_create(void)
 
 static void gmc_storage_handle_destroy(struct gmc_storage_handle *handle)
 {
-	if (!handle)
+	if (handle == NULL)
 		return;
 
 	kmem_cache_free(gmc_storage_handle_cache, handle);
@@ -187,7 +191,7 @@ static int compress_page(struct page *page, u8 *buff, unsigned int *dsizep)
 static int store_data(struct gmc_storage *storage, u8 *buff, unsigned int size,
 		unsigned long *handlep)
 {
-	void *zpagep;
+	void *zpagep = NULL;
 	int ret;
 
 	spin_lock(&storage->zpool_lock);
@@ -236,10 +240,10 @@ static int is_well_compressed(unsigned int size)
 struct gmc_storage_handle *gmc_storage_put_page(struct gmc_storage *storage,
 		struct page *page)
 {
-	struct gmc_storage_handle *storage_handle;
+	struct gmc_storage_handle *storage_handle = NULL;
 	unsigned long handle = 0;
 	unsigned int dsize = 0;
-	u8 *buff;
+	u8 *buff = NULL;
 
 	int err = 0;
 
@@ -343,7 +347,7 @@ static int decompress_page(struct page *page, u8 *src, unsigned int size)
 int gmc_storage_get_page(struct gmc_storage *storage,
 		struct page *page, struct gmc_storage_handle *handle)
 {
-	u8 *src;
+	u8 *src = NULL;
 	int ret;
 
 	if (gmc_storage_handle_is_zeroed(handle)) {
@@ -419,17 +423,17 @@ static struct zpool_ops gmc_storage_zpool_ops = {
  */
 struct gmc_storage *gmc_storage_create(void)
 {
-	struct gmc_storage *storage;
-	struct zpool *zpool;
+	struct gmc_storage *storage = NULL;
+	struct zpool *zpool = NULL;
 
 	storage = kmalloc(sizeof *storage, GFP_KERNEL);
-	if (!storage)
+	if (storage == NULL)
 		goto error;
 
 	zpool = zpool_create_pool(gmc_storage_allocator_str,
 			"gmc_storage_zpool", __GFP_NORETRY | __GFP_NOWARN,
 			&gmc_storage_zpool_ops);
-	if (!zpool) {
+	if (zpool == NULL) {
 		pr_err("Unable to create zpool.\n");
 		goto error_free_storage;
 	}
@@ -455,7 +459,7 @@ EXPORT_SYMBOL(gmc_storage_create);
  */
 void gmc_storage_destroy(struct gmc_storage *storage)
 {
-	if (!storage)
+	if (storage == NULL)
 		return;
 
 	zpool_destroy_pool(storage->zpool);
@@ -466,9 +470,9 @@ EXPORT_SYMBOL(gmc_storage_destroy);
 static int gmc_storage_cpu_notifier(struct notifier_block *nb,
 		unsigned long notification, void *hcpu)
 {
-	long cpu = (long) hcpu;
-	struct crypto_comp *cc;
-	u8 *buff;
+	long cpu = (long)(uintptr_t)hcpu;
+	struct crypto_comp *cc = NULL;
+	u8 *buff = NULL;
 
 	switch (notification) {
 	case CPU_UP_PREPARE:
@@ -481,7 +485,7 @@ static int gmc_storage_cpu_notifier(struct notifier_block *nb,
 		per_cpu(gmc_storage_cc, cpu) = cc;
 		buff = kmalloc_node(PAGE_SIZE << 1, GFP_KERNEL,
 				cpu_to_node(cpu));
-		if (!buff) {
+		if (buff == NULL) {
 			pr_err("Unable to allocate compression buffer.\n");
 			crypto_free_comp(cc);
 			per_cpu(gmc_storage_cc, cpu) = NULL;
@@ -492,7 +496,7 @@ static int gmc_storage_cpu_notifier(struct notifier_block *nb,
 	case CPU_DEAD:
 	case CPU_UP_CANCELED:
 		cc = per_cpu(gmc_storage_cc, cpu);
-		if (cc) {
+		if (cc != NULL) {
 			crypto_free_comp(cc);
 			per_cpu(gmc_storage_cc, cpu) = NULL;
 		}
@@ -512,7 +516,7 @@ static struct notifier_block gmc_storage_cpu_notifier_block = {
 
 static __init int gmc_storage_init(void)
 {
-	long cpu;
+	long cpu = 0;
 
 	cpu_notifier_register_begin();
 	for_each_online_cpu(cpu) {
@@ -526,7 +530,7 @@ static __init int gmc_storage_init(void)
 	gmc_storage_handle_cache = kmem_cache_create("gmc_storage_handle_cache",
 			sizeof (struct gmc_storage_handle),
 			__alignof__(struct gmc_storage_handle), 0, NULL);
-	if (!gmc_storage_handle_cache) {
+	if (gmc_storage_handle_cache == NULL) {
 		pr_err("Unable to create a cache for GMC storage handles.\n");
 		goto backtrack;
 	}
@@ -535,7 +539,7 @@ static __init int gmc_storage_init(void)
 
 backtrack:
 	for_each_online_cpu(cpu)
-		gmc_storage_cpu_notifier(NULL, CPU_UP_CANCELED, (void *)cpu);
+		gmc_storage_cpu_notifier(NULL, CPU_UP_CANCELED, (void *)(uintptr_t)cpu);
 	cpu_notifier_register_done();
 
 	return -ENOMEM;

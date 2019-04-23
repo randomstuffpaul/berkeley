@@ -35,6 +35,9 @@ struct kernel_dump_cb
     u64 mbr_size; /*the size of struct memblock_region, the size of which is depended on kernel configuration. */
     u64 text_kaslr_offset;/*text offset for kaslr*/
     u64 linear_kaslr_offset;/*linear mem offset for kaslr*/
+
+	u32 crc;
+	u32 resv;
 };
 #ifdef CONFIG_KERNELDUMP_KO_DBG
 extern int ko_dump(void);

@@ -173,6 +173,11 @@ int block_fix_scf_constraint(dss_overlay_t *pov_req, dss_overlay_block_t *pov_h_
 	dss_rect_t scf_dst_rect[MAX_OFFLINE_LAYER_NUMBER];
 	dss_layer_t *layer = NULL;
 
+	if (pov_req == NULL) {
+		HISI_FB_ERR("pov_req is NULL point.\n");
+		return -1;
+	}
+
 	if (pov_h_block == NULL) {
 		HISI_FB_ERR("pov_h_block is NULL point.\n");
 		return -1;
@@ -249,10 +254,16 @@ int adjust_layers_cap(dss_overlay_t *pov_req, dss_overlay_block_t *pov_h_block, 
 	uint32_t stretch_line_num = 0;
 	dss_rect_t temp_rect;
 
+	if (NULL == pov_req) {
+		HISI_FB_ERR("pov_req is NULL");
+		return -EINVAL;
+	}
+
 	if (NULL == pov_h_block) {
 		HISI_FB_ERR("pov_h_block is NULL");
 		return -EINVAL;
 	}
+
 	if (NULL == wb_layer) {
 		HISI_FB_ERR("wb_layer is NULL");
 		return -EINVAL;
@@ -888,6 +899,11 @@ int get_wb_layer_block_rect(dss_wb_layer_t *wb_layer, bool has_wb_scl, dss_rect_
 {
 	if (wb_layer == NULL) {
 		HISI_FB_ERR("wb_layer is NULL point!\n");
+		return -1;
+	}
+
+	if (wb_layer_block_rect == NULL) {
+		HISI_FB_ERR("wb_layer_block_rect is NULL point!\n");
 		return -1;
 	}
 

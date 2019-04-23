@@ -1926,7 +1926,6 @@ static ssize_t ts_oem_info_store(struct device *dev,
 	char *cur;
 	char *token;
 	int i = 0;
-	struct lcd_kit_ops *lcd_ops = lcd_kit_get_ops();
 	TS_LOG_INFO("%s: called\n", __func__);
 
 	if (dev == NULL) {
@@ -1950,7 +1949,7 @@ static ssize_t ts_oem_info_store(struct device *dev,
 		goto out;
 	}
 
-	if (strlen(buf) > TS_GAMMA_DATA_MAX_SIZE - 1) {
+	if (strlen(buf) > TS_CHIP_TYPE_MAX_SIZE + 1) {
 		TS_LOG_ERR
 		    ("%s: Store TPIC type data size= %d larger than MAX input size=%d \n",
 		     __func__, strlen(buf), TS_CHIP_TYPE_MAX_SIZE);
@@ -1978,18 +1977,6 @@ static ssize_t ts_oem_info_store(struct device *dev,
 		TS_LOG_ERR("%s: put cmd error :%d\n", __func__, error);
 		error = -EBUSY;
 		goto free_cmd;
-	}
-	if (info->status != TS_ACTION_SUCCESS) {
-		TS_LOG_ERR("ts_oem_info_store action failed\n");
-		error = -EIO;
-		goto out;
-	}
-	if((lcd_ops) && (lcd_ops->write_otp_gamma) && g_ts_kit_platform_data.chip_data->support_gammadata_in_tp) {
-		error = lcd_ops->write_otp_gamma(info->data);
-		if(error < 0) {
-			TS_LOG_ERR("%s: get pt station status fail\n", __func__);
-			goto out;
-		}
 	}
 
 	error = count;
@@ -2254,7 +2241,7 @@ out:
 /*lint -restore*/
 static DEVICE_ATTR(touch_chip_info, (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH),
 		   ts_chip_info_show, ts_chip_info_store);
-static DEVICE_ATTR(calibrate, S_IRUSR, ts_calibrate_show, NULL);
+static DEVICE_ATTR(calibrate, (S_IRUSR|S_IRGRP), ts_calibrate_show, NULL);
 static DEVICE_ATTR(calibrate_wakeup_gesture, S_IRUSR,
 		   ts_calibrate_wakeup_gesture_show, NULL);
 static DEVICE_ATTR(touch_glove, (S_IRUSR | S_IWUSR), ts_glove_mode_show,
@@ -2264,7 +2251,7 @@ static DEVICE_ATTR(touch_sensitivity, (S_IRUSR | S_IWUSR), ts_sensitivity_show,
 static DEVICE_ATTR(hand_detect, S_IRUSR, ts_hand_detect_show, NULL);
 static DEVICE_ATTR(loglevel, (S_IRUSR | S_IWUSR), ts_loglevel_show,
 		   ts_loglevel_store);
-static DEVICE_ATTR(supported_func_indicater, (S_IRUSR),
+static DEVICE_ATTR(supported_func_indicater, (S_IRUSR|S_IRGRP),
 		   ts_supported_func_indicater_show, NULL);
 static DEVICE_ATTR(touch_window, (S_IRUSR | S_IWUSR), ts_touch_window_show,
 		   ts_touch_window_store);

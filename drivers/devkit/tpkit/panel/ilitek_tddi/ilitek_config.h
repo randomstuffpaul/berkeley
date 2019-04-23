@@ -4,6 +4,8 @@
 #define ILITEK_ICE_MODE_CMD_LEN                4
 #define ILITEK_ICE_MODE_W_MAX_LEN              64
 
+#define ILITEK_DEBUG_REG_PC_CONT               0x44008
+
 #define CONFIG_CHIP_INFO(_chip_id, _addr1, _addr2, _addr3, _addr4,\
     _delay1, _delay2, _delay3) \
     { \

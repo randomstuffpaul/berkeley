@@ -418,12 +418,6 @@ struct mmc_host *mmc_alloc_host(int extra, struct device *dev)
 	device_enable_async_suspend(&host->class_dev);
 
 	/* HISI do not use slot gpio */
-#if 0
-	if (mmc_gpio_alloc(host)) {
-		put_device(&host->class_dev);
-		return NULL;
-	}
-#endif
 
 	spin_lock_init(&host->lock);
 	init_waitqueue_head(&host->wq);

@@ -57,11 +57,11 @@ void pd_dpm_send_event(enum pd_dpm_cable_event_type event);
 //TODO: Update DP to use data objects, not U32
 void FUSB3601_requestDpStatus(struct Port *port)
 {
-  IN_FUNCTION
   doDataObject_t svdmh = {0};
   FSC_U32 length = 0;
   FSC_U32 arr[2] = {0};
   doDataObject_t temp[2] = {{0}};
+  IN_FUNCTION
   svdmh.SVDM.SVID = DP_SID;
   svdmh.SVDM.VDMType = STRUCTURED_VDM;
   svdmh.SVDM.Version = STRUCTURED_VDM_VERSION;
@@ -84,11 +84,11 @@ void FUSB3601_requestDpStatus(struct Port *port)
 
 void FUSB3601_requestDpConfig(struct Port *port)
 {
-  IN_FUNCTION
   doDataObject_t svdmh = {0};
   FSC_U32 length = 0;
   FSC_U32 arr[2] = {0};
   doDataObject_t temp[2] = {{0}};
+  IN_FUNCTION
   FUSB3601_platform_log(port->port_id_, "FUSB Request DP Config, DPCaps: ", port->display_port_data_.DpCaps.word);
   FUSB3601_platform_log(port->port_id_, "FUSB Request DP Config, DpPpStatus", port->display_port_data_.DpPpStatus.word);
 
@@ -268,10 +268,10 @@ void FUSB3601_resetDp(struct Port *port)
 
 FSC_BOOL FUSB3601_processDpCommand(struct Port *port, FSC_U32* arr_in)
 {
-  IN_FUNCTION
-	doDataObject_t svdmh_in = {0};
+  	doDataObject_t svdmh_in = {0};
 	DisplayPortStatus_t stat;
 	DisplayPortConfig_t config;
+	IN_FUNCTION
 
 	if (port->display_port_data_.DpEnabled == FALSE) return TRUE;
 
@@ -330,9 +330,9 @@ FSC_BOOL FUSB3601_processDpCommand(struct Port *port, FSC_U32* arr_in)
 
 FSC_BOOL FUSB3601_dpEvaluateModeEntry(struct Port *port, FSC_U32 mode_in)
 {
-  IN_FUNCTION
   DisplayPortCaps_t field_mask = {0};
   DisplayPortCaps_t temp = {0};
+  IN_FUNCTION
   if (port->display_port_data_.DpEnabled == FALSE) return FALSE;
   if (port->display_port_data_.DpAutoModeEntryEnabled == FALSE) return FALSE;
 
@@ -387,11 +387,11 @@ void FUSB3601_configAutoDpModeEntry(struct Port *port, FSC_BOOL enabled,
 
 void FUSB3601_sendStatusData(struct Port *port, doDataObject_t svdmh_in)
 {
-  IN_FUNCTION
   doDataObject_t svdmh_out = {0};
   FSC_U32 length_out = 0;
   FSC_U32 arr_out[2] = {0};
   doDataObject_t temp[2] = {{0}};
+  IN_FUNCTION
 
   port->display_port_data_.DpStatus.Enabled = 1;
 
@@ -415,11 +415,11 @@ void FUSB3601_sendStatusData(struct Port *port, doDataObject_t svdmh_in)
 void FUSB3601_replyToConfig(struct Port *port, doDataObject_t svdmh_in,
                                 FSC_BOOL success)
 {
-  IN_FUNCTION
   doDataObject_t svdmh_out = {0};
   FSC_U32 length_out = 0;
   FSC_U32 arr_out[2] = {0};
   doDataObject_t temp[2] = {{0}};
+  IN_FUNCTION
 
   /*  Reflect most fields */
   svdmh_out.object = svdmh_in.object;

@@ -189,7 +189,8 @@
 #define ROI_READY_MASK    0x10
 #define ROI_TRACKID_MASK  0x0f
 
-
+#define PULL_DOWN 0
+#define PULL_UP 1
 #define GT1X_OF_NAME	"gt1x"
 #define GT1X_RETRY_NUM 		3
 #define GT1X_RETRY_FIVE	5
@@ -335,8 +336,8 @@ struct gt1x_ts_roi {
 
 struct roi_matrix {
 	short *data;
-	int row;
-	int col;
+	unsigned int row;
+	unsigned int col;
 };
 
 struct gt1x_ts_data;
@@ -450,6 +451,7 @@ struct gt1x_ts_data {
 	int fw_only_depend_on_lcd;//0 : fw depend on TP and others ,1 : fw only depend on lcd.
 	char lcd_panel_info[LCD_PANEL_INFO_MAX_LEN];
 	char  lcd_module_name[MAX_STR_LEN];
+	int init_delay;
 };
 
 #define IC_TYPE_9PT 0

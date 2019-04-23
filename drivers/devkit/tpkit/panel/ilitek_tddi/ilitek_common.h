@@ -52,6 +52,12 @@
  * 2018-8-8
  * 1 driver send sleep pt_cmd to firmware in power test mode to fix high power consumption bug.
  * 2 set 'use_lcdkit_power_notify' 1 to close fb_notify, tddi use lcdkit power notfiy not fb notify.
+ * 2018-8-24
+ * 1 fix free mp_test data resource bug when operating capacitance test node asynchronously.
+ * 2 update mp_test driver,add some debug log.
+ * 2018-9-17
+ * 1 fix cdc timeout bug when switching to mp test mode.
+ * 2 fix i2c operation error after fw checked.
  */
 #define DRIVER_VERSION                         "1.1.3.1"
 #define CSV_PATH                               "/data/local/tmp"

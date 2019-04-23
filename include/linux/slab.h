@@ -32,6 +32,10 @@
 #define SLAB_CLEAR              0x00000200UL    /* Clear object when it is freed */
 #endif
 
+#ifdef CONFIG_HW_SLUB_DF
+#define SLAB_DOUBLEFREE_CHECK              0x00001000UL    /*Enable double free check dynamically*/
+#endif
+
 /*
  * SLAB_DESTROY_BY_RCU - **WARNING** READ THIS!
  *

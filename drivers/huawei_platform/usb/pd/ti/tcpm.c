@@ -516,20 +516,21 @@ static void tcpm_set_state(tcpc_device_t *dev, tcpc_state_t new_state)
 	return;
 }
 
+#ifdef ENABLE_UGREEN_DEVICE_QUIRK
 static void timeout_ugreen_device_quirk_debounce(unsigned int port)
 {
 	unsigned int cc1, cc2;
 	tcpc_device_t *dev = &tcpc_dev[port];
 
 	PRINT("%s\n", __func__);
-	tcpc_write8(port, TCPC_REG_ROLE_CTRL, 
+	tcpc_write8(port, TCPC_REG_ROLE_CTRL,
 				tcpc_reg_role_ctrl_set(false, RP_HIGH_CURRENT, CC_RP, CC_RP));
 	TCPC_POLLING_DELAY();
 	tcpc_read8(port, TCPC_REG_CC_STATUS, &dev->cc_status);
 	cc1 = TCPC_CC1_STATE(dev->cc_status);
 	cc2 = TCPC_CC2_STATE(dev->cc_status);
 	PRINT("cc1 = %u, cc2 = %u\n", cc1, cc2);
-	if ((cc1 == CC_SRC_STATE_RD) && 
+	if ((cc1 == CC_SRC_STATE_RD) &&
 		(cc2 == CC_SRC_STATE_RD))
 	{
 		tcpm_set_state(dev, TCPC_STATE_UNORIENTED_DEBUG_ACC_SRC);
@@ -540,6 +541,8 @@ static void timeout_ugreen_device_quirk_debounce(unsigned int port)
 	}
 	return;
 }
+#endif /* ENABLE_UGREEN_DEVICE_QUIRK */
+
 static void timeout_cc_debounce(unsigned int port)
 {
 	unsigned int cc1, cc2;
@@ -1914,7 +1917,6 @@ static void tcpm_handle_cc_connected_state(tcpc_device_t *dev)
 static void alert_cc_status_handler(tcpc_device_t *dev)
 {
 	unsigned int cc1, cc2;
-	usb_pd_port_t *pd_dev = usb_pd_pe_get_device(dev->port);
 
 	// Read CC status.
 	tcpc_read8(dev->port, TCPC_REG_CC_STATUS, &dev->cc_status);

@@ -12,6 +12,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/clk.h>
 #include <linux/of_gpio.h>
+#include <linux/of_device.h>
 
 #include <linux/hisi/usb/hisi_usb.h>
 #include <linux/pm_runtime.h>
@@ -278,7 +279,6 @@ int create_attr_file(struct device *dev)
 #else
 static inline int create_attr_file(struct device *dev) {return 0; }
 #endif
-
 
 int get_resource(struct otg_dev *dev)
 {
@@ -1278,24 +1278,20 @@ void cancel_bc_again(struct otg_dev *p, int sync)
 	usb_dbg("-\n");
 }
 
-static int conndone_notifier_fn(struct notifier_block *nb,
-			unsigned long action, void *data)
+void hisi_usb_cancel_bc_again(int sync)
 {
-	struct otg_dev *dev_p = container_of(nb,
-			 struct otg_dev, conndone_nb);
-
-	usb_dbg("+\n");
-	cancel_bc_again(dev_p, 0);
-	if (dev_p->charger_type == CHARGER_TYPE_UNKNOWN) {
-		dev_p->charger_type = CHARGER_TYPE_SDP;
+	if (!otg_dev_p) {
+		usb_err("otg_dev_p is null\n");
+		return;
 	}
-	usb_dbg("-\n");
-	return 0;
+	cancel_bc_again(otg_dev_p, sync);
+	if (otg_dev_p->charger_type == CHARGER_TYPE_UNKNOWN) {
+		otg_dev_p->charger_type = CHARGER_TYPE_SDP;
+	}
 }
 
 int hisi_usb_bc_init(struct otg_dev *p)
 {
-	int ret;
 	struct device *dev = &p->pdev->dev;
 
 	usb_dbg("+\n");
@@ -1314,23 +1310,8 @@ int hisi_usb_bc_init(struct otg_dev *p)
 	} else
 		p->bc_unknown_again_flag = 0;
 
-	p->conndone_nb.notifier_call = conndone_notifier_fn;
-	ret = dwc_conndone_notifier_register(&p->conndone_nb);
-	if (ret) {
-		usb_err("dwc_conndone_notifier_register failed\n");
-		return ret;
-	}
-
 	usb_dbg("-\n");
 	return 0;
-}
-
-void hisi_usb_bc_exit(struct otg_dev *p)
-{
-	usb_dbg("+\n");
-	dwc_conndone_notifier_unregister(&p->conndone_nb);
-	p->conndone_nb.notifier_call = NULL;
-	usb_dbg("-\n");
 }
 
 /*
@@ -1868,7 +1849,7 @@ int dwc_otg_hicommon_probe(struct otg_dev *dev_p)
 
 	ret = hisi_usb_bc_init(dev_p);
 	if (ret)
-		usb_err("dwc_conndone_notifier_register failed\n");
+		usb_err("hisi_usb_bc_init failed\n");
 
 	ret = hw_setup(dev_p, 0);
 	if (ret) {
@@ -1922,6 +1903,10 @@ int dwc_otg_hicommon_probe(struct otg_dev *dev_p)
 	lm_dev->dev.init_name = "hisi-usb-otg";
 	/* lm_dev->dev.parent = &pdev->dev; */
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0))
+	of_dma_configure(&lm_dev->dev, pdev->dev.of_node);
+#endif
+
 	ret = lm_device_register(lm_dev);
 	if (ret) {
 		usb_err("register dwc otg device failed\n");
@@ -1943,17 +1928,12 @@ int dwc_otg_hicommon_probe(struct otg_dev *dev_p)
 error:
 	hw_shutdown(dev_p);
 	put_resource(dev_p);
-	hisi_usb_bc_exit(dev_p);
 	return ret;
 
 }
 
 int dwc_otg_hicommon_remove(struct otg_dev *dev_p)
 {
-	if (dev_p->bc_again_flag) {
-		hisi_usb_bc_exit(dev_p);
-	}
-
 	if ((dev_p->status == OTG_DEV_DEVICE) || (dev_p->status == OTG_DEV_HOST)) {
 		hw_shutdown(dev_p);
 	}

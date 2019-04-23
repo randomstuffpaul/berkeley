@@ -31,6 +31,10 @@
 #define RAWDATA_NO_BK_DATA_SHIFT_9881H         8192
 #define RAWDATA_NO_BK_DATA_SHIFT_9881F         4096
 
+#define ILITEK_DEBUG_CRC_RETRYS                 50
+/* last 4 bytes are crc in fw, others are mp fw size */
+#define ILITEK_DEBUG_MP_FW_SIZE                 (36 * 1024 - 4)
+
 /* must match with tItems */
 typedef enum mp_tests {
     MP_TEST_MUTUAL_DAC,

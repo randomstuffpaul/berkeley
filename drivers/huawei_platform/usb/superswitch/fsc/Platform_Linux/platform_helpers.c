@@ -48,6 +48,8 @@ const char* FUSB3601_DT_INTERRUPT_INTN =    "fsc_interrupt_int_n";
 extern struct workqueue_struct *system_highpri_wq;
 extern int state_machine_need_resched;
 
+#define FUSB_FORCE_ROLESWAP_TIMEOUT  500 * 1000
+
 /* Internal forward declarations */
 static irqreturn_t FUSB3601__fusb_isr_intn(int irq, void *dev_id);
 
@@ -103,7 +105,8 @@ static void FUSB3601_force_source(struct dual_role_phy_instance *dual_role)
 	}
 	hwlog_info("FUSB  %s - Force State Source\n",__func__);
 	FUSB3601_ConfigurePortType(0x95,&chip->port);
-	FUSB3601_fusb_StartTimer(&chip->timer_force_timeout, 1500*1000);
+	FUSB3601_fusb_StartTimer(&chip->timer_force_timeout,
+					FUSB_FORCE_ROLESWAP_TIMEOUT);
 
 #ifdef CONFIG_DUAL_ROLE_USB_INTF
 	if(dual_role){
@@ -122,7 +125,8 @@ static void FUSB3601_force_sink(struct dual_role_phy_instance *dual_role)
 	}
 	hwlog_info("FUSB  %s - Force State Sink\n",__func__);
 	FUSB3601_ConfigurePortType(0x90,&chip->port);
-	FUSB3601_fusb_StartTimer(&chip->timer_force_timeout, 1500*1000);
+	FUSB3601_fusb_StartTimer(&chip->timer_force_timeout,
+					FUSB_FORCE_ROLESWAP_TIMEOUT);
 #ifdef CONFIG_DUAL_ROLE_USB_INTF
 	if(dual_role){
 		dual_role_instance_changed(dual_role);

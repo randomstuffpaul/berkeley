@@ -607,7 +607,7 @@ static s8 gup_update_config(void)
     update_msg.cfg_file->f_op->llseek(update_msg.cfg_file, 0, SEEK_SET);
 
     GTP_DEBUG("[update_cfg]Read config from file.");
-    ret = update_msg.cfg_file->f_op->read(update_msg.cfg_file, (char*)pre_buf, file_len, &update_msg.cfg_file->f_pos);
+    ret = vfs_read(update_msg.cfg_file, pre_buf, file_len, &update_msg.cfg_file->f_pos);
     if(ret<0)
     {
         GTP_ERROR("[update_cfg]Read config file failed.");
@@ -848,7 +848,7 @@ static u8 gup_check_update_file(st_fw_head* fw_head)
     GTP_DEBUG("Bin firmware actual size: %d(%dK)", update_msg.fw_total_len, update_msg.fw_total_len/1024);
 
     update_msg.file->f_op->llseek(update_msg.file, 0, SEEK_SET);
-    ret = update_msg.file->f_op->read(update_msg.file, (char*)buf, FW_HEAD_LENGTH, &update_msg.file->f_pos);
+    ret = vfs_read(update_msg.file, buf, FW_HEAD_LENGTH, &update_msg.file->f_pos);
     if (ret < 0)
     {
 		set_fs(update_msg.old_fs);
@@ -863,7 +863,7 @@ static u8 gup_check_update_file(st_fw_head* fw_head)
     for(i=0; i<update_msg.fw_total_len; i+=2)
     {
         u16 temp;
-        ret = update_msg.file->f_op->read(update_msg.file, (char*)buf, 2, &update_msg.file->f_pos);
+        ret = vfs_read(update_msg.file, buf, 2, &update_msg.file->f_pos);
         if (ret < 0)
         {
 			set_fs(update_msg.old_fs);
@@ -985,7 +985,7 @@ static u8 gup_load_section_file(u8 *buf, u32 offset, u16 length, u8 set_or_end)
             update_msg.file->f_pos = update_msg.fw_total_len + FW_HEAD_LENGTH - offset;
         }
 
-        ret = update_msg.file->f_op->read(update_msg.file, (char *)buf, length, &update_msg.file->f_pos);
+        ret = vfs_read(update_msg.file, buf, length, &update_msg.file->f_pos);
 
         if (ret < 0)
         {

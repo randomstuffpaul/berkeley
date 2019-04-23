@@ -61,6 +61,9 @@ struct resmgr_config {
 	int (*enable_ibias)(struct snd_soc_codec *);
 	int (*disable_ibias)(struct snd_soc_codec *);
 
+	int (*enable_supply)(struct snd_soc_codec *);
+	int (*disable_supply)(struct snd_soc_codec *);
+
 	void (*hi64xx_hs_high_resistance_enable)(struct snd_soc_codec *, bool);
 };
 

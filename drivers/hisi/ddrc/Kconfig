@@ -37,3 +37,16 @@ config KIRIN970_DDR_AUTO_FSGT
 config DDR_AUTO_FSGT
        bool "ddr autofs/autogt"
        default n
+
+config HISI_DDR_CETUS
+       bool "Hisi ddr cetus platform"
+       default n
+
+config HISI_DDR_PERSEUS
+       bool "Hisi ddr perseus platform"
+       default n
+
+config HISI_DDR_URSA
+       bool "Hisi ddr ursa platform"
+       default n
+

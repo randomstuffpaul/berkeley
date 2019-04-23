@@ -114,8 +114,8 @@ int kbasep_pm_metrics_init(struct kbase_device *kbdev)
 #endif /* CONFIG_MALI_MIDGARD_DVFS */
 
 	/* MALI_HISI_INTEGRATION */
-	if(kbdev->hisi_callbacks->cl_boost_init)
-		kbdev->hisi_callbacks->cl_boost_init(kbdev);
+	if(kbdev->hisi_dev_data.callbacks->cl_boost_init)
+		kbdev->hisi_dev_data.callbacks->cl_boost_init(kbdev);
 
 	return 0;
 }
@@ -240,9 +240,9 @@ void kbase_pm_get_dvfs_action(struct kbase_device *kbdev)
 #endif
 
 	busy = max(diff->busy_gl + diff->busy_cl[0] + diff->busy_cl[1], 1u);
-	util_gl_share = (100 * diff->busy_gl) / busy;
-	util_cl_share[0] = (100 * diff->busy_cl[0]) / busy;
-	util_cl_share[1] = (100 * diff->busy_cl[1]) / busy;
+	util_gl_share = (100 * diff->busy_gl) / busy;//lint !e573
+	util_cl_share[0] = (100 * diff->busy_cl[0]) / busy;//lint !e573
+	util_cl_share[1] = (100 * diff->busy_cl[1]) / busy;//lint !e573
 
 	kbdev->pm.backend.metrics.cl_boost = util_cl_share[0] > 0 || util_cl_share[1] > 0;
 	kbdev->pm.backend.metrics.utilisation = utilisation;
@@ -273,6 +273,7 @@ KBASE_EXPORT_TEST_API(kbase_pm_metrics_is_active);
  *
  * The caller must hold kbdev->pm.backend.metrics.lock
  */
+/*lint -e661*/
 static void kbase_pm_metrics_active_calc(struct kbase_device *kbdev)
 {
 	int js;
@@ -313,7 +314,7 @@ static void kbase_pm_metrics_active_calc(struct kbase_device *kbdev)
 		}
 	}
 }
-
+/*lint +e661*/
 /* called when job is submitted to or removed from a GPU slot */
 void kbase_pm_metrics_update(struct kbase_device *kbdev, ktime_t *timestamp)
 {

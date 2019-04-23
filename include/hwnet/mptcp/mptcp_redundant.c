@@ -3,6 +3,11 @@
  *
  *	This scheduler sends all packets redundantly on all available subflows.
  *
+ *  If application set threshold, interface use mode will be decided based on primary link latency.
+ *  The threshold will be compared with primary link latency.
+ *  If it is less, there will be only primary link used, otherwise both primary
+ *  and secondary link will be used.
+ *
  *	Initial Design & Implementation:
  *	Tobias Erbshaeusser <erbshauesser@dvs.tu-darmstadt.de>
  *	Alexander Froemmgen <froemmge@dvs.tu-darmstadt.de>
@@ -19,6 +24,21 @@
 
 #include <linux/module.h>
 #include <net/mptcp.h>
+#include <linux/inet.h>
+#ifdef CONFIG_HUAWEI_XENGINE
+#include <huawei_platform/emcom/emcom_xengine.h>
+#endif
+
+enum  SCHED_STATE {
+	SCHED_PRIM_ONLY,
+	SCHED_REDUNDANT,
+	SCHED_SECO_ONLY,
+	SCHED_UNDEFINED,
+};
+
+#define SCHED_REDUNDANT_JIFFIES	msecs_to_jiffies(1000)
+#define SCHED_SECO_ONLY_JIFFIES	msecs_to_jiffies(10000)
+#define SCHED_MIN_JIFFIES	msecs_to_jiffies(100)
 
 /* Struct to store the data of a single subflow */
 struct redsched_sock_data {
@@ -28,12 +48,16 @@ struct redsched_sock_data {
 	 * to be valid before the skb field is used
 	 */
 	u32 skb_end_seq;
+	u32 is_not_newly_added;
 };
 
 /* Struct to store the data of the control block */
 struct redsched_cb_data {
 	/* The next subflow where a skb should be sent or NULL */
 	struct tcp_sock *next_subflow;
+	u32 sched_state;
+	u32 ts;
+	u32 ts_last_sched;
 };
 
 /* Returns the socket data from a given subflow socket */
@@ -48,7 +72,7 @@ static struct redsched_cb_data *redsched_get_cb_data(struct tcp_sock *tp)
 	return (struct redsched_cb_data *)&tp->mpcb->mptcp_sched[0];
 }
 
-static bool redsched_get_active_valid_sks(struct sock *meta_sk)
+static int redsched_get_active_valid_sks(struct sock *meta_sk)
 {
 	struct tcp_sock *meta_tp = tcp_sk(meta_sk);
 	struct mptcp_cb *mpcb = meta_tp->mpcb;
@@ -60,7 +84,6 @@ static bool redsched_get_active_valid_sks(struct sock *meta_sk)
 		    !mptcp_is_def_unavailable(sk))
 			active_valid_sks++;
 	}
-
 	return active_valid_sks;
 }
 
@@ -182,6 +205,318 @@ static struct sk_buff *redundant_next_skb_from_queue(struct sk_buff_head *queue,
 	return skb_queue_next(queue, previous);
 }
 
+#ifdef CONFIG_HUAWEI_XENGINE
+
+static void xengine_report_mptcp_path_switch(struct tcp_sock *primary,
+					    struct tcp_sock *secondly)
+{
+	struct mptcp_hw_ext_sock_path_switch report;
+	struct sock *meta_sk;
+	struct sock *from_sk, *to_sk;
+	struct dst_entry *dst;
+
+	if (!primary || !secondly) {
+		mptcp_debug("%s: subflow is NULL \n", __func__);
+		return;
+	}
+
+	meta_sk = primary->meta_sk;
+	if (!meta_sk || !meta_sk->sk_socket) {
+		mptcp_debug("%s: sk is NULL \n", __func__);
+		return;
+	}
+
+	(void)memset(&report, 0, sizeof(report));
+	if (tcp_sk(meta_sk)->mptcp_cap_flag == MPTCP_CAP_PID_FD) {
+		report.sock.type = (enum mptcp_hw_ext_sock_cap)MPTCP_CAP_PID_FD;
+		report.sock.uid = sock_i_uid(meta_sk).val;
+		report.sock.pid = meta_sk->sk_socket->pid;
+		report.sock.fd = meta_sk->sk_socket->fd;
+		mptcp_debug("%s: uid:%d pid:%d fd:%d mptcp sock\n", __func__,
+			report.sock.uid, report.sock.pid, report.sock.fd);
+	} else {
+		char ip_str[INET_ADDRSTRLEN];
+
+		if (tcp_sk(meta_sk)->mptcp_cap_flag == MPTCP_CAP_UID)
+			report.sock.type = (enum mptcp_hw_ext_sock_cap)MPTCP_CAP_UID;
+		else
+			report.sock.type = (enum mptcp_hw_ext_sock_cap)MPTCP_CAP_UID_DIP_DPORT;
+
+		report.sock.uid = sock_i_uid(meta_sk).val;
+		report.sock.dip = meta_sk->sk_daddr;
+		if (mptcp_hw_ext_get_port_key(meta_sk, report.sock.port,
+			sizeof(report.sock.port)) != 0)
+			report.sock.port[0] = '\0';
+
+		mptcp_debug("%s: uid:%d dst_addr:%s:%s mptcp sock\n", __func__,
+			report.sock.uid, anonymousIPv4addr(report.sock.dip, ip_str, INET_ADDRSTRLEN),
+			report.sock.port);
+	}
+
+	if (!secondly->mptcp->low_prio) {
+		from_sk = (struct sock *)secondly;
+		to_sk = (struct sock *)primary;
+	} else {
+		from_sk = (struct sock *)primary;
+		to_sk = (struct sock *)secondly;
+	}
+
+	dst = sk_dst_get(from_sk);
+	if (dst) {
+		(void)strncpy(report.src_path, dst->dev->name, IFNAMSIZ);
+		report.src_path[IFNAMSIZ - 1] = '\0';
+		dst_release(dst);
+	}
+	report.src_rtt = tcp_sk(from_sk)->srtt_us >> 3;
+	dst = sk_dst_get(to_sk);
+	if (dst) {
+		(void)strncpy(report.dst_path, dst->dev->name, IFNAMSIZ);
+		report.dst_path[IFNAMSIZ - 1] = '\0';
+		dst_release(dst);
+	}
+	report.dst_rtt = tcp_sk(to_sk)->srtt_us >> 3;
+
+	mptcp_info("%s: switch from %s[%d] to %s[%d] \n", __func__,
+		report.src_path, report.src_rtt, report.dst_path, report.dst_rtt);
+	Emcom_Xengine_MptcpSocketSwitch(&report, sizeof(report));
+}
+#endif
+
+static inline bool check_subsk_is_good(struct sock *sk, u32 threshold)
+{
+	struct tcp_sock *tp;
+
+	if (TCP_CA_Loss == inet_csk(sk)->icsk_ca_state) {
+		mptcp_debug("%s: sk %pK is in TCP_CA_Loss\n", __func__, sk);
+		return false;
+	}
+	tp = (struct tcp_sock *)sk;
+	/* make sure the srtt_us is update recently */
+	if (before(tcp_time_stamp, tp->rcv_tstamp) ||
+	    after(tcp_time_stamp, tp->rcv_tstamp + SCHED_REDUNDANT_JIFFIES)) {
+		mptcp_debug("%s: sk %pK rtt is out of date\n", __func__, sk);
+		return false;
+	}
+
+	if ((tp->srtt_us >> 3) > threshold)
+		return false;
+
+	return true;
+}
+
+
+static bool schduled_get_subflows(struct sock *meta_sk, struct sock **prim_subsk,
+				  struct sock **seco_subsk)
+{
+	struct tcp_sock *meta_tp = tcp_sk(meta_sk), *subtp = NULL;
+	struct sock *subsk = NULL;
+	struct mptcp_cb *mpcb = meta_tp->mpcb;
+	bool is_new_subsk_added = false;
+	struct redsched_sock_data *sk_data;
+	u32 threshold = *(u32 *)&meta_tp->mptcp_sched_params[0];
+
+	if (!prim_subsk || !seco_subsk) {
+		pr_err("%s: para error\n", __func__);
+		return is_new_subsk_added;
+	}
+
+	*prim_subsk = NULL;
+	*seco_subsk = NULL;
+
+	mptcp_for_each_sk(mpcb, subsk) {
+		mptcp_debug("%s: meta_tp(%pK) sk_state:%d, primary flag:%d \n", __func__,
+			meta_tp, subsk->sk_state, mptcp_is_primary_subflow(subsk));
+		if (subsk->sk_state != TCP_ESTABLISHED)
+			continue;
+
+		subtp = tcp_sk(subsk);
+		sk_data = redsched_get_sock_data(subtp);
+		if (!sk_data->is_not_newly_added)
+			is_new_subsk_added = true;
+
+		if (mptcp_is_primary_subflow(subsk)) {
+			if (!(*prim_subsk) || tcp_sk(*prim_subsk)->srtt_us > subtp->srtt_us) {
+				mptcp_debug("%s: meta_tp(%pK) primary_tp(%pK) subtp->srtt_us:%u threshold:%u \n",
+					__func__, meta_tp, subtp, (subtp->srtt_us >> 3), threshold);
+				*prim_subsk = subsk;
+			}
+		} else if (!(*seco_subsk) ||
+			tcp_sk(*seco_subsk)->srtt_us > subtp->srtt_us) {
+			mptcp_debug("%s: meta_tp(%pK) second_tp(%pK) subtp->srtt_us:%u threshold:%u \n",
+				__func__, meta_tp, subtp, (subtp->srtt_us >> 3), threshold);
+			*seco_subsk = subsk;
+		}
+	}
+
+	return is_new_subsk_added;
+}
+
+
+static void schduled_update_prio(struct sock *meta_sk, u32 old_state, u32 new_state,
+				 struct sock *prim_subsk, struct sock *seco_subsk)
+{
+	struct tcp_sock *meta_tp = tcp_sk(meta_sk), *subtp = NULL;
+	struct sock *subsk = NULL;
+	struct mptcp_cb *mpcb = meta_tp->mpcb;
+	bool is_subtp_prio_changed = false;
+	struct redsched_sock_data *sk_data;
+	int low_prio;
+
+	mptcp_for_each_sk(mpcb, subsk) {
+		mptcp_debug("%s: meta_tp(%pK) chk again sub_sk->sk_state:%u primary_flag:%d, low_prio:%u\n",
+			__func__, meta_tp, subsk->sk_state, mptcp_is_primary_subflow(subsk),
+			((struct tcp_sock *)subsk)->mptcp->low_prio);
+
+		if (subsk->sk_state != TCP_ESTABLISHED)
+			continue;
+
+		subtp = tcp_sk(subsk);
+		sk_data = redsched_get_sock_data(subtp);
+		sk_data->is_not_newly_added = true;
+
+		switch (new_state) {
+		case SCHED_PRIM_ONLY: {
+			if (mptcp_is_primary_subflow(subsk)) {
+				if (subtp->mptcp->low_prio == 1) {
+					mptcp_info("%s: prim_subsk(%pK) low_prio from 1 to 0\n", __func__, subsk);
+					subtp->mptcp->low_prio = 0;
+					is_subtp_prio_changed = true;
+				}
+			} else {
+				/* for a new subflow is added, need to init the
+				 * low_prio base on old_state
+				 */
+				if (subtp->mptcp->low_prio == 1) {
+					if (old_state != SCHED_PRIM_ONLY)
+						subtp->mptcp->low_prio = 0;
+				} else {
+					is_subtp_prio_changed = true;
+				}
+
+				if (subtp->mptcp->low_prio == 0) {
+					mptcp_info("%s: sk(%pK) low_prio from 0 to 1\n", __func__, subsk);
+#ifdef CONFIG_HUAWEI_XENGINE
+					if (old_state != new_state && subsk == seco_subsk)
+						xengine_report_mptcp_path_switch(tcp_sk(prim_subsk), subtp);
+#endif
+				}
+				subtp->mptcp->low_prio = 1;
+			}
+			break;
+		}
+		case SCHED_REDUNDANT:
+		case SCHED_SECO_ONLY: {
+			if (mptcp_is_primary_subflow(subsk)) {
+				low_prio = (new_state == SCHED_SECO_ONLY)?1:0;
+				if (low_prio != subtp->mptcp->low_prio) {
+					is_subtp_prio_changed = true;
+					mptcp_info("%s: prim_subsk(%pK) low_prio from %d to %d\n",
+						__func__, subtp, subtp->mptcp->low_prio, low_prio);
+					subtp->mptcp->low_prio = low_prio;
+				}
+			} else {
+				/* for a new subflow is added, need to init the
+				 * low_prio base on old_state
+				 */
+				if (subtp->mptcp->low_prio == 0) {
+					if (old_state == SCHED_PRIM_ONLY)
+						subtp->mptcp->low_prio = 1;
+				} else {
+					is_subtp_prio_changed = true;
+				}
+
+				if (subtp->mptcp->low_prio == 1) {
+					mptcp_info("%s: sk(%pK) low_prio from 1 to 0\n", __func__, subsk);
+#ifdef CONFIG_HUAWEI_XENGINE
+					if (old_state != new_state && subsk == seco_subsk)
+						xengine_report_mptcp_path_switch(tcp_sk(prim_subsk), subtp);
+#endif
+				} else if (old_state != new_state) {
+					subtp->mptcp->low_prio = 1;
+				}
+				subtp->mptcp->low_prio = 0;
+			}
+			break;
+		}
+		default:
+			pr_err("%s invalid sched_state\n", __func__);
+			break;
+		}
+	}
+
+	if (is_subtp_prio_changed) {
+		mptcp_for_each_sk(mpcb, subsk) {
+			if (subsk->sk_state != TCP_ESTABLISHED)
+				continue;
+
+			subtp = tcp_sk(subsk);
+			subtp->mptcp->send_mp_prio = 1;
+			subtp->mptcp->send_mp_other_prio = 1;
+		}
+	}
+}
+
+
+static void schduled_depend_on_priority(struct sock *meta_sk)
+{
+	struct tcp_sock *meta_tp = tcp_sk(meta_sk);
+	struct sock *prim_subsk = NULL, *seco_subsk = NULL;
+	u32 sched_state;
+	u32 threshold = *(u32 *)&meta_tp->mptcp_sched_params[0];
+	struct redsched_cb_data *cb_data;
+	bool is_new_subsk_added = true;
+
+	is_new_subsk_added = schduled_get_subflows(meta_sk, &prim_subsk, &seco_subsk);
+
+	/* if the cb_data->ts is not init(for the meta sk is newly created),
+	 * just set it as the curent time stamp
+	 */
+	cb_data = redsched_get_cb_data(meta_tp);
+	if (!cb_data->ts)
+		cb_data->ts = tcp_time_stamp;
+
+	sched_state = cb_data->sched_state;
+	if (!prim_subsk || !seco_subsk) {
+		mptcp_debug("%s: meta_tp(%pK) could not find both subflow\n", __func__, meta_tp);
+		sched_state = prim_subsk?SCHED_PRIM_ONLY:SCHED_SECO_ONLY;
+	} else {
+		switch (cb_data->sched_state) {
+		case SCHED_PRIM_ONLY:
+			if (!check_subsk_is_good(prim_subsk, threshold))
+				sched_state = SCHED_REDUNDANT;
+			break;
+		case SCHED_REDUNDANT:
+			if (check_subsk_is_good(prim_subsk, threshold))
+				sched_state = SCHED_PRIM_ONLY;
+			else if (check_subsk_is_good(seco_subsk, threshold) &&
+				after(tcp_time_stamp, cb_data->ts + SCHED_REDUNDANT_JIFFIES))
+				sched_state = SCHED_SECO_ONLY;
+			else if (!check_subsk_is_good(seco_subsk, threshold))
+				cb_data->ts = tcp_time_stamp;
+			break;
+		case SCHED_SECO_ONLY:
+			if (!check_subsk_is_good(seco_subsk, threshold) ||
+			    after(tcp_time_stamp, cb_data->ts + SCHED_SECO_ONLY_JIFFIES))
+				sched_state = SCHED_REDUNDANT;
+			break;
+		default:
+			sched_state = SCHED_PRIM_ONLY;
+			break;
+		};
+	}
+
+	if (cb_data->sched_state != sched_state || (is_new_subsk_added == true))
+		schduled_update_prio(meta_sk, cb_data->sched_state, sched_state,
+				     prim_subsk, seco_subsk);
+
+	if (cb_data->sched_state != sched_state) {
+		mptcp_info("%s: sk(%pK) sched_state from %d to %d \n", __func__,
+			meta_tp, cb_data->sched_state, sched_state);
+		cb_data->sched_state = sched_state;
+		cb_data->ts = tcp_time_stamp;
+	}
+}
+
 static struct sk_buff *redundant_next_segment(struct sock *meta_sk,
 					      int *reinject,
 					      struct sock **subsk,
@@ -194,6 +529,10 @@ static struct sk_buff *redundant_next_segment(struct sock *meta_sk,
 	struct tcp_sock *tp;
 	struct sk_buff *skb;
 	int active_valid_sks = -1;
+	bool is_handover = false;
+
+	if (0 == strcmp(meta_tp->mptcp_sched_name, MPTCP_SCHED_NAME_HANDOVER))
+		is_handover = true;
 
 	/* As we set it, we have to reset it as well. */
 	*limit = 0;
@@ -215,6 +554,7 @@ static struct sk_buff *redundant_next_segment(struct sock *meta_sk,
 
 	/* Then try indistinctly redundant and normal skbs */
 
+
 	if (!first_tp)
 		first_tp = mpcb->connection_list;
 
@@ -225,7 +565,16 @@ static struct sk_buff *redundant_next_segment(struct sock *meta_sk,
 	tp = first_tp;
 
 	*reinject = 0;
+
+	/* avoid frequent and unnecessary call*/
+	if (is_handover && tcp_time_stamp > (cb_data->ts_last_sched + SCHED_MIN_JIFFIES)) {
+		schduled_depend_on_priority(meta_sk);
+		cb_data->ts_last_sched = tcp_time_stamp;
+	}
+
 	active_valid_sks = redsched_get_active_valid_sks(meta_sk);
+	mptcp_debug("%s: active_valid_sks:%d \n", __func__, active_valid_sks);
+
 	do {
 		struct redsched_sock_data *sk_data;
 
@@ -242,12 +591,8 @@ static struct sk_buff *redundant_next_segment(struct sock *meta_sk,
 			cb_data->next_subflow = tp->mptcp->next;
 			*subsk = (struct sock *)tp;
 
-			if (TCP_SKB_CB(skb)->path_mask) {
+			if (TCP_SKB_CB(skb)->path_mask)
 				*reinject = -1;
-				int mss_now = tcp_current_mss(meta_sk);
-				if (skb->len < mss_now)
-					meta_tp->snd_sml = meta_tp->snd_una;
-			}
 			return skb;
 		}
 

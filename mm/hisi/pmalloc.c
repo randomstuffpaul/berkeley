@@ -58,9 +58,9 @@ static ssize_t pmalloc_pool_show_protected(struct kobject *dev,
 
 	data = container_of(attr, struct pmalloc_data, attr_protected);
 	if (data->protected)
-		return sprintf(buf, "protected\n");/* unsafe_function_ignore: sprintf *//*lint !e421*/
+		return sprintf(buf, "ro_protected\n");/* unsafe_function_ignore: sprintf *//*lint !e421*/
 	else
-		return sprintf(buf, "protected\n");/* unsafe_function_ignore: sprintf *//*lint !e421*/
+		return sprintf(buf, "rw_unprotected\n");/* unsafe_function_ignore: sprintf *//*lint !e421*/
 }
 
 static ssize_t pmalloc_pool_show_avail(struct kobject *dev,
@@ -238,6 +238,27 @@ static inline int check_input_params(struct gen_pool *pool, size_t req_size)
 	}
 	return 0;
 }
+/*lint -e429*/
+
+static inline void tag_chunk(void *chunk)
+{
+	struct vmap_area *va;
+
+	va = find_vmap_area((unsigned long)chunk);
+	if (likely(va)) {
+		va->vm->flags |= VM_PMALLOC;
+	}
+}
+
+static inline void untag_chunk(void *chunk)
+{
+	struct vmap_area *va;
+
+	va = find_vmap_area((unsigned long)chunk);
+	if (likely(va)) {
+		va->vm->flags &= ~(unsigned long)VM_PMALLOC;
+	}
+}
 
 bool pmalloc_prealloc(struct gen_pool *pool, size_t req_size)
 {
@@ -260,7 +281,7 @@ bool pmalloc_prealloc(struct gen_pool *pool, size_t req_size)
 	chunk = vmalloc(chunk_size);
 	if (unlikely(chunk == NULL))
 		return false;
-
+	tag_chunk(chunk);
 	/* Locking is already done inside gen_pool_add */
 	add_error = gen_pool_add(pool, (unsigned long)chunk, chunk_size,
 				 NUMA_NO_NODE);
@@ -269,6 +290,7 @@ bool pmalloc_prealloc(struct gen_pool *pool, size_t req_size)
 
 	return true;/*lint !e429*/
 abort:
+	untag_chunk(chunk);
 	vfree(chunk);
 	return false;
 
@@ -311,7 +333,7 @@ retry_alloc_from_pool:
 		else
 			return NULL;
 	}
-
+	tag_chunk(chunk);
 	/* Locking is already done inside gen_pool_add */
 	add_error = gen_pool_add(pool, (unsigned long)chunk, chunk_size,
 				 NUMA_NO_NODE);
@@ -335,6 +357,7 @@ return_allocation:
 		 * As long as vmalloc succeeds, it's ok to retry.*/
 		goto retry_alloc_from_pool;
 abort:
+	untag_chunk(chunk);
 	vfree(chunk);
 	return NULL;
 }
@@ -410,6 +433,7 @@ static void pmalloc_chunk_free(struct gen_pool *pool,
 	unsigned int order = (unsigned int)pool->min_alloc_order;
 	size_t size = chunk->end_addr + 1 - chunk->start_addr;
 
+	untag_chunk((void *)chunk->start_addr);
 	memset(chunk->bits, 0, DIV_ROUND_UP(size >> order, BITS_PER_BYTE));/* unsafe_function_ignore: memset */
 	vfree((void *)chunk->start_addr);
 }

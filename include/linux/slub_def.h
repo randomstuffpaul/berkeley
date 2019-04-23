@@ -132,6 +132,10 @@ void object_err(struct kmem_cache *s, struct page *page,
 
 void *fixup_red_left(struct kmem_cache *s, void *p);
 
+#ifdef CONFIG_HW_SLUB_DF
+int set_harden_double_free_status(bool status);
+#endif
+
 static inline void *nearest_obj(struct kmem_cache *cache, struct page *page,
 				void *x) {
 	void *object = x - (x - page_address(page)) % cache->size;

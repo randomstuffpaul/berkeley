@@ -114,6 +114,13 @@ static struct inputhub_route_table package_route_tbl[] = {
 	{ROUTE_FHB_UD_PORT, {NULL,0}, {NULL,0}, {NULL,0}, __WAIT_QUEUE_HEAD_INITIALIZER(package_route_tbl[4].read_wait)},
 };
 
+static struct {
+	int ext_hall_adapt;
+	int ext_hall_value[HALL_ONE_DATA_NUM];
+} ext_hall_table[] = {
+    { 0, {1, 0, 2, -1}},
+};
+
 bool really_do_enable_disable(int *ref_cnt, bool enable, int bit)
 {
 	bool ret = false;
@@ -402,8 +409,6 @@ int report_sensor_event(int tag, int value[], int length)
 
 static int adapt_hall_value(int value)
 {
-	int ext_val = 0;
-
 	if(adapt_ext_hall_index >= ARRAY_SIZE(ext_hall_table)){
 		return -EPERM;
 	}
@@ -434,6 +439,14 @@ int ap_hall_report(int value)
 int ap_color_report(int value[], int length)
 {
 	return report_sensor_event(TAG_COLOR, value, length);
+}
+
+int thp_prox_event_report(int value[], int length)
+{
+	if (value == NULL)
+		return -EINVAL;
+
+	return 0;
 }
 
 bool ap_sensor_enable(int tag, bool enable)
@@ -622,13 +635,18 @@ static int inputhub_mcu_send(const char* buf, unsigned int length)
 	return ret;
 }
 
-static const pkt_header_t *pack(const char *buf, unsigned int length)
+static const pkt_header_t *pack(const char *buf, unsigned int length, bool *is_notifier)
 {
 	const pkt_header_t *head = normalpack(buf, length);
 #ifdef CONFIG_CONTEXTHUB_SHMEM
-	if(head && (head->tag == TAG_SHAREMEM) && (head->cmd == CMD_SHMEM_AP_RECV_REQ))
+	if(head && (head->tag == TAG_SHAREMEM))
 	{
-	    head = shmempack(buf, length);
+		if (head->cmd == CMD_SHMEM_AP_RECV_REQ) {
+			head = shmempack(buf, length);
+		} else if (head->cmd == CMD_SHMEM_AP_SEND_RESP) {
+			shmem_send_resp(head);
+			*is_notifier = true;
+		}
 	}
 #endif
 	return head;
@@ -1692,16 +1710,16 @@ static int process_drop_report(const pkt_drop_data_req_t* head)
 		return -1;
 	}
 
-	ret += imonitor_set_param(obj, E936005000_TYPE_TINYINT, (long)(head->data.type));
-	ret += imonitor_set_param(obj, E936005000_INITSPEED_INT, (long)(head->data.initial_speed));
-	ret += imonitor_set_param(obj, E936005000_HEIGHT_INT, (long)(head->data.height));
-	ret += imonitor_set_param(obj, E936005000_PITCH_INT, (long)(head->data.angle_pitch));
-	ret += imonitor_set_param(obj, E936005000_ROLL_INT, (long)(head->data.angle_roll));
-	ret += imonitor_set_param(obj, E936005000_MATERIAL_TINYINT, (long)(head->data.material));
-	ret += imonitor_set_param(obj, E936005000_YAW_INT, (long)(yaw));
-	ret += imonitor_set_param(obj, E936005000_SPEED_INT, (long)(speed));
-	ret += imonitor_set_param(obj, E936005000_SHELL_TINYINT, (long)(shell));
-	ret += imonitor_set_param(obj, E936005000_FILM_TINYINT, (long)(film));
+	ret += imonitor_set_param_integer_v2(obj, "Type", (long)(head->data.type));
+	ret += imonitor_set_param_integer_v2(obj, "InitSpeed", (long)(head->data.initial_speed));
+	ret += imonitor_set_param_integer_v2(obj, "Height", (long)(head->data.height));
+	ret += imonitor_set_param_integer_v2(obj, "Pitch", (long)(head->data.angle_pitch));
+	ret += imonitor_set_param_integer_v2(obj, "Roll", (long)(head->data.angle_roll));
+	ret += imonitor_set_param_integer_v2(obj, "Yaw", (long)(head->data.material));
+	ret += imonitor_set_param_integer_v2(obj, "Material", (long)(yaw));
+	ret += imonitor_set_param_integer_v2(obj, "Speed", (long)(speed));
+	ret += imonitor_set_param_integer_v2(obj, "Shell", (long)(shell));
+	ret += imonitor_set_param_integer_v2(obj, "Film", (long)(film));
 
 	if (ret) {
 		imonitor_destroy_eventobj(obj);
@@ -1984,7 +2002,7 @@ int inputhub_route_recv_mcu_data(const char *buf, unsigned int length)
 	const pkt_header_t* head = (const pkt_header_t*)buf;
 	bool is_notifier = false;
 
-	head = pack(buf, length);
+	head = pack(buf, length, &is_notifier);
 
 	if (NULL == head)
 		{ return 0; }	/*receive next partial package.*/

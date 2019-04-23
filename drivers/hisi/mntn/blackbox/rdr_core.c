@@ -360,15 +360,10 @@ void rdr_syserr_process(struct rdr_syserr_param_s *p)
 		reboot_times = rdr_record_reboot_times2file();
 		BB_PRINT_PN("ap has reboot %d times.\n", reboot_times);
 		if (max_reboot_times < reboot_times) {
-			BB_PRINT_ERR("need reboot to erecovery.\n");
-
-			/*write "erecovery_enter_reason=2015" to cache*/
-			rdr_record_erecovery_reason();
 
 			/*reset the file of reboot_times*/
 			rdr_reset_reboot_times();
 
-			kernel_restart("erecovery");
 		}
 	}
 	rdr_notify_module_reset(mod_id, p_exce_info);

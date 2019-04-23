@@ -1645,10 +1645,9 @@ struct coul_device_ops hi6421v700_coul_ops =
     .get_eco_sample_flag          = hi6421v700_coul_get_eco_sample,
     .clr_eco_data                 = hi6421v700_coul_clr_eco_sample,
     .get_coul_calibration_status     = hi6421v700_get_coul_calibration_status,
-    .set_bootocv_sample           = hi6421v700_coul_set_bootocv_sample,
     .get_drained_battery_flag     = hi6421v700_coul_get_drained_battery_flag,
     .clear_drained_battery_flag   = hi6421v700_coul_clear_drained_battery_flag,
-
+    .set_bootocv_sample           = hi6421v700_coul_set_bootocv_sample,
 };
 
 /*******************************************************

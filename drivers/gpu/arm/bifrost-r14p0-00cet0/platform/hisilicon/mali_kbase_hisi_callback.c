@@ -16,6 +16,9 @@
 #include <mali_kbase.h>
 #include "mali_kbase_hisi_callback.h"
 
+#ifdef CONFIG_HISI_LAST_BUFFER
+extern hisi_lb_callbacks lb_callbacks;
+#endif
 
 #ifdef MALI_HISI_CL_BOOST
 void gpu_cl_boost_init(void *dev)
@@ -50,9 +53,6 @@ void gpu_cl_boost_update_utilization(void *dev, void *atom, u64 microseconds_spe
 }
 #endif
 
-
-
-
 struct kbase_hisi_callbacks hisi_callbacks = {
 #ifdef MALI_HISI_CL_BOOST
 	.cl_boost_init = gpu_cl_boost_init,
@@ -61,9 +61,15 @@ struct kbase_hisi_callbacks hisi_callbacks = {
 	.cl_boost_init = NULL,
 	.cl_boost_update_utilization = NULL,
 #endif
+
+#ifdef CONFIG_HISI_LAST_BUFFER
+	.lb_cbs = &lb_callbacks,
+#endif
 };
 
 uintptr_t gpu_get_callbacks(void)
 {
 	return ((uintptr_t)&hisi_callbacks);
 }
+
+

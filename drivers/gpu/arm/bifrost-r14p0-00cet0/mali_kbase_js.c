@@ -793,7 +793,7 @@ static bool kbase_js_ctx_list_add_unpullable_nolock(struct kbase_device *kbdev,
 			atomic_dec(&kbdev->js_data.nr_contexts_runnable);
 		}
 	}
-	kctx->slots_pullable &= ~(1 << js);
+	kctx->slots_pullable &= ~(1 << js);//lint !e502
 
 	return ret;
 }
@@ -835,7 +835,7 @@ static bool kbase_js_ctx_list_remove_nolock(struct kbase_device *kbdev,
 			atomic_dec(&kbdev->js_data.nr_contexts_runnable);
 		}
 	}
-	kctx->slots_pullable &= ~(1 << js);
+	kctx->slots_pullable &= ~(1 << js);//lint !e502
 
 	return ret;
 }
@@ -1450,7 +1450,7 @@ static kbasep_js_release_result kbasep_js_runpool_release_ctx_internal(
 	/* Release the atom if it finished (i.e. wasn't soft-stopped) */
 	if (kbasep_js_has_atom_finished(katom_retained_state))
 		runpool_ctx_attr_change |= kbasep_js_ctx_attr_ctx_release_atom(
-				kbdev, kctx, katom_retained_state);
+				kbdev, kctx, katom_retained_state);//lint !e514
 
 	KBASE_TRACE_ADD_REFCOUNT(kbdev, JS_RELEASE_CTX, kctx, NULL, 0u,
 			new_ref_count);
@@ -1486,7 +1486,7 @@ static kbasep_js_release_result kbasep_js_runpool_release_ctx_internal(
 #if defined(CONFIG_MALI_GATOR_SUPPORT)
 		kbase_trace_mali_mmu_as_released(kctx->as_nr);
 #endif
-		KBASE_TLSTREAM_TL_NRET_AS_CTX(&kbdev->as[kctx->as_nr], kctx);
+		KBASE_TLSTREAM_TL_NRET_AS_CTX(&kbdev->as[kctx->as_nr], kctx);//lint !e648
 
 		kbase_backend_release_ctx_irq(kbdev, kctx);
 
@@ -1502,7 +1502,7 @@ static kbasep_js_release_result kbasep_js_runpool_release_ctx_internal(
 		 * double-decount the attributes
 		 */
 		runpool_ctx_attr_change |=
-			kbasep_js_ctx_attr_runpool_release_ctx(kbdev, kctx);
+			kbasep_js_ctx_attr_runpool_release_ctx(kbdev, kctx);//lint !e514
 
 		/* Releasing the context and katom retained state can allow
 		 * more jobs to run */
@@ -1767,7 +1767,7 @@ static bool kbasep_js_schedule_ctx(struct kbase_device *kbdev,
 #if defined(CONFIG_MALI_GATOR_SUPPORT)
 	kbase_trace_mali_mmu_as_in_use(kctx->as_nr);
 #endif
-	KBASE_TLSTREAM_TL_RET_AS_CTX(&kbdev->as[kctx->as_nr], kctx);
+	KBASE_TLSTREAM_TL_RET_AS_CTX(&kbdev->as[kctx->as_nr], kctx);//lint !e648
 
 	/* Cause any future waiter-on-termination to wait until the context is
 	 * descheduled */
@@ -2243,7 +2243,7 @@ struct kbase_jd_atom *kbase_js_pull(struct kbase_context *kctx, int js)
 	return katom;
 }
 
-
+/*lint -e514*/
 static void js_return_worker(struct work_struct *data)
 {
 	struct kbase_jd_atom *katom = container_of(data, struct kbase_jd_atom,
@@ -2261,7 +2261,7 @@ static void js_return_worker(struct work_struct *data)
 	base_jd_core_req core_req = katom->core_req;
 	enum kbase_atom_coreref_state coreref_state = katom->coreref_state;
 
-	KBASE_TLSTREAM_TL_EVENT_ATOM_SOFTSTOP_EX(katom);
+	KBASE_TLSTREAM_TL_EVENT_ATOM_SOFTSTOP_EX(katom);//lint !e648
 
 	kbase_backend_complete_wq(kbdev, katom);
 
@@ -2469,7 +2469,7 @@ bool kbase_js_complete_atom_wq(struct kbase_context *kctx,
 
 	return context_idle;
 }
-
+/*lint +e514*/
 struct kbase_jd_atom *kbase_js_complete_atom(struct kbase_jd_atom *katom,
 		ktime_t *end_timestamp)
 {
@@ -2509,8 +2509,8 @@ struct kbase_jd_atom *kbase_js_complete_atom(struct kbase_jd_atom *katom,
 		microseconds_spent = ktime_to_ns(tick_diff);
 
 		/* MALI_HISI_INTEGRATION */
-		if(kbdev->hisi_callbacks->cl_boost_update_utilization)
-			kbdev->hisi_callbacks->cl_boost_update_utilization(kbdev, katom, microseconds_spent);
+		if(kbdev->hisi_dev_data.callbacks->cl_boost_update_utilization)
+			kbdev->hisi_dev_data.callbacks->cl_boost_update_utilization(kbdev, katom, microseconds_spent);
 
 		do_div(microseconds_spent, 1000);
 
@@ -2541,7 +2541,8 @@ struct kbase_jd_atom *kbase_js_complete_atom(struct kbase_jd_atom *katom,
 
 	return NULL;
 }
-
+/*lint -e502*/
+/*lint -e514*/
 void kbase_js_sched(struct kbase_device *kbdev, int js_mask)
 {
 	struct kbasep_js_device_data *js_devdata;
@@ -2719,7 +2720,8 @@ void kbase_js_sched(struct kbase_device *kbdev, int js_mask)
 	mutex_unlock(&js_devdata->queue_mutex);
 	up(&js_devdata->schedule_sem);
 }
-
+/*lint +e514*/
+/*lint +e502*/
 void kbase_js_zap_context(struct kbase_context *kctx)
 {
 	struct kbase_device *kbdev = kctx->kbdev;

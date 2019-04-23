@@ -649,7 +649,7 @@ void TEEK_CloseSession(TEEC_Session *session)
 		}
 		sret = memset_s(session->teec_token, TOKEN_SAVE_LEN, 0x00, TOKEN_SAVE_LEN);
 		if (EOK != sret) {
-			tloge("memset_s teec_token error ret value is %d.\n", sret);
+			tloge("memset_s session's member error ret value is %d.\n", sret);
 		}
 		session->ops_cnt = 0;
 		list_remove(&session->head);

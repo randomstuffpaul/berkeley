@@ -1126,7 +1126,7 @@ static ssize_t ts_easy_wakeup_gesture_store(struct device* dev,
     ret = kstrtoul(buf, DEC_BASE_DATA, &value);
     if (ret < 0)
     { return ret; }
-    if (value > TS_GESTURE_INVALID_COMMAND || value < 0)
+    if (value > TS_GESTURE_INVALID_COMMAND)
     { return -1; }
     info->easy_wakeup_gesture = (u16)value & TS_GESTURE_COMMAND;
     info->palm_cover_flag = (u16)(value & TS_GESTURE_PALM_BIT) / TS_GET_CALCULATE_NUM;
@@ -1205,8 +1205,9 @@ static ssize_t ts_easy_wakeup_control_store(struct device* dev,
     if (ret < 0)
     { return ret; }
 
-    if (value > TS_GESTURE_INVALID_CONTROL_NO && value < 0)
-    { return -1; }
+    if (value > TS_GESTURE_INVALID_CONTROL_NO) {
+		return -1;
+	}
 
     value = (u8)value & TS_GESTURE_COMMAND;
     if (1 == value)
@@ -1528,6 +1529,7 @@ static ssize_t touch_special_hardware_test_store(struct device* dev, struct devi
     u8 value = 0;
     unsigned long tmp = 0;
     int error;
+	int ret = 0;
     struct ts_cmd_node* cmd = NULL;
     struct ts_special_hardware_test_info* info = NULL;
 
@@ -1563,7 +1565,10 @@ static ssize_t touch_special_hardware_test_store(struct device* dev, struct devi
     info->switch_value = value;
     cmd->command = TS_HARDWARE_TEST;
     cmd->cmd_param.prv_params = (void*)info;
-    ts_kit_put_one_cmd(cmd, NO_SYNC_TIMEOUT);
+    ret = ts_kit_put_one_cmd(cmd, NO_SYNC_TIMEOUT);
+	if (ret) {
+		TS_LOG_ERR("%s: hardware test cmd send fail\n", __func__);
+	}
 
     error = count;
 out:
@@ -1877,6 +1882,12 @@ static ssize_t ts_roi_enable_store(struct device *dev,
 	int error;
 	struct ts_roi_info *info = &g_ts_kit_platform_data.feature_info.roi_info;
 
+	if ( NULL == g_ts_kit_platform_data.chip_data ){
+		TS_LOG_ERR("%s error \n", __func__ );
+		error = -EINVAL;
+		goto out;
+	}
+
 	error = strict_strtoul(buf, 0, &tmp);
 	if (error) {
 		TS_LOG_ERR("strict_strtoul return invaild :%d\n", error);
@@ -1895,7 +1906,13 @@ static ssize_t ts_roi_enable_store(struct device *dev,
 	}
 
 	info->roi_switch = value;
-	error = ts_send_roi_cmd(TS_ACTION_WRITE, SHORT_SYNC_TIMEOUT);
+	if(TS_SWITCH_ROI_DELAY_ENABLE == g_ts_kit_platform_data.chip_data->roi_delay_flag){
+	     TS_LOG_INFO("ts_send_roi_store_cmd NO_SYNC_TIMEOUT\n");
+	     error = ts_send_roi_cmd(TS_ACTION_WRITE, NO_SYNC_TIMEOUT);
+	} else {
+	     error = ts_send_roi_cmd(TS_ACTION_WRITE, SHORT_SYNC_TIMEOUT);
+	}
+
 	if (error) {
 		TS_LOG_ERR("ts_send_roi_store_cmd failed\n");
 		error = -ENOMEM;
@@ -2370,13 +2387,13 @@ static ssize_t udfp_enable_store(struct device *dev, struct device_attribute *at
 
 /*lint -restore*/
 static DEVICE_ATTR(touch_chip_info, (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH), ts_chip_info_show, ts_chip_info_store);
-static DEVICE_ATTR(calibrate, S_IRUSR, ts_calibrate_show, NULL);
+static DEVICE_ATTR(calibrate, (S_IRUSR|S_IRGRP), ts_calibrate_show, NULL);
 static DEVICE_ATTR(calibrate_wakeup_gesture, S_IRUSR, ts_calibrate_wakeup_gesture_show, NULL);
 static DEVICE_ATTR(touch_glove, (S_IRUSR | S_IWUSR), ts_glove_mode_show, ts_glove_mode_store);
 static DEVICE_ATTR(touch_sensitivity, (S_IRUSR | S_IWUSR), ts_sensitivity_show, ts_sensitivity_store);
 static DEVICE_ATTR(hand_detect, S_IRUSR, ts_hand_detect_show, NULL);
 static DEVICE_ATTR(loglevel, (S_IRUSR | S_IWUSR), ts_loglevel_show, ts_loglevel_store);
-static DEVICE_ATTR(supported_func_indicater, (S_IRUSR), ts_supported_func_indicater_show, NULL);
+static DEVICE_ATTR(supported_func_indicater, (S_IRUSR|S_IRGRP), ts_supported_func_indicater_show, NULL);
 static DEVICE_ATTR(touch_window, (S_IRUSR | S_IWUSR), ts_touch_window_show, ts_touch_window_store);
 static DEVICE_ATTR(fw_update_sd, S_IWUSR, NULL, ts_fw_update_sd_store);
 static DEVICE_ATTR(reset, S_IWUSR, NULL, ts_reset_store);

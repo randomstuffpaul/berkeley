@@ -55,112 +55,11 @@
 #include "mdrv_om_common.h"
 #include "dump_modem_hook.h"
 #include "dump_print.h"
-
-struct dump_hook_ctrl_s g_dump_hook_ctrl;
-
-/*****************************************************************************
-* 函 数 名  : bsp_dump_register_hook
-* 功能描述  : 注册dump回调函数
-*
-* 输入参数  :
-* 输出参数  :
-
-* 返 回 值  :
-
-*
-* 修改记录  : 2016年1月4日17:05:33   lixiaofan  creat
-*
-*****************************************************************************/
 dump_handle bsp_dump_register_hook(char * name, dump_hook func)
 {
-    struct dump_hook_s* pfieldhook = NULL;
-    unsigned long flags = 0;
-
-    if(!g_dump_hook_ctrl.ulInitflag)
-    {
-        (void)bsp_dump_hook_init();
-    }
-
-    pfieldhook = (struct dump_hook_s*)osl_malloc(sizeof(struct dump_hook_s));
-    if(pfieldhook == NULL)
-    {
-        dump_fetal("malloc failed!\n");
-        return BSP_ERROR;
-    }
-    
-    /*coverity[secure_coding]*/
-    memset_s(pfieldhook,sizeof(*pfieldhook),0,sizeof(*pfieldhook));
-
-    pfieldhook->pfunc = func;
-    
-    /*coverity[secure_coding]*/
-    memcpy(pfieldhook->name,name,(sizeof(pfieldhook->name)>strlen(name))?strlen(name):sizeof(pfieldhook->name));
-
-    spin_lock_irqsave(&g_dump_hook_ctrl.spinlock, flags);
-    list_add(&pfieldhook->hook_list, &g_dump_hook_ctrl.list_hook);
-    spin_unlock_irqrestore(&g_dump_hook_ctrl.spinlock, flags);
-    /*lint -e429 -esym(429,*)*/
-    return (dump_handle)((unsigned long)pfieldhook);
-    /*lint -e429 +esym(429,*)*/
-}
-/*****************************************************************************
-* 函 数 名  : bsp_dump_hook_callback
-* 功能描述  : 调用注册的回调函数
-*
-* 输入参数  :
-* 输出参数  :
-
-* 返 回 值  :
-
-*
-* 修改记录  : 2016年1月4日17:05:33   lixiaofan  creat
-*
-*****************************************************************************/
-void bsp_dump_hook_callback(void)
-{
-    struct list_head *p = NULL;
-    struct list_head *n = NULL;
-    struct dump_hook_s* pfieldhook = NULL;
-
-    list_for_each_safe(p,n, &g_dump_hook_ctrl.list_hook)
-    {
-        pfieldhook = list_entry(p, struct dump_hook_s, hook_list);
-        if((pfieldhook)&&(pfieldhook->pfunc))
-        {
-            pfieldhook->pfunc();
-        }
-    }
-
-    dump_fetal("save all hook finish\n");
+    return BSP_ERROR;
 }
 
-/*****************************************************************************
-* 函 数 名  : bsp_dump_hook_init
-* 功能描述  : hook初始化
-*
-* 输入参数  :
-* 输出参数  :
-
-* 返 回 值  :
-
-*
-* 修改记录  : 2016年1月4日17:05:33   lixiaofan  creat
-*
-*****************************************************************************/
-s32 bsp_dump_hook_init(void)
-{
-    if(true == g_dump_hook_ctrl.ulInitflag)
-    {
-        return BSP_OK;
-    }
-    spin_lock_init(&g_dump_hook_ctrl.spinlock);
-
-    INIT_LIST_HEAD(&g_dump_hook_ctrl.list_hook);
-
-    g_dump_hook_ctrl.ulInitflag = true;
-
-    return BSP_OK;
-}
 
 /*****************************************************************************
 * 函 数 名  : bsp_dump_unregister_hook
@@ -177,41 +76,6 @@ s32 bsp_dump_hook_init(void)
 *****************************************************************************/
 s32 bsp_dump_unregister_hook(dump_handle handle)
 {
-    struct dump_hook_s * pfieldhook = NULL;
-    struct dump_hook_s * hook_node = NULL;
-    unsigned long flags = 0;
-
-    if(!g_dump_hook_ctrl.ulInitflag)
-    {
-        printk("has not init\n");
-        return BSP_ERROR;
-    }
-
-    if(!handle)
-    {
-        printk("invalid parameter!\n");
-        return BSP_ERROR;
-    }
-
-    spin_lock_irqsave(&g_dump_hook_ctrl.spinlock, flags);
-    list_for_each_entry(pfieldhook, &g_dump_hook_ctrl.list_hook, hook_list)
-    {
-        if((dump_handle)((unsigned long)pfieldhook) == handle)
-        {
-            hook_node = pfieldhook;
-        }
-    }
-
-    if(!hook_node)
-    {
-        spin_unlock_irqrestore(&g_dump_hook_ctrl.spinlock, flags);
-        return BSP_ERROR;
-    }
-
-    list_del(&hook_node->hook_list);
-    osl_free(hook_node);
-    spin_unlock_irqrestore(&g_dump_hook_ctrl.spinlock, flags);
-
     return BSP_OK;
 }
 /*****************************************************************************
@@ -229,20 +93,7 @@ s32 bsp_dump_unregister_hook(dump_handle handle)
 *****************************************************************************/
 void bsp_dump_show_exthook(void)
 {
-    struct list_head *p=NULL,*n = NULL;
-    struct dump_hook_s* pfieldhook = NULL;
-
-    list_for_each_safe(p,n, &g_dump_hook_ctrl.list_hook)
-    {
-        pfieldhook = list_entry(p, struct dump_hook_s, hook_list);
-        if((pfieldhook) && (pfieldhook->pfunc))
-        {
-
-            dump_fetal("name:%s,Function :%pS\n", pfieldhook->name, pfieldhook->pfunc);
-        }
-    }
 }
-
 
 
 

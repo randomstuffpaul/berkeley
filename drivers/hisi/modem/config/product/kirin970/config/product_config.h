@@ -19,4 +19,21 @@
 #include "product_config_gucnas_eng.h"
 #include "product_config_version_eng.h"
 #endif
+
+#ifdef CHOOSE_MODEM_USER
+#ifdef MODEM_FULL_DUMP_INUSER
+#include "product_config_modem_full_dump.h"
+#endif
+
+#ifdef MODEM_DDR_MINI_DUMP_INUSER
+#include "product_config_modem_ddr_mini_dump.h"
+#endif
+
+#ifdef MODEM_CHR_INUSER
+#include "product_config_modem_chr_ptm.h"
+#else
+#include "product_config_modem_chr_ptm_off.h"
+#endif
+#endif
+
 #endif /*__PRODUCT_CONFIG_H__*/ 

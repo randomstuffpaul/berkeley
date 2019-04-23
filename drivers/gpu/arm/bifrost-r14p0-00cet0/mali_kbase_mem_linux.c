@@ -49,7 +49,9 @@
 #include <mali_kbase_mem_linux.h>
 #include <mali_kbase_tlstream.h>
 #include <mali_kbase_ioctl.h>
-
+#ifdef CONFIG_HISI_LAST_BUFFER
+#include <platform/hisilicon/last_buffer/mali_kbase_hisi_lb_callback.h>
+#endif
 
 static int kbase_vmap_phy_pages(struct kbase_context *kctx,
 		struct kbase_va_region *reg, u64 offset_bytes, size_t size,
@@ -188,7 +190,7 @@ void *kbase_phy_alloc_mapping_get(struct kbase_context *kctx,
 			kctx, gpu_addr);
 	}
 
-	if (reg == NULL || (reg->flags & KBASE_REG_FREE) != 0)
+	if (kbase_is_region_invalid_or_free(reg))
 		goto out_unlock;
 
 	kern_mapping = reg->cpu_alloc->permanent_map;
@@ -227,6 +229,31 @@ void kbase_phy_alloc_mapping_put(struct kbase_context *kctx,
 	 */
 }
 
+#ifdef CONFIG_HISI_LAST_BUFFER
+static unsigned int kbase_mem_get_policy_id(struct kbase_context *kctx, u64 *flags)
+{
+	u8 cache_policy = 0;
+	unsigned int lb_policy_id = 0;
+	struct kbase_device *kbdev = NULL;
+
+	KBASE_DEBUG_ASSERT(kctx);
+
+	kbdev = kctx->kbdev;
+	KBASE_DEBUG_ASSERT(kbdev);
+
+	/* Parse the cache_policy from the high 8-bit of flags and clear it. */
+	cache_policy = (u8)((*flags & BASE_MEM_LB_POLICY_MASK) >> 56);
+	*flags &= ~BASE_MEM_LB_POLICY_MASK;
+
+	/* Get lb_policy_id corresponding to the cache_policy. */
+	cache_policy_callbacks *callback = kbase_hisi_get_lb_cache_cbs(kbdev);
+	KBASE_DEBUG_ASSERT(callback);
+	lb_policy_id = callback->lb_get_policy_id(kbdev, cache_policy);
+
+	return lb_policy_id;
+}
+#endif
+
 struct kbase_va_region *kbase_mem_alloc(struct kbase_context *kctx,
 		u64 va_pages, u64 commit_pages, u64 extent, u64 *flags,
 		u64 *gpu_va)
@@ -242,6 +269,10 @@ struct kbase_va_region *kbase_mem_alloc(struct kbase_context *kctx,
 
 	dev = kctx->kbdev->dev;
 	*gpu_va = 0; /* return 0 on failure */
+
+#ifdef CONFIG_HISI_LAST_BUFFER
+	unsigned int lb_policy_id = kbase_mem_get_policy_id(kctx, flags);
+#endif
 
 	if (!kbase_check_alloc_flags(*flags)) {
 		dev_warn(dev,
@@ -291,6 +322,13 @@ struct kbase_va_region *kbase_mem_alloc(struct kbase_context *kctx,
 		dev_err(dev, "Failed to prepare region");
 		goto prepare_failed;
 	}
+
+#ifdef CONFIG_HISI_LAST_BUFFER
+	/* Save the last buffer policy in kbase_mem_phy_alloc object. */
+	reg->cpu_alloc->lb_policy_id = lb_policy_id;
+	if (reg->gpu_alloc != reg->cpu_alloc)
+		reg->gpu_alloc->lb_policy_id = lb_policy_id;
+#endif
 
 	if (*flags & (BASE_MEM_GROW_ON_GPF|BASE_MEM_TILER_ALIGN_TOP)) {
 		/* kbase_check_alloc_sizes() already checks extent is valid for
@@ -425,7 +463,7 @@ int kbase_mem_query(struct kbase_context *kctx,
 
 	/* Validate the region */
 	reg = kbase_region_tracker_find_region_base_address(kctx, gpu_addr);
-	if (!reg || (reg->flags & KBASE_REG_FREE))
+	if (kbase_is_region_invalid_or_free(reg))
 		goto out_unlock;
 
 	switch (query) {
@@ -565,7 +603,7 @@ unsigned long kbase_mem_evictable_reclaim_scan_objects(struct shrinker *s,
 			 * to stop trying to shrink our slab even though we
 			 * have pages in it.
 			 */
-			freed = -1;
+			freed = -1;//lint !e570
 			goto out_unlock;
 		}
 
@@ -638,6 +676,8 @@ void kbase_mem_evictable_deinit(struct kbase_context *kctx)
  * kbase_mem_evictable_mark_reclaim - Mark the pages as reclaimable.
  * @alloc: The physical allocation
  */
+/*lint -e571*/
+/*lint -e648*/
 void kbase_mem_evictable_mark_reclaim(struct kbase_mem_phy_alloc *alloc)
 {
 	struct kbase_context *kctx = alloc->imported.kctx;
@@ -701,7 +741,8 @@ int kbase_mem_evictable_make(struct kbase_mem_phy_alloc *gpu_alloc)
 	gpu_alloc->reg->flags |= KBASE_REG_DONT_NEED;
 	return 0;
 }
-
+/*lint +e571*/
+/*lint +e648*/
 bool kbase_mem_evictable_unmake(struct kbase_mem_phy_alloc *gpu_alloc)
 {
 	struct kbase_context *kctx = gpu_alloc->imported.kctx;
@@ -789,7 +830,7 @@ int kbase_mem_flags_change(struct kbase_context *kctx, u64 gpu_addr, unsigned in
 
 	/* Validate the region */
 	reg = kbase_region_tracker_find_region_base_address(kctx, gpu_addr);
-	if (!reg || (reg->flags & KBASE_REG_FREE))
+	if (kbase_is_region_invalid_or_free(reg))
 		goto out_unlock;
 
 	/* Is the region being transitioning between not needed and needed? */
@@ -1115,7 +1156,7 @@ static struct kbase_va_region *kbase_mem_from_user_buffer(
 		struct tagged_addr *pa = kbase_get_gpu_phy_pages(reg);
 
 		/* Top bit signifies that this was pinned on import */
-		user_buf->current_mapping_usage_count |= PINNED_ON_IMPORT;
+		user_buf->current_mapping_usage_count |= PINNED_ON_IMPORT;//lint !e648
 
 		for (i = 0; i < faulted_pages; i++) {
 			dma_addr_t dma_addr;
@@ -1264,10 +1305,8 @@ u64 kbase_mem_alias(struct kbase_context *kctx, u64 *flags, u64 stride,
 				(ai[i].handle.basep.handle >> PAGE_SHIFT) << PAGE_SHIFT);
 
 			/* validate found region */
-			if (!aliasing_reg)
-				goto bad_handle; /* Not found */
-			if (aliasing_reg->flags & KBASE_REG_FREE)
-				goto bad_handle; /* Free region */
+			if (kbase_is_region_invalid_or_free(aliasing_reg))
+				goto bad_handle; /* Not found/already free */
 			if (aliasing_reg->flags & KBASE_REG_DONT_NEED)
 				goto bad_handle; /* Ephemeral region */
 			if (!(aliasing_reg->flags & KBASE_REG_GPU_CACHED))
@@ -1559,7 +1598,7 @@ int kbase_mem_commit(struct kbase_context *kctx, u64 gpu_addr, u64 new_pages)
 
 	/* Validate the region */
 	reg = kbase_region_tracker_find_region_base_address(kctx, gpu_addr);
-	if (!reg || (reg->flags & KBASE_REG_FREE))
+	if (kbase_is_region_invalid_or_free(reg))
 		goto out_unlock;
 
 	KBASE_DEBUG_ASSERT(reg->cpu_alloc);
@@ -1706,6 +1745,7 @@ static void kbase_cpu_vm_close(struct vm_area_struct *vma)
 
 	list_del(&map->mappings_list);
 
+	kbase_va_region_alloc_put(map->kctx, map->region);
 	kbase_gpu_vm_unlock(map->kctx);
 
 	kbase_mem_phy_alloc_put(map->alloc);
@@ -1752,6 +1792,16 @@ static int kbase_cpu_vm_fault(struct vm_fault *vmf)
 	addr = (pgoff_t)(vmf->address >> PAGE_SHIFT);
 #endif
 	while (i < map->alloc->nents && (addr < vma->vm_end >> PAGE_SHIFT)) {
+#ifdef CONFIG_HISI_LAST_BUFFER
+		struct kbase_device *kbdev = map->kctx->kbdev;
+		KBASE_DEBUG_ASSERT(kbdev);
+		struct memory_group_manager_ops *mgm_ops = kbdev->hisi_dev_data.mgm_ops;
+		KBASE_DEBUG_ASSERT(mgm_ops);
+		struct page *p = as_page(map->alloc->pages[i]);
+		int err = mgm_ops->vm_insert_pfn_prot(&p, 1, &vma->vm_page_prot);
+		if (WARN_ON(err))
+			goto locked_bad_fault;
+#endif
 		int ret = vm_insert_pfn(vma, addr << PAGE_SHIFT,
 		    PFN_DOWN(as_phys_addr_t(map->alloc->pages[i])));
 		if (ret < 0 && ret != -EBUSY)
@@ -1774,7 +1824,7 @@ const struct vm_operations_struct kbase_vm_ops = {
 	.close = kbase_cpu_vm_close,
 	.fault = kbase_cpu_vm_fault
 };
-
+/*lint -e574*/
 static int kbase_cpu_mmap(struct kbase_context *kctx,
 		struct kbase_va_region *reg,
 		struct vm_area_struct *vma,
@@ -1842,6 +1892,16 @@ static int kbase_cpu_mmap(struct kbase_context *kctx,
 			phys_addr_t phys;
 
 			phys = as_phys_addr_t(page_array[i + start_off]);
+#ifdef CONFIG_HISI_LAST_BUFFER
+			struct kbase_device *kbdev = kctx->kbdev;
+			KBASE_DEBUG_ASSERT(kbdev);
+			struct memory_group_manager_ops *mgm_ops = kbdev->hisi_dev_data.mgm_ops;
+			KBASE_DEBUG_ASSERT(mgm_ops);
+			struct page *p = phys_to_page(phys);
+			err = mgm_ops->vm_insert_pfn_prot(&p, 1, &vma->vm_page_prot);
+			if (WARN_ON(err))
+				break;
+#endif
 			err = vm_insert_pfn(vma, addr, PFN_DOWN(phys));
 			if (WARN_ON(err))
 				break;
@@ -1853,6 +1913,15 @@ static int kbase_cpu_mmap(struct kbase_context *kctx,
 		/* MIXEDMAP so we can vfree the kaddr early and not track it after map time */
 		vma->vm_flags |= VM_MIXEDMAP;
 		/* vmalloc remaping is easy... */
+#ifdef CONFIG_HISI_LAST_BUFFER
+		struct kbase_device *kbdev = kctx->kbdev;
+		KBASE_DEBUG_ASSERT(kbdev);
+		struct memory_group_manager_ops *mgm_ops = kbdev->hisi_dev_data.mgm_ops;
+		KBASE_DEBUG_ASSERT(mgm_ops);
+		struct page *p = vmalloc_to_page(kaddr);
+		err = mgm_ops->vm_insert_pfn_prot(&p, 1, &vma->vm_page_prot);
+		WARN_ON(err);
+#endif
 		err = remap_vmalloc_range(vma, kaddr, 0);
 		WARN_ON(err);
 	}
@@ -1862,7 +1931,7 @@ static int kbase_cpu_mmap(struct kbase_context *kctx,
 		goto out;
 	}
 
-	map->region = reg;
+	map->region = kbase_va_region_alloc_get(kctx, reg);
 	map->free_on_close = free_on_close;
 	map->kctx = kctx;
 	map->alloc = kbase_mem_phy_alloc_get(reg->cpu_alloc);
@@ -1876,7 +1945,7 @@ static int kbase_cpu_mmap(struct kbase_context *kctx,
  out:
 	return err;
 }
-
+/*lint +e574*/
 static int kbase_mmu_dump_mmap(struct kbase_context *kctx, struct vm_area_struct *vma, struct kbase_va_region **const reg, void **const kmap_addr)
 {
 	struct kbase_va_region *new_reg;
@@ -2017,7 +2086,11 @@ out:
 
 	return err;
 }
-
+/*lint -e668*/
+/*lint -e578*/
+/*lint -e1058*/
+/*lint -e58*/
+/*lint -e572*/
 int kbase_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	struct kbase_context *kctx = file->private_data;
@@ -2093,7 +2166,7 @@ int kbase_mmap(struct file *file, struct vm_area_struct *vma)
 		reg = kbase_region_tracker_find_region_enclosing_address(kctx,
 					(u64)vma->vm_pgoff << PAGE_SHIFT);
 
-		if (reg && !(reg->flags & KBASE_REG_FREE)) {
+		if (!kbase_is_region_invalid_or_free(reg)) {
 			/* will this mapping overflow the size of the region? */
 			if (nr_pages > (reg->nr_pages -
 					(vma->vm_pgoff - reg->start_pfn))) {
@@ -2148,7 +2221,7 @@ int kbase_mmap(struct file *file, struct vm_area_struct *vma)
 	if (vma->vm_pgoff == PFN_DOWN(BASE_MEM_MMU_DUMP_HANDLE)) {
 		/* MMU dump - userspace should now have a reference on
 		 * the pages, so we can now free the kernel mapping */
-		vfree(kaddr);
+		vfree(kaddr);//lint !e501
 	}
 
 out_unlock:
@@ -2159,7 +2232,10 @@ out:
 
 	return err;
 }
-
+/*lint +e572*/
+/*lint +e668*/
+/*lint +e1058*/
+/*lint +e58*/
 KBASE_EXPORT_TEST_API(kbase_mmap);
 
 void kbase_sync_mem_regions(struct kbase_context *kctx,
@@ -2191,7 +2267,8 @@ void kbase_sync_mem_regions(struct kbase_context *kctx,
 		kbase_sync_single(kctx, cpu_pa, gpu_pa, 0, sz, dest);
 	}
 }
-
+/*lint -e501*/
+/*lint -e429*/
 static int kbase_vmap_phy_pages(struct kbase_context *kctx,
 		struct kbase_va_region *reg, u64 offset_bytes, size_t size,
 		struct kbase_vmap_struct *map)
@@ -2200,7 +2277,7 @@ static int kbase_vmap_phy_pages(struct kbase_context *kctx,
 	unsigned int offset_in_page = offset_bytes & ~PAGE_MASK;
 	size_t page_count = PFN_UP(offset_in_page + size);
 	struct tagged_addr *page_array;
-	struct page **pages;
+	struct page **pages;//lint !e578
 	void *cpu_addr = NULL;
 	pgprot_t prot;
 	size_t i;
@@ -2246,6 +2323,15 @@ static int kbase_vmap_phy_pages(struct kbase_context *kctx,
 	 * - CPU-arch-specific integration required
 	 * - kbase_vmap() requires no access checks to be made/enforced */
 
+#ifdef CONFIG_HISI_LAST_BUFFER
+	struct kbase_device *kbdev = kctx->kbdev;
+	KBASE_DEBUG_ASSERT(kbdev);
+	struct memory_group_manager_ops *mgm_ops = kbdev->hisi_dev_data.mgm_ops;
+	KBASE_DEBUG_ASSERT(mgm_ops);
+	int err = mgm_ops->vm_insert_pfn_prot(pages, page_count, &prot);
+	WARN_ON(err);
+#endif
+
 	cpu_addr = vmap(pages, page_count, VM_MAP, prot);
 
 	kfree(pages);
@@ -2268,7 +2354,9 @@ static int kbase_vmap_phy_pages(struct kbase_context *kctx,
 
 	return 0;
 }
-
+/*lint +e578*/
+/*lint +e501*/
+/*lint +e429*/
 void *kbase_vmap_prot(struct kbase_context *kctx, u64 gpu_addr, size_t size,
 		      unsigned long prot_request, struct kbase_vmap_struct *map)
 {
@@ -2283,7 +2371,7 @@ void *kbase_vmap_prot(struct kbase_context *kctx, u64 gpu_addr, size_t size,
 
 	reg = kbase_region_tracker_find_region_enclosing_address(kctx,
 			gpu_addr);
-	if (!reg || (reg->flags & KBASE_REG_FREE))
+	if (kbase_is_region_invalid_or_free(reg))
 		goto out_unlock;
 
 	/* check access permissions can be satisfied
@@ -2350,7 +2438,9 @@ void kbase_vunmap(struct kbase_context *kctx, struct kbase_vmap_struct *map)
 	map->gpu_alloc = kbase_mem_phy_alloc_put(map->gpu_alloc);
 }
 KBASE_EXPORT_TEST_API(kbase_vunmap);
-
+/*lint -e1058*/
+/*lint -e1564*/
+/*lint -e666*/
 void kbasep_os_process_page_usage_update(struct kbase_context *kctx, int pages)
 {
 	struct mm_struct *mm;
@@ -2433,6 +2523,9 @@ static int kbase_tracking_page_setup(struct kbase_context *kctx, struct vm_area_
 
 	return 0;
 }
+/*lint +e1564*/
+/*lint +e1058*/
+/*lint +e666*/
 void *kbase_va_alloc(struct kbase_context *kctx, u32 size, struct kbase_hwc_dma_mapping *handle)
 {
 	int res;

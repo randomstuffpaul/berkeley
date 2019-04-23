@@ -118,7 +118,7 @@ int block_dump;
  * Flag that puts the machine in "laptop mode". Doubles as a timeout in jiffies:
  * a full sync is triggered after this time elapses without any disk activity.
  */
-int laptop_mode = (10 * HZ);
+int laptop_mode = 0;
 
 EXPORT_SYMBOL(laptop_mode);
 
@@ -2183,6 +2183,13 @@ int write_cache_pages(struct address_space *mapping,
 		      struct writeback_control *wbc, writepage_t writepage,
 		      void *data)
 {
+	return __write_cache_pages(mapping, wbc, writepage, data, NULL);
+}
+
+int __write_cache_pages(struct address_space *mapping,
+		      struct writeback_control *wbc, writepage_t writepage,
+		      void *data, submit_bio_first_t submit_bio_first)
+{
 	int ret = 0;
 	int done = 0;
 	struct pagevec pvec;
@@ -2222,29 +2229,13 @@ retry:
 	while (!done && (index <= end)) {
 		int i;
 
-		nr_pages = pagevec_lookup_tag(&pvec, mapping, &index, tag,
-			      min(end - index, (pgoff_t)PAGEVEC_SIZE-1) + 1);
+		nr_pages = pagevec_lookup_range_tag(&pvec, mapping, &index, end,
+				tag, PAGEVEC_SIZE);
 		if (nr_pages == 0)
 			break;
 
 		for (i = 0; i < nr_pages; i++) {
 			struct page *page = pvec.pages[i];
-
-			/*
-			 * At this point, the page may be truncated or
-			 * invalidated (changing page->mapping to NULL), or
-			 * even swizzled back from swapper_space to tmpfs file
-			 * mapping. However, page->index will not change
-			 * because we have a reference on the page.
-			 */
-			if (page->index > end) {
-				/*
-				 * can't be range_cyclic (1st pass) because
-				 * end == -1 in that case.
-				 */
-				done = 1;
-				break;
-			}
 
 			done_index = page->index;
 
@@ -2270,10 +2261,17 @@ continue_unlock:
 			}
 
 			if (PageWriteback(page)) {
-				if (wbc->sync_mode != WB_SYNC_NONE)
+				if (wbc->sync_mode != WB_SYNC_NONE) {
+					/*
+					 * submit bio before wait_on_page_writeback to avoid deadlock,
+					 * caused by two processes sync different pages of the same file.
+					 */
+					if (submit_bio_first)
+						(*submit_bio_first)(page, wbc, data);
 					wait_on_page_writeback(page);
-				else
+				} else {
 					goto continue_unlock;
+				}
 			}
 
 			BUG_ON(PageWriteback(page));

@@ -61,7 +61,7 @@ struct stack_frame_user32 {
     unsigned int    lr;
     unsigned int    pc;
 };
-static unsigned long long stack_entries[MAX_STACK_TRACE_DEPTH] = {0};
+static unsigned long long stack_entries[FDLEAK_MAX_STACK_TRACE_DEPTH] = {0};
 static unsigned int usertype = 0;
 static int tgid_hiview = 0;
 
@@ -397,9 +397,9 @@ static bool fdleak_compare_stack(unsigned long long *stack1, unsigned long long 
 {
     int i = 0;
 
-    for (i = 0; (i < MAX_STACK_TRACE_DEPTH) && (stack1[i] == stack2[i]); i++);
+    for (i = 0; (i < FDLEAK_MAX_STACK_TRACE_DEPTH) && (stack1[i] == stack2[i]); i++);
 
-    return (i == MAX_STACK_TRACE_DEPTH) ? true : false;
+    return (i == FDLEAK_MAX_STACK_TRACE_DEPTH) ? true : false;
 }
 
 static int fdleak_insert_stack(fdleak_wp_id wpid, int pid_index, int probe_id, struct stack_trace *stack)
@@ -411,7 +411,7 @@ static int fdleak_insert_stack(fdleak_wp_id wpid, int pid_index, int probe_id, s
         return -1;
     }
     for (i = 0; i < fdleak_table[wpid].list[pid_index][probe_id].diff_cnt; i++) {
-        if (fdleak_compare_stack(fdleak_table[wpid].list[pid_index][probe_id].items[i].stack, stack->entries))
+        if (fdleak_compare_stack(fdleak_table[wpid].list[pid_index][probe_id].items[i].stack, (unsigned long long *)stack->entries))
         {
             fdleak_table[wpid].list[pid_index][probe_id].hit_cnt[i]++;
             break;
@@ -461,7 +461,7 @@ int fdleak_report(fdleak_wp_id wpid, int probe_id)
 
         memset(stack_entries, 0, sizeof(stack_entries));
         trace.nr_entries    = 0;
-        trace.max_entries    = MAX_STACK_TRACE_DEPTH;
+        trace.max_entries    = FDLEAK_MAX_STACK_TRACE_DEPTH;
         trace.entries        = (unsigned long *)stack_entries;
         trace.skip            = 0;
 
@@ -511,7 +511,7 @@ static ssize_t info_show(struct kobject *kobj, struct kobj_attribute *attr, char
                 for (j = 0; j <  fdleak_table[id].list[pid_index][probe_id].diff_cnt; j++) {
                     len += snprintf(buf + len, SIZE_4K - len , "      [stack %2d : %d hits]\n", j, fdleak_table[id].list[pid_index][probe_id].hit_cnt[j]);
                     check_break(len >= SIZE_4K - 1);
-                    for(k = 0; k < MAX_STACK_TRACE_DEPTH && (fdleak_table[id].list[pid_index][probe_id].items[j].stack[k] != ULONG_MAX)
+                    for(k = 0; k < FDLEAK_MAX_STACK_TRACE_DEPTH && (fdleak_table[id].list[pid_index][probe_id].items[j].stack[k] != ULONG_MAX)
                                 && (fdleak_table[id].list[pid_index][probe_id].items[j].stack[k]); k++) {
                         len += snprintf(buf + len, SIZE_4K - len , "        #%2d: %#llX\n", k, fdleak_table[id].list[pid_index][probe_id].items[j].stack[k]);
                         check_break(len >= SIZE_4K - 1);

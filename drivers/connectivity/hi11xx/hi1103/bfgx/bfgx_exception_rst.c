@@ -1036,11 +1036,13 @@ int32 wifi_subsystem_reset_etc(void)
     }
 
 #ifdef _PRE_PLAT_FEATURE_CUSTOMIZE
-        //下发定制化参数到device去
-        hwifi_hcc_customize_h2d_data_cfg();
+    //下发定制化参数到device去
+    hwifi_hcc_customize_h2d_data_cfg();
 #endif
 
     plat_dfr_sysrst_type_cnt_inc(DFR_SINGLE_SYS_RST, SUBSYS_WIFI);
+
+    CHR_EXCEPTION_REPORT(CHR_PLATFORM_EXCEPTION_EVENTID, CHR_SYSTEM_WIFI, CHR_LAYER_DRV, CHR_WIFI_DRV_EVENT_PLAT, CHR_PLAT_DRV_ERROR_WIFI_SUBSYS_DFR_SUCC);
 
     return EXCEPTION_SUCCESS;
 }
@@ -1152,7 +1154,7 @@ int32 wifi_system_reset_etc(void)
         if (EXCEPTION_SUCCESS != bfgx_status_recovery_etc())
         {
             PS_PRINT_ERR("bfgx status revocery failed!\n");
-            CHR_EXCEPTION_REPORT(CHR_PLATFORM_EXCEPTION_EVENTID, CHR_SYSTEM_GNSS, CHR_LAYER_DRV, CHR_GNSS_DRV_EVENT_PLAT, CHR_PLAT_DRV_ERROR_BFGX_RECOVERY);
+            CHR_EXCEPTION_REPORT(CHR_PLATFORM_EXCEPTION_EVENTID, CHR_SYSTEM_WIFI, CHR_LAYER_DRV, CHR_WIFI_DRV_EVENT_PLAT, CHR_PLAT_DRV_ERROR_BFGX_RECOVERY);
 
             return -EXCEPTION_FAIL;
         }
@@ -1163,6 +1165,8 @@ int32 wifi_system_reset_etc(void)
     {
         plat_dfr_sysrst_type_cnt_inc(DFR_SINGLE_SYS_RST, SUBSYS_WIFI);
     }
+
+    CHR_EXCEPTION_REPORT(CHR_PLATFORM_EXCEPTION_EVENTID, CHR_SYSTEM_WIFI, CHR_LAYER_DRV, CHR_WIFI_DRV_EVENT_PLAT, CHR_PLAT_DRV_ERROR_WIFI_SYSTEM_DFR_SUCC);
 
     return EXCEPTION_SUCCESS;
 }
@@ -1729,6 +1733,8 @@ int32 __bfgx_subsystem_reset_etc(void)
 
     plat_dfr_sysrst_type_cnt_inc(DFR_SINGLE_SYS_RST, SUBSYS_BFGX);
 
+    CHR_EXCEPTION_REPORT(CHR_PLATFORM_EXCEPTION_EVENTID, CHR_SYSTEM_GNSS, CHR_LAYER_DRV, CHR_GNSS_DRV_EVENT_PLAT, CHR_PLAT_DRV_ERROR_BFGX_SUBSYS_DFR_SUCC);
+
     return EXCEPTION_SUCCESS;
 }
 
@@ -1881,6 +1887,8 @@ int32 bfgx_system_reset_etc(void)
     {
         plat_dfr_sysrst_type_cnt_inc(DFR_SINGLE_SYS_RST, SUBSYS_BFGX);
     }
+
+    CHR_EXCEPTION_REPORT(CHR_PLATFORM_EXCEPTION_EVENTID, CHR_SYSTEM_GNSS, CHR_LAYER_DRV, CHR_GNSS_DRV_EVENT_PLAT, CHR_PLAT_DRV_ERROR_BFGX_SYSTEM_DFR_SUCC);
 
     return EXCEPTION_SUCCESS;
 }

@@ -203,6 +203,7 @@ static int smpl_probe(struct platform_device *pdev)
     ret = hisi_charger_type_notifier_register(&di->usb_nb);
     if (ret < 0)
     {
+		wake_lock_destroy(&di->abs_pd_wakelock);
         g_smpl_devinfo = NULL;
         hwlog_err("%s %d hisi_charger_type_notifier_register failed.\n", __func__, __LINE__);
         kfree(di);
@@ -240,6 +241,8 @@ static int smpl_remove(struct platform_device *pdev)
         hwlog_err("%s %d hisi_charger_type_notifier_unregister fail, ret:%d\n", __func__, __LINE__, ret);
         goto out;
     }
+
+	wake_lock_destroy(&g_smpl_devinfo->abs_pd_wakelock);
 
     flush_work(&g_smpl_devinfo->config_abs_pd_work);
 

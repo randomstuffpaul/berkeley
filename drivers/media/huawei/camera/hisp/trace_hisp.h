@@ -14,6 +14,8 @@
 #include <media/huawei/hisp200_cfg.h>
 #elif defined( HISP250_CAMERA  )
 #include <media/huawei/hisp250_cfg.h>
+#elif defined( HISP210_CAMERA  )
+#include <media/huawei/hisp210_cfg.h>
 #else
 #include <media/huawei/hisp_cfg.h>
 #endif

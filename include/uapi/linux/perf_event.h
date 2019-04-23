@@ -35,6 +35,9 @@ enum perf_type_id {
 #ifdef CONFIG_HISI_L3C_DEVFREQ
 	PERF_TYPE_DSU				=6,
 #endif
+#ifdef CONFIG_HISI_L3P_KARMA
+	PERF_TYPE_KARMA,
+#endif
 
 	PERF_TYPE_MAX,				/* non-ABI */
 };

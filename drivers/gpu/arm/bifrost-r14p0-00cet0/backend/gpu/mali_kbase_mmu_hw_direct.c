@@ -81,6 +81,7 @@ static int wait_ready(struct kbase_device *kbdev,
 #ifdef CONFIG_HUAWEI_DSM
 		gpu_dsm_report(kbdev, 922002004, "AS_ACTIVE bit stuck.");
 #endif
+
 		if(kbdev->devfreq)
 		{
 			dev_err(kbdev->dev, "current freq is %lu\n", kbdev->devfreq->previous_freq);
@@ -130,7 +131,7 @@ static void validate_protected_page_fault(struct kbase_device *kbdev)
 		dev_err(kbdev->dev, "Fault address reported in protected mode\n");
 	}
 }
-
+/*lint -e578*/
 void kbase_mmu_interrupt(struct kbase_device *kbdev, u32 irq_stat)
 {
 	const int num_as = 16;
@@ -144,7 +145,7 @@ void kbase_mmu_interrupt(struct kbase_device *kbdev, u32 irq_stat)
 	/* bus faults */
 	u32 bf_bits = (irq_stat >> busfault_shift) & as_bit_mask;
 	/* page faults (note: Ignore ASes with both pf and bf) */
-	u32 pf_bits = ((irq_stat >> pf_shift) & as_bit_mask) & ~bf_bits;
+	u32 pf_bits = ((irq_stat >> pf_shift) & as_bit_mask) & ~bf_bits;//lint !e647
 
 	KBASE_DEBUG_ASSERT(NULL != kbdev);
 
@@ -244,7 +245,8 @@ void kbase_mmu_interrupt(struct kbase_device *kbdev, u32 irq_stat)
 	kbase_reg_write(kbdev, MMU_REG(MMU_IRQ_MASK), new_mask);
 	spin_unlock_irqrestore(&kbdev->mmu_mask_change, flags);
 }
-
+/*lint +e578*/
+/*lint -e648*/
 void kbase_mmu_hw_configure(struct kbase_device *kbdev, struct kbase_as *as)
 {
 	struct kbase_mmu_setup *current_setup = &as->current_setup;
@@ -293,7 +295,7 @@ void kbase_mmu_hw_configure(struct kbase_device *kbdev, struct kbase_as *as)
 
 	write_cmd(kbdev, as->number, AS_COMMAND_UPDATE);
 }
-
+/*lint +e648*/
 int kbase_mmu_hw_do_operation(struct kbase_device *kbdev, struct kbase_as *as,
 		u64 vpfn, u32 nr, u32 op,
 		unsigned int handling_irq)

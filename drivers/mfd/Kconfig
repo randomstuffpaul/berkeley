@@ -1663,6 +1663,12 @@ config HISI_PMIC_DCXO
 	   For platform later than atlt, we put PMU dcxo c1 c2 calibration in fastboot.
 	   Earlier, modem do this in kernel init process, which can cause pmu's clock unstable.
 
+config HISI_HI6421V800_PMU
+        tristate "HiSilicon 6421v800 IC"
+        depends on OF
+        help
+          discriminate pmu ic for pmussi passageway.
+
 config HISI_HI6555V300_PMU
         tristate "HiSilicon 6555v300 IC"
         depends on OF

@@ -480,6 +480,11 @@ static ssize_t isplogctrl_show(struct device *pdev,
     ssize_t size;
     int i;
 
+    if (buf == NULL) {
+        pr_err("[%s] Failed : buf.%pK\n", __func__, buf);
+        return 0;
+    }
+
     hisp_lock_sharedbuf();
     param = rproc_get_share_para();
     if (param != NULL)
@@ -520,6 +525,11 @@ static ssize_t isplogctrl_store(struct device *pdev,
     struct isplog_device_s *dev = (struct isplog_device_s *)&isplog_dev;
     int i = 0, len = 0, flag = 0;
     char *p = NULL;
+
+    if ((buf == NULL) || (count == 0)) {
+       pr_err("[%s] Failed : buf.%pK, count.0x%lx\n", __func__, buf, count);
+       return 0;
+    }
 
     p = memchr(buf, ':', count);
     if (!p)

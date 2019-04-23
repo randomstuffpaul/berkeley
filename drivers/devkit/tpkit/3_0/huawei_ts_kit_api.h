@@ -29,16 +29,13 @@ void ts_report_input(struct ts_cmd_node *in_cmd, struct ts_cmd_node *out_cmd);
 void ts_report_pen(struct ts_cmd_node *in_cmd, struct ts_cmd_node *out_cmd);
 int ts_power_control(int irq_id, struct ts_cmd_node *in_cmd,
 		     struct ts_cmd_node *out_cmd);
+void ts_palm_report(struct ts_cmd_node* in_cmd, struct ts_cmd_node* out_cmd);
 int ts_fw_update_boot(struct ts_cmd_node *in_cmd, struct ts_cmd_node *out_cmd);
 int ts_fw_update_sd(struct ts_cmd_node *in_cmd, struct ts_cmd_node *out_cmd);
 void ts_start_wd_timer(struct ts_kit_platform_data *cd);
 void ts_stop_wd_timer(struct ts_kit_platform_data *cd);
 bool ts_cmd_need_process(struct ts_cmd_node *cmd);
-#ifndef CONFIG_HUAWEI_DEVKIT_MTK_3_0
-int ts_kit_power_control_notify(int pm_type, int timeout);
-#else
-int ts_kit_power_control_notify(int pm_type, int timeout);
-#endif
+int ts_kit_power_control_notify(enum lcd_kit_ts_pm_type pm_type, int timeout);
 int ts_kit_power_notify_callback(struct notifier_block *self,
 				 unsigned long notify_pm_type, void *data);
 int ts_read_debug_data(struct ts_cmd_node *in_cmd, struct ts_cmd_node *out_cmd,
@@ -78,8 +75,6 @@ void ts_kit_charger_switch(struct ts_cmd_node *in_cmd,
 			   struct ts_cmd_node *out_cmd);
 int ts_chip_detect(struct ts_cmd_node *in_cmd, struct ts_cmd_node *out_cmd);
 int ts_oem_info_switch(struct ts_cmd_node *in_cmd, struct ts_cmd_node *out_cmd,
-		       struct ts_cmd_sync *sync);
-int ts_gamma_info_switch(struct ts_cmd_node *in_cmd, struct ts_cmd_node *out_cmd,
 		       struct ts_cmd_sync *sync);
 int ts_get_calibration_info(struct ts_cmd_node *in_cmd,
 			    struct ts_cmd_node *out_cmd,

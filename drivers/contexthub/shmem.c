@@ -29,9 +29,9 @@ enum {
 	SHMEM_MSG_TYPE_NORMAL,
 	SHMEM_MSG_TYPE_SHORT,
 };
-#ifdef CONFIG_INPUTHUB_20
+
 #define SHMEM_IMPROVEMENT_SHORT_BLK
-#endif
+
 
 static LIST_HEAD(shmem_client_list);
 static DEFINE_MUTEX(shmem_recv_lock); /*lint !e651 !e708 !e570 !e64 !e785*/
@@ -65,13 +65,14 @@ static struct shmem shmem_gov;
 static struct wake_lock shmem_lock;
 
 static int shmem_ipc_send(unsigned char cmd, obj_tag_t module_id,
-			  unsigned int size)
+			  unsigned int size, bool is_lock)
 {
 	struct shmem_ipc pkt;
-#ifdef CONFIG_INPUTHUB_20
 	write_info_t winfo;
-#endif
 
+	if (memset_s(&pkt, sizeof(pkt), 0, sizeof(pkt))) {
+		pr_err("%s memset_s fail\n", __func__);
+	}
 	pkt.data.module_id = module_id;
 	pkt.data.buf_size = size;
 #ifdef SHMEM_IMPROVEMENT_SHORT_BLK
@@ -84,13 +85,20 @@ static int shmem_ipc_send(unsigned char cmd, obj_tag_t module_id,
 	winfo.cmd = cmd;
 	winfo.wr_buf = &pkt.data;
 	winfo.wr_len = sizeof(struct shmem_ipc_data);
-	return write_customize_cmd(&winfo, NULL, true);
+	if (is_lock) {
+		return write_customize_cmd(&winfo, NULL, is_lock);
+	} else {
+		pkt.hd.tag = TAG_SHAREMEM;
+		pkt.hd.cmd = cmd;
+		pkt.hd.length = sizeof(struct shmem_ipc_data);
+		return inputhub_mcu_write_cmd(&pkt, sizeof(pkt)); //send msg no lock no resp
+	}
 #else
-	pkt.hd.tag = TAG_SHAREMEM;
-	pkt.hd.cmd = cmd;
-	pkt.hd.resp = 0;
-	pkt.hd.length = sizeof(struct shmem_ipc_data);
-	return inputhub_mcu_write_cmd_adapter(&pkt, (unsigned int)sizeof(pkt), NULL);
+	winfo.tag = TAG_SHAREMEM;
+	winfo.cmd = cmd;
+	winfo.wr_buf = &pkt.data;
+	winfo.wr_len = sizeof(struct shmem_ipc_data);
+	return write_customize_cmd(&winfo, NULL);
 #endif
 }
 
@@ -127,7 +135,7 @@ static void receive_response_work_handler(struct work_struct *work)
 		return;
 	}
 	shmem_ipc_send(CMD_SHMEM_AP_RECV_RESP, (obj_tag_t)p->data.module_id,
-		       p->data.buf_size);
+		       p->data.buf_size, false);
 	pr_info("[%s]\n", __func__);
 }
 
@@ -236,7 +244,7 @@ int shmem_send(obj_tag_t module_id, const void *usr_buf,
 	if (ret)
 		pr_warning("[%s]down_timeout 500\n", __func__);
 	memcpy_s((void *)shmem_gov.send_addr_base, (size_t)SHMEM_AP_SEND_PHY_SIZE, usr_buf, (unsigned long)usr_buf_size);
-	return shmem_ipc_send(CMD_SHMEM_AP_SEND_REQ, module_id, usr_buf_size);
+	return shmem_ipc_send(CMD_SHMEM_AP_SEND_REQ, module_id, usr_buf_size, true);
 }
 
 unsigned int shmem_get_capacity(void)
@@ -244,7 +252,7 @@ unsigned int shmem_get_capacity(void)
 	return (unsigned int)SHMEM_AP_SEND_PHY_SIZE;
 }
 
-static int shmem_send_resp(const pkt_header_t * head)
+int shmem_send_resp(const pkt_header_t * head)
 {
 	up(&shmem_gov.send_sem);
 	return 0;
@@ -252,20 +260,9 @@ static int shmem_send_resp(const pkt_header_t * head)
 
 static int shmem_send_init(void)
 {
-	int ret = register_mcu_event_notifier(TAG_SHAREMEM,
-					      CMD_SHMEM_AP_SEND_RESP,
-					      shmem_send_resp);
-	if (ret) {
-		pr_err("[%s] register_mcu_event_notifier err\n", __func__);
-		return ret;
-	}
-
 	shmem_gov.send_addr_base =
 	    ioremap_wc((ssize_t)SHMEM_AP_SEND_PHY_ADDR, (unsigned long)SHMEM_AP_SEND_PHY_SIZE);
 	if (!shmem_gov.send_addr_base) {
-		unregister_mcu_event_notifier(TAG_SHAREMEM,
-					      CMD_SHMEM_AP_SEND_RESP,
-					      shmem_send_resp);
 		pr_err("[%s] ioremap err\n", __func__);
 		return -ENOMEM;
 	}

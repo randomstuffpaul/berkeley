@@ -2,6 +2,10 @@
 ccflags-y  += -I$(srctree)/drivers/contexthub/
 #endif
 
+#ifdef CONFIG_HUAWEI_HOST_TS_KIT
+ccflags-y  += -I$(srctree)/drivers/devkit/tpkit/hostprocessing/
+#endif
+
 # contexthub Driver
 obj-$(CONFIG_INPUTHUB_20)		+= contexthub_boot.o
 obj-$(CONFIG_INPUTHUB_20)		+= contexthub_route.o

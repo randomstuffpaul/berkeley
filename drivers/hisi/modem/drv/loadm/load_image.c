@@ -509,7 +509,6 @@ static int load_data_to_secos(const char* file_name, u32 offset, u32 size,
             skip_offset = VRL_SIZE;
         }
     }
-    sec_print_info("need read file %s 0x%x to 0x%x though secos from offset 0x%x\n",file_name, image->run_addr, remain_bytes, skip_offset);
 
     /* 检查读取的大小是否超过ddr分区大小 */
     if((u32)remain_bytes > image->ddr_size)
@@ -708,7 +707,7 @@ static int get_dtb_entry(unsigned int modemid, unsigned int num, struct modem_dt
 
 static s32 load_and_verify_dtb_data(void)
 {
-    s32 ret;
+    s32 ret, condition;
     u32 modem_id = 0;
     struct modem_dt_table_t *header;
     struct modem_dt_table_t dt_table;
@@ -747,7 +746,8 @@ static s32 load_and_verify_dtb_data(void)
 
     /*get the head*/
     readed_bytes = read_file(file_name, offset, (unsigned int)sizeof(struct modem_dt_table_t), (char*)(header));
-    if (readed_bytes < 0 || readed_bytes != (int)sizeof(struct modem_dt_table_t))
+    condition = readed_bytes < 0 || readed_bytes != (int)sizeof(struct modem_dt_table_t);
+    if (condition)
     {
        sec_print_err("fail to read the head of modem dtb image, readed_bytes(0x%x) != size(0x%lx).\n", readed_bytes, sizeof(struct modem_dt_table_t));
        ret = readed_bytes;
@@ -765,7 +765,8 @@ static s32 load_and_verify_dtb_data(void)
     offset += sizeof(struct modem_dt_table_t);
 
     readed_bytes = read_file(file_name, offset, (unsigned int)(sizeof(struct modem_dt_entry_t)*(header->num_entries)), (char*)dt_entry);
-    if (readed_bytes < 0 || readed_bytes != (int)(sizeof(struct modem_dt_entry_t)*(header->num_entries)))
+    condition = readed_bytes < 0 || readed_bytes != (int)(sizeof(struct modem_dt_entry_t)*(header->num_entries));
+    if (condition)
     {
        sec_print_err("fail to read the head of modem dtb entry, readed_bytes(0x%x) != size(0x%lx).\n", readed_bytes, (sizeof(struct modem_dt_entry_t)*(header->num_entries)));
        ret = readed_bytes;
@@ -773,7 +774,10 @@ static s32 load_and_verify_dtb_data(void)
     }
       offset -= sizeof(struct modem_dt_table_t);
     /* 需要mask掉射频扣板ID号或modemid的bit[9:0] */
-    modem_id = bsp_get_version_info()->board_id_udp_masked;
+    if (bsp_get_version_info() != NULL)
+        modem_id = bsp_get_version_info()->board_id_udp_masked;
+    else
+        goto err_out;
     sec_print_err("modem_id 0x%x \n", modem_id);
 
     memset_s((void *)&dt_entry_ptr, sizeof(dt_entry_ptr), 0, sizeof(dt_entry_ptr));
@@ -797,7 +801,8 @@ static s32 load_and_verify_dtb_data(void)
         sec_print_info("modem dtb vrl_offset %d, vrl_size %d\n", dt_entry_ptr.vrl_offset,dt_entry_ptr.vrl_size);
 
         readed_bytes = read_file(file_name, offset + dt_entry_ptr.vrl_offset,dt_entry_ptr.vrl_size, (char*)SECBOOT_BUFFER);
-        if (readed_bytes < 0 || (u32)readed_bytes != dt_entry_ptr.vrl_size)
+        condition = readed_bytes < 0 || (u32)readed_bytes != dt_entry_ptr.vrl_size;
+        if (condition)
         {
             sec_print_err("fail to read the dtb vrl\n");
             ret = readed_bytes;

@@ -41,6 +41,16 @@ int check_match_by_adc(void)
     return ret;
 }
 
+int get_voltage_by_adc(void)
+{
+    int voltage = 0;
+
+    voltage = hisi_adc_get_value(board_adc_channel);
+    hwlog_info("Antenna board adc voltage = %d\n", voltage);
+
+    return voltage;
+}
+
 /*lint -save -e* */
 static void parse_dts(struct antenna_adc_match_info *di)
 {
@@ -68,6 +78,7 @@ static void parse_dts(struct antenna_adc_match_info *di)
 
 struct antenna_device_ops adc_match_ops = {
     .get_antenna_match_status = check_match_by_adc,
+    .get_antenna_board_voltage = get_voltage_by_adc,
 };
 
 static int antenna_board_adc_probe(struct platform_device *pdev)

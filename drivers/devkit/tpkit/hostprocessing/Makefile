@@ -12,3 +12,8 @@ EXTRA_CFLAGS += -Idrivers/hisi/tzdriver
 EXTRA_CFLAGS += -Idrivers/tzdriver
 EXTRA_CFLAGS += -Idrivers/devkit/lcdkit/lcdkit1.0/core/common
 EXTRA_CFLAGS += -Idrivers/devkit/lcdkit/lcdkit3.0/kernel/common/include
+ifeq ($(wildcard $(srctree)/drivers/huawei_platform/inputhub/$(TARGET_BOARD_PLATFORM)),)
+EXTRA_CFLAGS += -Idrivers/huawei_platform/inputhub/default
+else
+EXTRA_CFLAGS += -Idrivers/huawei_platform/inputhub/$(TARGET_BOARD_PLATFORM)
+endif

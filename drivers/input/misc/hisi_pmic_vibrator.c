@@ -827,10 +827,12 @@ static irqreturn_t hisi_pmic_vibrator_handler(int irq, void *data)
 			dev_err(g_vdev->dev,
 				"pmic vibrator interrupt happend[%s]\n",
 				vdev->lra_irq[i].irq_name);
+#ifdef CONFIG_HUAWEI_DSM
 			strncpy_s(pmic_vibrator_happend_irq_name,
 				sizeof(pmic_vibrator_happend_irq_name),
 				vdev->lra_irq[i].irq_name,
 				strlen(vdev->lra_irq[i].irq_name));
+#endif
 			schedule_work(&vdev->hisi_pmic_vibrator_irq_work);
 
 			goto irq_pending;

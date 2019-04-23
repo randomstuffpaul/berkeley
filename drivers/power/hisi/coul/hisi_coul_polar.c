@@ -25,6 +25,10 @@
 #include <huawei_platform/log/hw_log.h>
 #include <linux/hisi/rdr_hisi_ap_ringbuffer.h>
 #include <linux/power/hisi/coul/hisi_coul_drv.h>
+#include <linux/hisi/kirin_partition.h>
+#include <linux/syscalls.h>
+#include <linux/uaccess.h>
+#include <hisi_partition.h>
 #include "securec.h"
 #include "polar_table.h"
 #define COUL_POLAR_INFO
@@ -39,7 +43,10 @@
 #define polar_warn(fmt, args...) do { printk(KERN_WARNING"[coul_polar]" fmt, ## args); } while (0)
 #define polar_err(fmt, args...)  do { printk(KERN_ERR   "[coul_polar]" fmt, ## args); } while (0)
 #endif
-
+#define POLAR_FILE_LIMIT       0660
+#define POLAR_BUF_SHOW_LEN    (128)
+#define POLAR_LUT_SIZE    (0x1000)
+#define POLAR_LUT_OFFSET    (0)
 static unsigned long polar_sample_interval[POLAR_TIME_ARRAY_NUM] = {
     500,   1500,   3000,   5000,
     10000, 15000,  25000,  35000,
@@ -538,10 +545,10 @@ static int interpolate_linear_a(polar_learn_tbl* lut, int batt_temp_index, int s
     neg_index = batt_temp_index;
     for (i = 0; i < POLAR_LEARN_TEMP_RANGE; i++) {
         temp_index++;
-    polar_debug("%s:vol:%ld, temp_index:%d\n", __func__, lut->value[soc_index][temp_index].polar_vol, temp_index);
+    polar_debug("%s:vol:%ld, temp_index:%d\n", __func__, lut->value[soc_index][temp_index].polar_vol_mv, temp_index);
         if (POLAR_LEARN_TEMP_COLS <= temp_index || 0 > temp_index)
-            return -1;
-        if (0 != lut->value[soc_index][temp_index].polar_vol) {
+            break;
+        if (0 != lut->value[soc_index][temp_index].polar_vol_mv) {
             pos_trained_a = lut->value[soc_index][temp_index].a_trained;
             pos_index = temp_index;
             break;
@@ -550,10 +557,13 @@ static int interpolate_linear_a(polar_learn_tbl* lut, int batt_temp_index, int s
     temp_index = batt_temp_index;
     for (i = 0; i < POLAR_LEARN_TEMP_RANGE; i++) {
         temp_index--;
-        if (POLAR_LEARN_TEMP_COLS <= temp_index || temp_index < 0)
-            return -1;
-    polar_debug("%s:vol:%ld, temp_index:%d\n", __func__, lut->value[soc_index][temp_index].polar_vol, temp_index);
-        if (0 != lut->value[soc_index][temp_index].polar_vol) {
+        if (POLAR_LEARN_TEMP_COLS <= temp_index || 0 > temp_index)
+            break;
+        /*因为25度后温度不连续，超过25度不再继续查找有效值*/
+        if (lut->y_array[temp_index] >= TEMP_25_DEGREE)
+            break;
+    polar_debug("%s:vol:%ld, temp_index:%d\n", __func__, lut->value[soc_index][temp_index].polar_vol_mv, temp_index);
+        if (0 != lut->value[soc_index][temp_index].polar_vol_mv) {
             neg_trained_a = lut->value[soc_index][temp_index].a_trained;
             neg_index = temp_index;
             break;
@@ -564,6 +574,10 @@ static int interpolate_linear_a(polar_learn_tbl* lut, int batt_temp_index, int s
         result = polar_linear_interpolate(neg_trained_a, lut->y_array[neg_index],
             pos_trained_a,lut->y_array[pos_index], lut->y_array[batt_temp_index]);
         return result;
+    } else if (neg_trained_a) {
+        return neg_trained_a;
+    } else if (pos_trained_a) {
+        return pos_trained_a;
     }
     return -1;
 }
@@ -590,6 +604,225 @@ static void record_polar_vol(long polar_vol_uv)
     di->polar_vol_index = di->polar_vol_index % POLAR_ARRAY_NUM;
     mutex_unlock(&di->polar_vol_lock);
 }
+
+
+/****************************************************************************//**
+ * @brief      : polar_flash_open
+ * @param[in]  : flags
+ * @return     : ::int
+ * @note       :
+********************************************************************************/
+static int polar_flash_open(int flags)
+{
+	char p_name[POLAR_BUF_SHOW_LEN + 1] = {0};
+	int ret, fd_dfx;
+
+	ret = flash_find_ptn(PART_BATT_TP_PARA, p_name);
+	if (0 != ret) {
+		polar_err("%s()-line=%d\n", __func__, __LINE__);
+	}
+	p_name[POLAR_BUF_SHOW_LEN] = '\0';
+	fd_dfx = sys_open(p_name, flags, POLAR_FILE_LIMIT);
+	if (fd_dfx < 0) {
+		polar_err("%s()-line=%d\n", __func__, __LINE__);
+	}
+	return fd_dfx;
+}
+
+/****************************************************************************//**
+ * @brief      : polar_get_flash_data
+ * @param[in]  : buf
+ * @param[in]  : buf_size
+ * @param[in]  : flash_offset
+ * @return     : ::u32
+ * @note       :
+********************************************************************************/
+u32 polar_get_flash_data(void *buf, u32 buf_size, u32 flash_offset)
+{
+	int ret, fd_flash;
+	u32 cnt=0;
+	mm_segment_t old_fs;
+
+	if (!buf || 0 == buf_size) {
+		polar_err("%s()-line=%d\n", __func__, __LINE__);
+		return 0;
+	}
+
+	old_fs = get_fs(); /*lint !e501*/
+	set_fs(KERNEL_DS); /*lint !e501*/
+
+	fd_flash = polar_flash_open(O_RDONLY);
+	if (fd_flash >= 0) {
+		ret = sys_lseek(fd_flash, flash_offset, SEEK_SET);
+		if (ret < 0) {
+			polar_err("%s()-line=%d, ret=%d, flash_offset=%x\n", __func__, __LINE__, ret, flash_offset);
+			goto close;
+		}
+		cnt = (u32)sys_read(fd_flash, buf, buf_size);
+		if (cnt != buf_size) {
+			polar_err("%s()-line=%d, cnt=%d\n", __func__, __LINE__, cnt);
+			goto close;
+		}
+	} else {
+		polar_err("%s()-line=%d, fd_flash=%d\n", __func__, __LINE__, fd_flash);
+		set_fs(old_fs);
+		return 0;
+	}
+close:
+	sys_close(fd_flash);
+	set_fs(old_fs); /*lint !e501*/
+	return cnt;
+}
+
+/****************************************************************************//**
+ * @brief      : polar_add_flash_data
+ * @param[in]  : p_buf
+ * @param[in]  : buf_size
+ * @param[in]  : flash_offset
+ * @return     : void
+ * @note       :
+********************************************************************************/
+void polar_add_flash_data(void *p_buf, u32 buf_size, u32 flash_offset)
+{
+	int ret, fd_flash, cnt=0;
+	mm_segment_t old_fs;
+
+	if (NULL == p_buf) {
+		polar_err("%s()-line=%d\n", __func__, __LINE__);
+		return;
+	}
+
+	old_fs = get_fs(); /*lint !e501*/
+	set_fs(KERNEL_DS); /*lint !e501*/
+
+	fd_flash = polar_flash_open(O_WRONLY);
+	if (fd_flash >= 0) {
+		ret = sys_lseek(fd_flash, flash_offset, SEEK_SET);
+		if (ret < 0) {
+			polar_err("%s()-line=%d, ret=%d\n", __func__, __LINE__, ret);
+			goto close;
+		}
+		cnt = sys_write(fd_flash, p_buf, buf_size);
+		if (cnt != buf_size) {
+			polar_err("%s()-line=%d, cnt=%d\n", __func__, __LINE__, cnt);
+			goto close;
+		}
+	} else {
+		polar_err("%s()-line=%d\n", __func__, __LINE__);
+		set_fs(old_fs); /*lint !e501*/
+		return;
+	}
+close:
+	sys_close(fd_flash);
+	set_fs(old_fs); /*lint !e501*/
+}
+
+/****************************************************************************//**
+ * @brief      : polar_clear_flash_data
+ * @param[in]  : NA
+ * @return     : void
+ * @note       :
+********************************************************************************/
+void polar_clear_flash_data(void)
+{
+	void *p_buf = NULL;
+
+	p_buf = kzalloc(POLAR_LUT_SIZE, GFP_KERNEL);
+	if (NULL == p_buf) {
+		pr_err("%s()-line=%d\n", __func__, __LINE__);
+		return;
+	}
+	polar_add_flash_data(p_buf, POLAR_LUT_SIZE, POLAR_LUT_OFFSET);
+	kfree(p_buf);
+	p_buf = NULL;
+}
+EXPORT_SYMBOL(polar_clear_flash_data);
+/****************************************************************************//**
+ * @brief      : polar_partition_ready
+ * @param[in]  : NA
+ * @return     : int -1:not ready,0:ready
+ * @note       :
+********************************************************************************/
+static int polar_partition_ready(void)
+{
+	char p_name[POLAR_BUF_SHOW_LEN + 1] = {0};
+	int ret;
+
+	ret = flash_find_ptn(PART_BATT_TP_PARA, p_name);
+	if (0 != ret) {
+		polar_err("%s()-line=%d\n", __func__, __LINE__);
+	}
+	p_name[POLAR_BUF_SHOW_LEN] = '\0';
+	if(0 != sys_access(p_name,0)) {
+        polar_err("%s()-line=%d, TP partition name:%s\n", __func__, __LINE__, p_name);
+	    return -1;
+    }
+    return 0;
+}
+
+/****************************************************************************//**
+ * @brief      : polar_partition_data_check
+ * @param[in]  : NA
+ * @return     : int -1:check fail,0:ok
+ * @note       :
+********************************************************************************/
+static int polar_partition_data_check(polar_learn_tbl* lut)
+{
+    int i,j;
+    if (NULL == lut)
+        return -1;
+    for (i = 0; i < lut->rows; i++){
+        for (j = 0; j < lut->cols; j++){
+            if (lut->value[i][j].polar_vol_mv) {
+                if (lut->value[i][j].a_trained < POLAR_ERR_A_MIN
+                    || lut->value[i][j].a_trained > POLAR_ERR_A_MAX) {
+                    polar_err("fail data lut[%d][%d].vol:%d,.a:%d",
+                        i, j, lut->value[i][j].polar_vol_mv, lut->value[i][j].a_trained);
+                    return -1;
+                }
+            }
+            polar_debug("self_learn_lut[%d][%d].vol:%d,.a:%d",
+                        i, j, lut->value[i][j].polar_vol_mv, lut->value[i][j].a_trained);
+        }
+    }
+    return 0;
+}
+#ifdef CONFIG_HISI_DEBUG_FS
+/****************************************************************************//**
+ * @brief      : hisee_pdswipe_record_show
+ * @param[in]  : dev
+ * @param[in]  : attr
+ * @param[in]  : buf
+ * @return     : ::ssize_t
+ * @note       :
+********************************************************************************/
+ssize_t polar_self_learn_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	void *p_buf = NULL;
+	u32	cnt=0;
+
+	p_buf = kzalloc(POLAR_LUT_SIZE, GFP_KERNEL);
+	if (NULL == p_buf) {
+		polar_err("%s()-line=%d\n", __func__, __LINE__);
+		return 0;
+	}
+	/*todo:copy data from emmc, to save in user buffer*/
+	cnt = polar_get_flash_data(p_buf, POLAR_LUT_SIZE, POLAR_LUT_OFFSET);
+	if (cnt > 0) {
+		if (memcpy_s((void *)buf, PAGE_SIZE, (const void *)p_buf, min_t(size_t, POLAR_LUT_SIZE, PAGE_SIZE))) {
+			polar_err("%s()-line=%d\n", __func__, __LINE__);
+		}
+	} else {
+		polar_err("%s()-line=%d\n", __func__, __LINE__);
+	}
+
+	kfree(p_buf);
+	p_buf = NULL;
+
+	return (ssize_t)cnt;
+}/*lint !e715*/
+#endif
+
 /*******************************************************
   Function:        store_trained_a
   Description:    记录学习到的a值
@@ -605,13 +838,21 @@ static void store_trained_a(polar_learn_tbl* lut, int batt_temp_degc, int soc,
                                 long trained_a, long polar_vol_uv)
 {
     int soc_index, batt_temp_index;
+    static unsigned long last_self_learn_time = 0;
+    unsigned long time_now =  (unsigned long)(hisi_getcurtime()/NSEC_PER_SEC);
+
     if (NULL == lut)
         return;
     soc_index = interpolate_nearest_x(lut->x_array, lut->rows, soc);
     batt_temp_index = interpolate_nearest_x(lut->y_array, lut->cols,
                     batt_temp_degc);
-    lut->value[soc_index][batt_temp_index].polar_vol = polar_vol_uv;
+    lut->value[soc_index][batt_temp_index].polar_vol_mv = polar_vol_uv / UVOLT_PER_MVOLT;
     lut->value[soc_index][batt_temp_index].a_trained = trained_a;
+    if (time_after(time_now, last_self_learn_time + SELF_LEARN_GAP)) {
+        polar_debug("%s:last_learn_time:%d,time_now:%d\n", __func__, last_self_learn_time, time_now);
+        last_self_learn_time = time_now;
+        polar_add_flash_data(lut->value, sizeof(lut->value), POLAR_LUT_OFFSET);
+    }
     polar_info("%s:polar trained a:%ld, polar vol:%ld\n", __func__, trained_a, polar_vol_uv);
 }
 
@@ -624,7 +865,7 @@ static void store_trained_a(polar_learn_tbl* lut, int batt_temp_degc, int soc,
   Output:         NA
   Return:         long polar_vol_uv:本次自学习a值对应的极化电压
 ********************************************************/
-static long get_trained_polar_vol(polar_learn_tbl* lut, int batt_temp_degc, int soc)
+static short get_trained_polar_vol(polar_learn_tbl* lut, int batt_temp_degc, int soc)
 {
     int soc_index, batt_temp_index;
     if (NULL == lut)
@@ -632,7 +873,7 @@ static long get_trained_polar_vol(polar_learn_tbl* lut, int batt_temp_degc, int 
     soc_index = interpolate_nearest_x(lut->x_array, lut->rows, soc);
     batt_temp_index = interpolate_nearest_x(lut->y_array, lut->cols,
                     batt_temp_degc);
-    return lut->value[soc_index][batt_temp_index].polar_vol;
+    return lut->value[soc_index][batt_temp_index].polar_vol_mv;
 }
 
 /*******************************************************
@@ -663,14 +904,12 @@ static long get_trained_a(polar_learn_tbl* lut, int batt_temp_degc, int soc)
     if (soc_index >= POLAR_RES_PC_CURR_ROWS || soc_index < 0)
         return -1;
     /*当前电量温度对应的自学习表中极化电压不为0，则认为a值有效*/
-    if (0 != lut->value[soc_index][batt_temp_index].polar_vol) {
-        return lut->value[soc_index][batt_temp_index].a_trained;
-    }
-    /*如果当前温度小于23，且该温度、电量节点没有自学习值，可通过插值方式获取a值*/
-    if (TEMP_23_DEGREE > batt_temp_degc) {
+    if (0 != lut->value[soc_index][batt_temp_index].polar_vol_mv) {
+        trained_a = lut->value[soc_index][batt_temp_index].a_trained;
+    } else if (TEMP_25_DEGREE > batt_temp_degc) {
+    /*如果当前温度小于25，且该温度、电量节点没有自学习值，可通过插值方式获取a值*/
         trained_a = interpolate_linear_a(lut, batt_temp_index, soc_index);
     }
-
     return trained_a;
 }
 
@@ -693,6 +932,7 @@ static bool could_vbat_learn_a (struct hisi_polar_device *di, int ocv_soc_mv,
 {
     int vol_coe = 0;
     long polar_vol_trained = 0;
+    long polar_vol_mv = polar_vol_uv / UVOLT_PER_MVOLT;
 
     if (NULL == di)
         return FALSE;
@@ -700,25 +940,25 @@ static bool could_vbat_learn_a (struct hisi_polar_device *di, int ocv_soc_mv,
     /*VBAT(tn)+I(tn)*RPCB> Vcutoff-100mV@放电电流为负*/
     if (VBAT_LEARN_GAP_MV <= (int)di->v_cutoff - vol_now_mv)
         return FALSE;
-    /*即[OCV(tn)-VBAT(tn)+I(tn)*RPCB]/ [OCV(tn)-Vcutoff+I(tn)*RPCB]>0.9@放电电流为负*/
+    /*即[OCV(tn)-VBAT(tn)+I(tn)*RPCB]/ [OCV(tn)-Vcutoff+I(tn)*RPCB]>0.8@放电电流为负*/
     vol_coe = (TENTH * (ocv_soc_mv - vol_now_mv)) /(ocv_soc_mv - (int)di->v_cutoff + 
             (cur * ((int)di->r_pcb / UOHM_PER_MOHM))/UVOLT_PER_MVOLT);
     polar_debug("%s:vol_coe:%d, last_avgcurr_5s:%d\n", __func__, vol_coe, di->last_avgcurr_5s);
     if (VBAT_LEARN_COE_HIGH < vol_coe)
         return TRUE;
-    /*平均电流I<-2.4A@放电电流为负*/
+    /*平均电流I<-1.5A@放电电流为负*/
     if (di->last_avgcurr_5s < VBAT_LEARN_AVGCURR_HIGH)
         return TRUE;
     polar_vol_trained = get_trained_polar_vol(&polar_learn_lut, temp, soc);
     polar_debug("%s:trained_vol:%ld\n", __func__, polar_vol_trained);
-    /*即0.5<[OCV(tn)-VBAT(tn)+I(tn)*RPCB]/ [OCV(tn)-Vcutoff+I(tn)*RPCB]≤0.9
+    /*即0.6<[OCV(tn)-VBAT(tn)+I(tn)*RPCB]/ [OCV(tn)-Vcutoff+I(tn)*RPCB]≤0.8
     且Vpert(tn)< Vpert_ training(SOCn ,Tempm) @放电电流为负*/
-    if (VBAT_LEARN_COE_LOW < vol_coe && polar_vol_uv < polar_vol_trained)
+    if (VBAT_LEARN_COE_LOW < vol_coe && polar_vol_mv < polar_vol_trained)
         return TRUE;
-    /*即-2.4A<最近5s放电平均电流I≤-1A
+    /*即-1.5A<最近5s放电平均电流I≤-0.5A
     且Vpert(tn)< Vpert_ training(SOCn ,Tempm) @放电电流为正*/
     if (di->last_avgcurr_5s < VBAT_LEARN_AVGCURR_LOW
-            && polar_vol_uv < polar_vol_trained)
+            && polar_vol_mv < polar_vol_trained)
         return TRUE;
     /*不满足上述条件，则不进行自学习*/
     return FALSE;
@@ -820,6 +1060,60 @@ static void update_polar_error_b(int ocv_soc_mv, int vol_now_mv,
 }
 
 /*******************************************************
+  Function:        calc_weighted_a
+  Description:     加权平均计算a值
+  Input:          a_trained，需要加权的a值
+                  是否需要加入a值滤波队列 enqueue
+  Output:          平均后的a值
+  Return:          NA
+********************************************************/
+static long calc_weighted_a(long a_trained, int enqueue)
+{
+    int i;
+    long temp_err_a_wavg = 0, a_weighted = 0;
+    static int polar_valid_a_index = 0;
+    /*calculate weighted average of A with current A and former three A values*/
+    for (i = 0; i < POLAR_VALID_A_NUM; i++) {
+        polar_debug("%s:a_array[%d]:%ld,coe:%d\n", __func__,
+            i, polar_err_a_array[i], polar_err_a_coe[i]);
+        if (0 == polar_err_a_array[i])
+            temp_err_a_wavg += (a_trained * polar_err_a_coe[i]);
+        else
+            temp_err_a_wavg += (polar_err_a_array[i] * polar_err_a_coe[i]);
+    }
+    a_weighted = (a_trained * polar_err_a_coe[POLAR_VALID_A_NUM]
+        +temp_err_a_wavg) / POLAR_A_COE_MUL;
+    if (enqueue) {
+        polar_err_a_array [polar_valid_a_index % POLAR_VALID_A_NUM] =
+            a_trained;
+        polar_valid_a_index++;
+        polar_valid_a_index = polar_valid_a_index % POLAR_VALID_A_NUM;
+    }
+    polar_debug("%s:update real polar a:%ld, weighted average a:%ld\n",
+        __func__, a_trained, a_weighted);
+    return a_weighted;
+}
+
+/*******************************************************
+  Function:        polar_learn_lut_init
+  Description:     自学习表初始化
+  Input:         自学习表lut
+  Output:         NA
+  Return:          NA
+********************************************************/
+static void polar_learn_lut_init(polar_learn_tbl* lut)
+{
+    int i,j;
+    if (NULL == lut)
+        return;
+    for (i = 0; i < lut->rows; i++){
+        for (j = 0; j < lut->cols; j++){
+            lut->value[i][j].a_trained = POLAR_ERR_A_DEFAULT;
+            lut->value[i][j].polar_vol_mv = 0;
+        }
+    }
+}
+/*******************************************************
   Function:        update_polar_error_a
   Description:     更新极化电压a值
   Input:           电量查表OCV ocv_soc_mv
@@ -831,27 +1125,40 @@ static void update_polar_error_b(int ocv_soc_mv, int vol_now_mv,
 static void update_polar_error_a(int ocv_soc_mv, int vol_now_mv, int cur,
                                     long polar_vol_uv, int temp, int soc)
 {
-    int i = 0;
     long temp_err_a = 0, a_trained = 0;
-    long temp_err_a_wavg = 0;
-    static int polar_valid_a_index = 0;
+    static int polar_partition_read_flag = 0;
     struct hisi_polar_device *di = g_polar_di;
 
     if (NULL == di)
         return;
-
-
-    if ((VPERT_NOW_LOW_A <= polar_vol_uv)
-        &&(VPERT_NOW_HIGH_A >= polar_vol_uv)) {
+    if (0 != polar_partition_ready()) {
+        polar_err("%s:partition not ready\n", __func__);
         polar_err_a = -1;
         return;
+    }
+    /*read polar partition once partition is ready*/
+    if (0 == polar_partition_read_flag) {
+        polar_get_flash_data(&polar_learn_lut.value, sizeof(polar_learn_lut.value), POLAR_LUT_OFFSET);
+        if (0 != polar_partition_data_check(&polar_learn_lut)) {
+            polar_err("%s:partition check fail\n", __func__);
+            polar_clear_flash_data();
+            polar_learn_lut_init(&polar_learn_lut);
+        }
+        polar_partition_read_flag = 1;
+    }
+    if ((VPERT_NOW_LOW_A <= polar_vol_uv)
+        &&(VPERT_NOW_HIGH_A >= polar_vol_uv)) {
+        polar_debug("polar_vol:%ld too small,use default a\n", polar_vol_uv);
+        temp_err_a = POLAR_ERR_A_DEFAULT;
+        goto get_a;
     }
     temp_err_a = ((long)(ocv_soc_mv  - vol_now_mv) * UVOLT_PER_MVOLT
                 - polar_err_b1) * POLAR_ERR_COE_MUL / (-polar_vol_uv);
     /*if polar_a was negative,we use last max average current instead*/
     if (temp_err_a <= 0) {
-        polar_err_a = -1;
-        return;
+        polar_debug("temp_err_a:%ld too small,use default a\n", temp_err_a);
+        temp_err_a = POLAR_ERR_A_DEFAULT;
+        goto get_a;
     }
     /*clamp a in range[0.9~3]*/
     temp_err_a = clamp_val(temp_err_a, POLAR_ERR_A_MIN, POLAR_ERR_A_MAX);
@@ -859,31 +1166,15 @@ static void update_polar_error_a(int ocv_soc_mv, int vol_now_mv, int cur,
     if (TRUE == could_learn_a(di, ocv_soc_mv, vol_now_mv, cur,
                               polar_vol_uv, temp, soc))
         store_trained_a(&polar_learn_lut, temp, soc, temp_err_a, polar_vol_uv);
+get_a:
     a_trained = get_trained_a(&polar_learn_lut, temp, soc);
     polar_debug("%s:polar a before weighted average:%ld, trained_a:%ld\n",
                 __func__, temp_err_a, a_trained);
     if (a_trained <= 0) {
-        polar_err("no self learn polar a ,use current value\n");
-        polar_err_a = temp_err_a;
-    }
-    /*calculate weighted average of A with current A and former three A values*/
-    for (i = 0; i < POLAR_VALID_A_NUM; i++) {
-        polar_debug("%s:a_array[%d]:%ld,coe:%d\n", __func__,
-            i, polar_err_a_array[i], polar_err_a_coe[i]);
-        if (0 == polar_err_a_array[i])
-            temp_err_a_wavg += (a_trained * polar_err_a_coe[i]);
-        else
-            temp_err_a_wavg += (polar_err_a_array[i] * polar_err_a_coe[i]);
-    }
-    polar_err_a = (a_trained * polar_err_a_coe[POLAR_VALID_A_NUM]
-        +temp_err_a_wavg) / POLAR_A_COE_MUL;
-
-    polar_err_a_array [polar_valid_a_index % POLAR_VALID_A_NUM] =
-        a_trained;
-    polar_valid_a_index++;
-    polar_valid_a_index = polar_valid_a_index % POLAR_VALID_A_NUM;
-    polar_debug("%s:update real polar a:%ld, weighted average a:%ld\n",
-        __func__, a_trained, polar_err_a);
+        polar_debug("no self learn polar a ,use current value\n");
+        polar_err_a = calc_weighted_a(temp_err_a, 0);
+    } else
+        polar_err_a = calc_weighted_a(a_trained, 1);
     return;
 }
 /*******************************************************
@@ -1105,8 +1396,10 @@ static long calculate_polar_volatge(int soc, int temp)
                 vol_sum += (long)curr_avg * ((((long)ratio
                     *(res / POLAR_RES_MHOM_MUL))/POLAR_RATIO_PERCENTAGE)
                         *polar_vector) / res_vector;
+            polar_debug("vol_sum:%ld\n", vol_sum);
         }
     }
+    polar_debug("vol_sum:%ld\n", vol_sum);
     return vol_sum;
 }
 
@@ -1136,6 +1429,7 @@ static long calculate_polar_vol_r0(int soc, int temp, int curr)
     else
         res_zero = polar_vector;
     polar_vol =  (long)curr * res_zero / POLAR_RES_MHOM_MUL;
+    polar_debug("res_zero:%ld,vol0:%ld\n", res_zero, polar_vol);
     return polar_vol;
 }
 
@@ -1171,14 +1465,14 @@ static void update_polar_avg_curr(struct hisi_polar_device *di, int predict_msec
     int t_index = 0;
     int curr_index = 0;
     long past_avg_cc = 0;
-    if (POLAR_CURR_PREDICT_MSECS != predict_msec) {
+    if ( 0 == predict_msec) {
         for (t_index = 0; t_index < POLAR_TIME_ARRAY_NUM; t_index++) {
             for (curr_index = 0; curr_index < (POLAR_CURR_ARRAY_NUM + 1);
                         curr_index++){
                 past_avg_cc += polar_avg_curr_info[t_index][curr_index].current_avg;
                 }
             if (POLAR_TIME_ARRAY_0S == t_index) {
-                di->last_avgcurr_0s = (int)(past_avg_cc / POLAR_TIME_5S);
+                di->last_avgcurr_0s = (int)(past_avg_cc / POLAR_TIME_0S);
             }
             if (POLAR_TIME_ARRAY_5S == t_index)
                 di->last_avgcurr_5s = (int)(past_avg_cc / POLAR_TIME_5S);
@@ -1187,9 +1481,10 @@ static void update_polar_avg_curr(struct hisi_polar_device *di, int predict_msec
                 break;
             }
         }
-    }
         polar_debug("last_avgcurr_0s:%d,5s:%d,25s:%d\n",di->last_avgcurr_0s,
                     di->last_avgcurr_5s, di->last_avgcurr_25s);
+    }
+
     /*求Tn区间内的各电流区间平均电流*/
     for (t_index = 0; t_index < POLAR_TIME_ARRAY_NUM; t_index++) {
         for (curr_index = 0; curr_index < (POLAR_CURR_ARRAY_NUM + 1);
@@ -1541,6 +1836,8 @@ void sync_sample_info(void)
                         (fifo_time_ms % MSEC_PER_SEC) * NSEC_PER_MSEC);
         if (!hrtimer_active(&di->coul_sample_timer))
             hrtimer_forward_now(&di->coul_sample_timer, kt);
+        else
+            polar_debug("%s:not forward\n", __func__);
     }
     /*copy 35s fifo buffer to 20min polar buffer*/
     copy_fifo_buffer(&di->coul_fifo_head.list, &di->polar_head.list,
@@ -1595,9 +1892,12 @@ void get_resume_polar_info(int eco_ibat, int curr, int duration, int sample_time
     if (NULL == di || 0 >= duration)
         return;
     /*sample for Tn-1*/
-    node.sample_time = sample_time - di->fifo_interval;
+    if (0 != eco_ibat) 
+        node.sample_time = sample_time - di->fifo_interval;
+    else
+        node.sample_time = sample_time;
     node.current_ma = curr;
-    node.duration = duration * MSEC_PER_SEC;
+    node.duration = duration;
     node.temperature =  temp;
     node.soc_now = soc;
     node.list.next = NULL;
@@ -1608,18 +1908,20 @@ void get_resume_polar_info(int eco_ibat, int curr, int duration, int sample_time
     fill_up_polar_fifo(di, &node, &di->coul_fifo_head.list,
                        di->fifo_buffer, COUL_FIFO_SAMPLE_TIME);
     /*sample for Tn*/
-    node_eco.sample_time = sample_time;
-    node_eco.current_ma = eco_ibat / UA_PER_MA;
-    node_eco.duration = di->fifo_interval;
-    node_eco.temperature =  temp;
-    node_eco.soc_now = soc;
-    node_eco.list.next = NULL;
-    node_eco.list.prev = NULL;
-    polar_debug("%s:time:%lu,curr:%d,duration:%lu,temp:%d:soc:%d\n",
-        __func__, node_eco.sample_time, node_eco.current_ma, node_eco.duration, 
-        node_eco.temperature, node_eco.soc_now);
-    fill_up_polar_fifo(di, &node_eco, &di->coul_fifo_head.list,
-                       di->fifo_buffer, COUL_FIFO_SAMPLE_TIME);
+    if (0 != eco_ibat) {
+        node_eco.sample_time = sample_time;
+        node_eco.current_ma = eco_ibat / UA_PER_MA;
+        node_eco.duration = di->fifo_interval;
+        node_eco.temperature =  temp;
+        node_eco.soc_now = soc;
+        node_eco.list.next = NULL;
+        node_eco.list.prev = NULL;
+        polar_debug("%s:time:%lu,curr:%d,duration:%lu,temp:%d:soc:%d\n",
+            __func__, node_eco.sample_time, node_eco.current_ma, node_eco.duration, 
+            node_eco.temperature, node_eco.soc_now);
+        fill_up_polar_fifo(di, &node_eco, &di->coul_fifo_head.list,
+                           di->fifo_buffer, COUL_FIFO_SAMPLE_TIME);
+    }
     copy_fifo_buffer(&di->coul_fifo_head.list, &di->polar_head.list,
                      di->fifo_buffer, di->polar_buffer);
 }
@@ -1742,13 +2044,32 @@ int polar_ocv_params_calc(struct polar_calc_info* polar,
      /*get current polar vol*/
     polar->sr_polar_vol0 = get_polar_vol(di, batt_soc_real, temp, cur);
     polar_info_calc(di, -POLAR_CURR_PREDICT_MSECS);
-    polar->sr_polar_vol1 = get_polar_vol(di, batt_soc_real, temp, di->last_avgcurr_0s);
+    polar->sr_polar_vol1 = get_polar_vol(di, batt_soc_real, temp, di->last_avgcurr_5s);
     polar->sr_polar_err_a = get_trained_a(&polar_learn_lut, temp, batt_soc_real);
     polar_info("[%s]sr_polar_vol0:%d,sr_polar_vol1:%d,sr_polar_err_a:%d\n",
         __FUNCTION__, polar->sr_polar_vol0, polar->sr_polar_vol1, polar->sr_polar_err_a);
     return 0;
 }
 EXPORT_SYMBOL(polar_ocv_params_calc);
+
+/*******************************************************
+  Function:        clear_polar_err_b
+  Description:     清空修正系数b值，只在ocv更新时起作用，流程需要保证互斥
+  Input:          NA
+  Output:          NA
+  Return:          NA
+********************************************************/
+void clear_polar_err_b(void)
+{
+    struct hisi_polar_device *di = g_polar_di;
+
+    if (NULL == di)
+        return;
+    polar_err_b1 = 0;
+    polar_err_b2 = 0;
+    return;
+}
+EXPORT_SYMBOL(clear_polar_err_b);
 #ifdef CONFIG_HISI_DEBUG_FS
 int test_polar_ocv_tbl_lookup(int soc, int batt_temp_degc)
 {
@@ -2018,7 +2339,9 @@ clr:
 out:
     return ret;
 }
-
+#ifdef CONFIG_HISI_DEBUG_FS
+static DEVICE_ATTR(self_learn_value, (S_IRUSR | S_IRGRP), polar_self_learn_show, NULL);
+#endif
 /*******************************************************
   Function:        polar_info_init
   Description:     极化相关数据初始化(根据电池容量初始化电流档位)
@@ -2026,14 +2349,12 @@ out:
   Output:           初始化后的极化档位数据
   Return:          NA
 ********************************************************/
-static void polar_info_init(struct hisi_polar_device *di)
+static int polar_info_init(struct hisi_polar_device *di)
 {
-    int i, j, batt_fcc;
+    int i, batt_fcc;
     int batt_present;
-    int ret;
+    int ret = 0;
 
-    if (NULL == di)
-        return;
     batt_fcc = hisi_battery_fcc();
     batt_present = is_hisi_battery_exist();
     for (i = 1; i < POLAR_CURR_ARRAY_NUM; i++){
@@ -2044,14 +2365,7 @@ static void polar_info_init(struct hisi_polar_device *di)
         polar_curr_vector_interval[i] = polar_curr_vector_interval[i]
                         * batt_fcc / UA_PER_MA;
     }
-
-    for (i = 0; i < POLAR_RES_PC_CURR_ROWS; i++){
-        for (j = 0; j < POLAR_LEARN_TEMP_COLS; j++){
-            polar_learn_lut.value[i][j].a_trained = POLAR_ERR_A_DEFAULT;
-            polar_learn_lut.value[i][j].polar_vol = 0;
-        }
-    }
-
+    polar_learn_lut_init(&polar_learn_lut);
     di->polar_vol_index = 0;
     for (i = 0; i < POLAR_ARRAY_NUM; i++)
         di->polar_vol_array[i] =  POLAR_VOL_INVALID;
@@ -2063,10 +2377,17 @@ static void polar_info_init(struct hisi_polar_device *di)
             0, sizeof(polar_vector_lut.value));
     memset_s(polar_avg_curr_info, sizeof(polar_avg_curr_info),
             0, sizeof(polar_avg_curr_info));
-    ret = get_polar_dts_info(di);
+#ifdef CONFIG_HISI_DEBUG_FS
+    ret = device_create_file(di->dev, &dev_attr_self_learn_value);
+    if (ret)
+        polar_err("failed to create file");
+#endif
+    ret |= get_polar_dts_info(di);
     if (ret)
         polar_err("get dts info failed\n");
+    return ret;
 }
+
 //lint -esym(429, di)
 static int hisi_coul_polar_probe(struct platform_device *pdev)
 {
@@ -2101,15 +2422,15 @@ static int hisi_coul_polar_probe(struct platform_device *pdev)
     retval |= hisiap_ringbuffer_init(di->fifo_buffer,
                 FIFO_BUFFER_SIZE, sizeof(struct ploarized_info),
                 "coul_fifo");
+    retval |= polar_info_init(di);
     if (retval) {
-        polar_err("%s failed to init polar ring buffer!!!\n", __FUNCTION__);
+        polar_err("%s failed to init polar info!!!\n", __FUNCTION__);
         goto out;
     }
     INIT_LIST_HEAD(&di->polar_head.list);
     INIT_LIST_HEAD(&di->coul_fifo_head.list);
     spin_lock_init(&di->coul_fifo_lock);
     mutex_init(&di->polar_vol_lock);
-    polar_info_init(di);
     if ((di->polar_buffer->max_num * di->fifo_interval) <= COUL_POLAR_SAMPLE_TIME){//lint !e647
         polar_err("buffer is not enough for sample:max_node:%u,fifo_time:%d",
             di->polar_buffer->max_num, di->fifo_interval);
@@ -2145,6 +2466,9 @@ static int hisi_coul_polar_remove(struct platform_device *pdev)
     hrtimer_cancel(&di->coul_sample_timer);
     di = NULL;
     g_polar_di = NULL;
+#ifdef CONFIG_HISI_DEBUG_FS
+    device_remove_file(&pdev->dev, &dev_attr_self_learn_value);
+#endif
     platform_set_drvdata(pdev, NULL);
     return 0;
 }

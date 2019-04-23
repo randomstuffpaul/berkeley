@@ -94,7 +94,7 @@ void OM_RealMemCopy( const char *source, char *destination, int nbytes )
         dstend = destination + nbytes;
 
         /* do byte copy if less than ten or alignment mismatch */
-        if (nbytes < 10 || (((VOS_INT_PTR)destination ^ (VOS_INT_PTR)source) & OM_ARM_ALIGNMENT))
+        if (nbytes < 10 || (((VOS_UINT_PTR)destination ^ (VOS_UINT_PTR)source) & OM_ARM_ALIGNMENT))
         {
             /*lint -e801 */
             goto byte_copy_fwd;
@@ -102,7 +102,7 @@ void OM_RealMemCopy( const char *source, char *destination, int nbytes )
         }
 
         /* if odd-aligned copy byte */
-        while ((VOS_INT_PTR)destination & OM_ARM_ALIGNMENT)
+        while ((VOS_UINT_PTR)destination & OM_ARM_ALIGNMENT)
         {
             *destination++ = *source++;
         }
@@ -132,7 +132,7 @@ byte_copy_fwd:
         source      += nbytes;
 
         /* do byte copy if less than ten or alignment mismatch */
-        if (nbytes < 10 || (((VOS_INT_PTR)destination ^ (VOS_INT_PTR)source) & OM_ARM_ALIGNMENT))
+        if (nbytes < 10 || (((VOS_UINT_PTR)destination ^ (VOS_UINT_PTR)source) & OM_ARM_ALIGNMENT))
         {
             /*lint -e801 */
             goto byte_copy_bwd;
@@ -140,7 +140,7 @@ byte_copy_fwd:
         }
 
         /* if odd-aligned copy byte */
-        while ((VOS_INT_PTR)destination & OM_ARM_ALIGNMENT)
+        while ((VOS_UINT_PTR)destination & OM_ARM_ALIGNMENT)
         {
             *--destination = *--source;
         }

@@ -9,6 +9,38 @@
 #define ERR(format, arg...) pr_err("[usbaudio-minitor]%s: " format, __func__, ##arg)
 #define DBG(format, arg...) pr_info("[usbaudio-minitor]%s: " format, __func__, ##arg)
 
+#define VID_MASK	0xffff0000u
+#define PID_MASK	0xffffu
+
+u32 hifi_usb_base_quirk_devices[MAX_QUIRK_DEVICES_ONE_GROUP + 1];
+u32 hifi_usb_ext_quirk_devices[MAX_QUIRK_DEVICES_ONE_GROUP + 1];
+
+static bool match_reest_power_devices(struct usb_device *udev)
+{
+	int i;
+	u32 *quirk_id = hifi_usb_base_quirk_devices;
+
+	for (i = 0; *quirk_id && i < MAX_QUIRK_DEVICES_ONE_GROUP; quirk_id++, i++) {
+		if (((u16)((*quirk_id & VID_MASK) >> 16) ==
+				le16_to_cpu(udev->descriptor.idVendor)) &&
+		    (((u16)(*quirk_id & PID_MASK) ==
+				le16_to_cpu(udev->descriptor.idProduct))))
+			return true;
+	}
+
+	quirk_id = hifi_usb_ext_quirk_devices;
+
+	for (i = 0; *quirk_id && i < MAX_QUIRK_DEVICES_ONE_GROUP; quirk_id++, i++) {
+		if (((u16)((*quirk_id & VID_MASK) >> 16) ==
+				le16_to_cpu(udev->descriptor.idVendor)) &&
+		    (((u16)(*quirk_id & PID_MASK) ==
+				le16_to_cpu(udev->descriptor.idProduct))))
+			return true;
+	}
+
+	return false;
+}
+
 #ifdef CONFIG_HISI_DEBUG_FS
 static int never_hifi_usb;
 static int always_hifi_usb;
@@ -150,7 +182,10 @@ bool stop_hifi_usb_when_non_usbaudio(struct usb_device *udev, int configuration)
 
 	if (is_non_usbaudio_device(udev, configuration)) {
 		DBG("it need call hisi_usb_stop_hifi_usb\n");
-		hisi_usb_stop_hifi_usb();
+		if (match_reest_power_devices(udev))
+			hisi_usb_stop_hifi_usb_reset_power();
+		else
+			hisi_usb_stop_hifi_usb();
 		return true;
 	}
 	return false;

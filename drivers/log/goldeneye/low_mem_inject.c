@@ -123,6 +123,9 @@ static const struct file_operations proc_low_mem_inject_operations = {
     .read				= low_mem_inject_read,
     .write				= low_mem_inject_write,
     .unlocked_ioctl		= low_mem_inject_unlocked_ioctl,
+#ifdef CONFIG_COMPAT
+    .compat_ioctl		= low_mem_inject_unlocked_ioctl,
+#endif
     .poll					= low_mem_inject_poll,
     .release				= low_mem_inject_release,
 };

@@ -50,13 +50,16 @@
 #define TMD3702_MAX_ThRESHOLD_NUM    27
 #define TMD3702_MIN_ThRESHOLD_NUM    28
 
+#define TCS3701_MAX_ThRESHOLD_NUM    27
+#define TCS3701_MIN_ThRESHOLD_NUM    28
+
 #define VCNL36658_MAX_ThRESHOLD_NUM    28
 #define VCNL36658_MIN_ThRESHOLD_NUM    29
 
 #define TP_COORDINATE_THRESHOLD      (4)
 
-#define TSL2591_MAX_ThRESHOLD_NUM    12
-#define TSL2591_MIN_ThRESHOLD_NUM    13
+#define TSL2591_MAX_ThRESHOLD_NUM    13
+#define TSL2591_MIN_ThRESHOLD_NUM    14
 
 #define BH1726_MAX_ThRESHOLD_NUM    14
 #define BH1726_MIN_ThRESHOLD_NUM    15
@@ -400,6 +403,14 @@ struct tp_ud_platform_data {
 	uint32_t i2c_max_speed_hz;
 	uint32_t spi_max_speed_hz;
 	uint8_t spi_mode;
+	uint16_t fw_power_config_reg;
+	uint16_t fw_touch_data_reg;
+	uint16_t fw_touch_command_reg;
+	uint16_t fw_addr_3;
+	uint16_t fw_addr_4;
+	uint16_t fw_addr_5;
+	uint16_t fw_addr_6;
+	uint16_t fw_addr_7;
 	struct tp_ud_algo_config algo_conf;
 };
 

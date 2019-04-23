@@ -359,7 +359,8 @@ static int madapt_parse_and_writeatonv(char *ptr, int len)
         // modem id: 1<=id<=3
         if ( (nv_header.nv_modem_id < MADAPT_MIN_NV_MODEM_ID)
          || (nv_header.nv_modem_id > MADAPT_MAX_NV_MODEM_ID)
-         || (0 == nv_item_size)) {
+         || (0 == nv_item_size)
+         ||(nv_item_size >= MADAPT_MAX_NV_LENGTH_SIZE) ) {
              hwlog_err("madapt_parse_and_writeatonv, nv header: nv id: [%d], nv modemid: [%d], nv size: [%d].\n",
                     nv_header.nv_item_number,
                     nv_header.nv_modem_id,
@@ -402,7 +403,8 @@ static int madapt_parse_and_writeatonv(char *ptr, int len)
 	    }
 	    /*AR000AD08A sunjun/00290209 20180807 end*/
             //起始位加上修改字节的长度要小于该NV的总长度
-            if((nv_header.nv_item_byte_start+nv_item_size)<=nv_item_length
+            if(nv_header.nv_item_byte_start<MADAPT_MAX_NV_LENGTH_SIZE
+                    &&(nv_header.nv_item_byte_start+nv_item_size)<=nv_item_length
                     && nv_item_length<MADAPT_MAX_NV_LENGTH_SIZE
                     && ret==0){
                 //调用kernel的函数读取NV
@@ -485,9 +487,12 @@ static int madapt_parse_and_writenv(char *ptr, int len, unsigned int modem_id)
             = ((struct madapt_item_hdr_type *)ptr)->nv_item_size;
         ptr += sizeof(struct madapt_item_hdr_type);
 
-        if ( (nv_header.nv_modem_id < MADAPT_MIN_NV_MODEM_ID)
+        if ((nv_header.nv_modem_id < MADAPT_MIN_NV_MODEM_ID)
          || (nv_header.nv_modem_id > MADAPT_MAX_NV_MODEM_ID)
-         || (0 == nv_header.nv_item_size)) {
+         || (0 == nv_header.nv_item_size)
+         || (nv_header.nv_item_size >= MADAPT_FILE_MAX_SIZE)   /* nv size must less than file Max size */
+         || ((sizeof(struct madapt_item_hdr_type) + nv_header.nv_item_size) > len) /* nv data size + head size must less than file length */
+         ) {
              hwlog_err("madapt_parse_and_writenv, invalid nv header: nv id: [%d], nv modemid: [%d], nv size: [%d].\n",
                     nv_header.nv_item_number,
                     nv_header.nv_modem_id,
@@ -565,7 +570,7 @@ static int madapt_write_mbn_carrirer_file(char *file_buffer, size_t buffer_Size)
     return BSP_ERR_MADAPT_OK;
 }
 
-static int parse_wirte_file(struct madapt_file_stru *file)
+static int parse_write_file(struct madapt_file_stru *file)
 {
     struct file *fp = NULL;
     mm_segment_t fs = {0};
@@ -576,12 +581,12 @@ static int parse_wirte_file(struct madapt_file_stru *file)
     char *k_buffer = NULL;
 
     if (NULL == file) {
-        hwlog_err("parse_wirte_file, NULL ptr!\n");
+        hwlog_err("parse_write_file, NULL ptr!\n");
         return BSP_ERR_MADAPT_PTR_NULL;
     }
 
     if (file->len > MADAPT_MAX_USER_BUFF_LEN) {
-        hwlog_err("parse_wirte_file, file->len(%d) too large!\n",
+        hwlog_err("parse_write_file, file->len(%d) too large!\n",
                     file->len);
         return BSP_ERR_MADAPT_PARAM_ERR;
     }
@@ -591,9 +596,23 @@ static int parse_wirte_file(struct madapt_file_stru *file)
         ret = madapt_remove_mbn_carrirer_file();
     }
 
+    if (file->file) {
+        if (file->file == strstr(file->file, "/odm") ||
+            file->file == strstr(file->file, "/hw_odm") ||
+            file->file == strstr(file->file, "/data/cota")) {
+            hwlog_err("%s, file path valid\n", __func__);
+        } else {
+            hwlog_err("%s, file path invalid, return err\n", __func__);
+            return BSP_ERR_MADAPT_PARAM_ERR;
+        }
+    } else {
+        hwlog_err("%s, file->file is null, return err\n", __func__);
+        return BSP_ERR_MADAPT_PARAM_ERR;
+    }
+
     fp = filp_open(file->file, O_RDONLY, 0);
     if (IS_ERR(fp)) {
-        hwlog_err("parse_wirte_file, open file error!\n");
+        hwlog_err("parse_write_file, open file error!\n");
         return BSP_ERR_MADAPT_OPEN_FILE_ERR;
     }
 
@@ -602,17 +621,17 @@ static int parse_wirte_file(struct madapt_file_stru *file)
 
     size = file_inode(fp)->i_size;
     if (size <= 0 || size >= MADAPT_FILE_MAX_SIZE) {
-        hwlog_err("parse_wirte_file, file size(%d) error!\n", size);
+        hwlog_err("parse_write_file, file size(%d) error!\n", size);
         ret = BSP_ERR_MADAPT_FILE_SIZE_ERR;
         goto FILE_PROC_OUT;
     } else {
-        hwlog_err("parse_wirte_file, get nvbin file size(%d)!\n", size);
+        hwlog_err("parse_write_file, get nvbin file size(%d)!\n", size);
     }
 
     pos = 0;
     k_buffer = kmalloc((size), GFP_KERNEL);
     if (NULL == k_buffer) {
-        hwlog_err("parse_wirte_file, kmalloc error\n");
+        hwlog_err("parse_write_file, kmalloc error\n");
         ret = BSP_ERR_MADAPT_MALLOC_FAIL;
         goto FILE_PROC_OUT;
     }
@@ -620,7 +639,7 @@ static int parse_wirte_file(struct madapt_file_stru *file)
     memset(k_buffer, 0, size);
     ret_size = vfs_read(fp, k_buffer, size, &pos);
     if (size != ret_size) {
-        hwlog_err("parse_wirte_file, error vfs_read ret: %d, readsize: %d\n",
+        hwlog_err("parse_write_file, error vfs_read ret: %d, readsize: %d\n",
             ret_size, (int)(size));
         ret = BSP_ERR_MADAPT_READ_FILE_ERR;
         goto MEM_PROC_OUT;
@@ -652,9 +671,9 @@ FILE_PROC_OUT:
 
 static void do_proc_nv_file(struct work_struct *p_work)
 {
-    work_ret = parse_wirte_file(kbuf);
+    work_ret = parse_write_file(kbuf);
     if (BSP_ERR_MADAPT_OK != work_ret) {
-        hwlog_err("do_proc_nv_file, parse_wirte_file fail with errcode(%d)!\n",
+        hwlog_err("do_proc_nv_file, parse_write_file fail with errcode(%d)!\n",
                     (int)work_ret);
     } else {
         hwlog_err("do_proc_nv_file, proc all success\n");

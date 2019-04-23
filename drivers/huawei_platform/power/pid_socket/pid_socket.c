@@ -16,12 +16,20 @@
 #include <linux/version.h>
 #include <net/sock.h>
 
+#include <log/log_usertype/log-usertype.h>
+
 void print_process_pid_name(struct inet_sock *inet)
 {
 	int pid = 0;
         int uid = 0;
 	unsigned short source_port = 0;
 	struct task_struct * task = NULL;
+#ifdef CONFIG_LOG_EXCEPTION
+	unsigned int user_type = get_logusertype_flag();
+
+	if (user_type != BETA_USER && user_type != OVERSEA_USER)
+		return;
+#endif
 
 #if defined(CONFIG_HUAWEI_KSTATE) || defined(CONFIG_MPTCP)
 	if (NULL == inet || NULL == inet->sk.sk_socket) {
@@ -42,6 +50,7 @@ void print_process_pid_name(struct inet_sock *inet)
 #else
 	uid = sock_i_uid(&inet->sk);
 #endif
+
 
 	source_port = inet->inet_sport;
 

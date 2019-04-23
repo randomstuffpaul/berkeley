@@ -96,7 +96,7 @@ static int kbase_device_as_init(struct kbase_device *kbdev, int i)
 		struct hrtimer *poke_timer = &kbdev->as[i].poke_timer;
 		struct work_struct *poke_work = &kbdev->as[i].poke_work;
 
-		kbdev->as[i].poke_wq = alloc_workqueue(poke_name, 0, 1);
+		kbdev->as[i].poke_wq = alloc_workqueue(poke_name, 0, 1);//lint !e645
 		if (!kbdev->as[i].poke_wq) {
 			destroy_workqueue(kbdev->as[i].pf_wq);
 			return -EINVAL;

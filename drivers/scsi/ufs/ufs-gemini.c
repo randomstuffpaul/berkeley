@@ -692,8 +692,9 @@ void ufs_kirin_pwr_change_pre_change(struct ufs_hba *hba)
 {
 	uint32_t value;
 	pr_info("%s ++\n", __func__);
-
+#ifdef CONFIG_HISI_DEBUG_FS
 	pr_info("device manufacturer_id is 0x%x\n", hba->manufacturer_id);
+#endif
 
 	if (UFS_VENDOR_SKHYNIX == hba->manufacturer_id) {
 		pr_info("H**** device must set VS_DebugSaveConfigTime 0x10\n");

@@ -20,7 +20,7 @@
 static struct task_struct *flash_hisee_otp_task = NULL;
 int (*g_write_hisee_otp_fn) (void) = NULL;
 static struct semaphore g_hisee_sem;
-static EFUSE_LOG_LEVEL g_efuse_print_level = log_level_error;
+static efuse_log_level_t g_efuse_print_level = log_level_error;
 
 #define efuse_print_info(level, fmt, ...) do {\
     if (level <= g_efuse_print_level) { \

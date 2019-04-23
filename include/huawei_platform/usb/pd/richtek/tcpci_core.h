@@ -75,7 +75,6 @@ struct tcpc_desc {
 	uint8_t role_def;
 	uint8_t rp_lvl;
 	int notifier_supply_num;
-	int vcon_ocp_enable;
 	char *name;
 };
 
@@ -155,6 +154,9 @@ enum tcpm_rx_cap_type {
 	TCPC_RX_CAP_SOP_DEBUG_PRIME_PRIME = 1 << 4,
 	TCPC_RX_CAP_HARD_RESET = 1 << 5,
 	TCPC_RX_CAP_CABLE_RESET = 1 << 6,
+#ifdef CONFIG_TYPEC_CAP_CUSTOM_SRC2
+	TCPC_RX_CAP_CUST_SRC2 = 1 << 7,
+#endif
 };
 
 

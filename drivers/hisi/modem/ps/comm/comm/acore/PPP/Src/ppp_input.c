@@ -55,9 +55,9 @@
 /*****************************************************************************
     协议栈打印打点方式下的.C文件宏定义
 *****************************************************************************/
-/*lint -e767  修改人: z57034; 检视人: g45205 原因简述: 打点日志文件宏ID定义 */
+/*lint -e767  原因简述: 打点日志文件宏ID定义 */
 #define    THIS_FILE_ID        PS_FILE_ID_PPP_INPUT_C
-/*lint +e767  修改人: z57034; 检视人: g45205 */
+/*lint +e767  */
 
 /******************************************************************************
    2 外部函数变量声明
@@ -318,7 +318,6 @@ VOS_UINT32 PPP_PushPacketEvent(VOS_UINT8 ucRabId, PPP_ZC_STRU *pstImmZc, ADS_PKT
     g_PppDataQCtrl.stStat.ulDownlinkCnt++;
 
     /* 通过RabId，寻找到PPP ID和相应的实体 */
-    /*Add by y45445 for PS FUSION PC ST 20120117 begin*/
     if ( !PPP_RAB_TO_PPPID(&usPppId, ucRabId) )
     {
         g_PppDataQCtrl.stStat.ulDownlinkDropCnt++;
@@ -345,7 +344,6 @@ VOS_UINT32 PPP_PushPacketEvent(VOS_UINT8 ucRabId, PPP_ZC_STRU *pstImmZc, ADS_PKT
         return PS_FAIL;
     }
 
-    /*Add by y45445 for PS FUSION PC ST 20120117 end*/
     /*填充pstData的usApp字段:高8位放usPppId,低8位放PPP报文类型*/
     PPP_ZC_SET_DATA_APP(pstImmZc, (VOS_UINT16)(usPppId << 8) | (VOS_UINT16)PPP_PUSH_PACKET_TYPE);
 

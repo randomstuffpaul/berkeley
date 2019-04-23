@@ -54,6 +54,20 @@
 
 #define DBG(format, arg...) pr_info("[%s]" format, __func__, ##arg)
 
+
+ATOMIC_NOTIFIER_HEAD(device_event_nh);
+
+
+int dwc3_device_event_notifier_register(struct notifier_block *nb)
+{
+	return atomic_notifier_chain_register(&device_event_nh, nb);
+}
+
+int dwc3_device_event_notifier_unregister(struct notifier_block *nb)
+{
+	return atomic_notifier_chain_unregister(&device_event_nh, nb);
+}
+
 /**
  * dwc3_get_dr_mode - Validates and sets dr_mode
  * @dwc: pointer to our context structure
@@ -170,6 +184,9 @@ static int dwc3_core_soft_reset(struct dwc3 *dwc)
 
 		udelay(1);
 	} while (--retries);
+
+	phy_exit(dwc->usb3_generic_phy);
+	phy_exit(dwc->usb2_generic_phy);
 
 	return -ETIMEDOUT;
 }

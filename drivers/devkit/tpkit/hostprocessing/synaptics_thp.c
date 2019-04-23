@@ -93,8 +93,6 @@ static int syna_tcm_spi_read(struct spi_device *client, unsigned char *data,
 	int retval;
 	struct spi_message msg;
 	struct thp_core_data *cd = spi_get_drvdata(client);
-	struct thp_device *tdev = cd->thp_dev;
-
 
 	spi_message_init(&msg);
 
@@ -130,7 +128,6 @@ static int syna_tcm_spi_write(struct spi_device *client, unsigned char *data,
 	int retval;
 	struct spi_message msg;
 	struct thp_core_data *cd = spi_get_drvdata(client);
-	struct thp_device *tdev = cd->thp_dev;
 
 	spi_message_init(&msg);
 

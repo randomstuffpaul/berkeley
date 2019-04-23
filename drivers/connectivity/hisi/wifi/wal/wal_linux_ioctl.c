@@ -2476,22 +2476,33 @@ OAL_STATIC oal_void hwifi_config_init_ini_ce_5g_high_band_params(mac_cfg_ce_5g_h
     pst_ce_5g_hi_band_params->uc_dbb_scale_ht40_vht40     = hwifi_get_init_value(CUS_TAG_INI, WLAN_CFG_INIT_CE_5G_HIGH_BAND_HT40_VHT40_DBB_SCALING);
     pst_ce_5g_hi_band_params->uc_dbb_scale_vht80          = hwifi_get_init_value(CUS_TAG_INI, WLAN_CFG_INIT_CE_5G_HIGH_BAND_VHT80_DBB_SCALING);
 
+    pst_ce_5g_hi_band_params->uc_dbb_scale_ht40_vht40_mcs8_9_comp
+                            = hwifi_get_init_value(CUS_TAG_INI, WLAN_CFG_INIT_CE_5G_HIGH_BAND_HT40_VHT40_MCS8_9_DBB_COMP);
+    pst_ce_5g_hi_band_params->uc_dbb_scale_vht80_mcs8_9_comp
+                            = hwifi_get_init_value(CUS_TAG_INI, WLAN_CFG_INIT_CE_5G_HIGH_BAND_VHT80_MCS8_9_DBB_COMP);
+
     /* 判断异常值 */
     if (pst_ce_5g_hi_band_params->uc_max_txpower == 0xFF
         || pst_ce_5g_hi_band_params->uc_dbb_scale_11a_ht20_vht20 > MAX_DBB_SCALE
         || pst_ce_5g_hi_band_params->uc_dbb_scale_ht40_vht40 > MAX_DBB_SCALE
-        || pst_ce_5g_hi_band_params->uc_dbb_scale_vht80 > MAX_DBB_SCALE)
+        || pst_ce_5g_hi_band_params->uc_dbb_scale_vht80 > MAX_DBB_SCALE
+        || (pst_ce_5g_hi_band_params->uc_dbb_scale_ht40_vht40_mcs8_9_comp + pst_ce_5g_hi_band_params->uc_dbb_scale_ht40_vht40) > MAX_DBB_SCALE
+        || (pst_ce_5g_hi_band_params->uc_dbb_scale_vht80_mcs8_9_comp + pst_ce_5g_hi_band_params->uc_dbb_scale_vht80) > MAX_DBB_SCALE)
     {
         /* CE 高band 定制化参数取值异常，关闭149~165 信道 */
         pst_ce_5g_hi_band_params->uc_max_txpower = 0xFF;
     }
 
     /*  */
-    OAM_WARNING_LOG4(0, OAM_SF_ANY, "ce 5g high band prams:txpower %d, dbb scale 20MHz[%d] 40MHz[%d] 80MHz[%d]",
+    OAM_WARNING_LOG4(0, OAM_SF_ANY, "[CE HI BAND]txpower %d, dbb scale 20MHz[%d] 40MHz[%d] 80MHz[%d]",
                         pst_ce_5g_hi_band_params->uc_max_txpower,
                         pst_ce_5g_hi_band_params->uc_dbb_scale_11a_ht20_vht20,
                         pst_ce_5g_hi_band_params->uc_dbb_scale_ht40_vht40,
                         pst_ce_5g_hi_band_params->uc_dbb_scale_vht80);
+
+    OAM_WARNING_LOG2(0, OAM_SF_ANY, "[CE HI BAND]mcs8_9 compensation dbb scale 40MHz[%d] 80MHz[%d]",
+                        pst_ce_5g_hi_band_params->uc_dbb_scale_ht40_vht40_mcs8_9_comp,
+                        pst_ce_5g_hi_band_params->uc_dbb_scale_vht80_mcs8_9_comp);
 }
 
 
@@ -6067,6 +6078,11 @@ OAL_STATIC oal_void  wal_regdomain_fill_info(OAL_CONST oal_ieee80211_regdomain_s
         pst_mac_regdom->ast_regclass[ul_i].uc_max_tx_pwr     = (oal_uint8)(pst_regdom->reg_rules[ul_i].power_rule.max_eirp / 100);
 
     }
+
+#ifdef _PRE_PLAT_FEATURE_CUSTOMIZE
+    /* 填充管制域法规类型*/
+    pst_mac_regdom->uc_regdomain_type = hwifi_get_regdomain_from_country_code_1102(pst_mac_regdom->ac_country);
+#endif
 }
 
 #if (_PRE_OS_VERSION_LINUX == _PRE_OS_VERSION)

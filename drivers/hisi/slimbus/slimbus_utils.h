@@ -19,9 +19,11 @@
 
 #ifndef _SLIMBUS_UTILS_H_
 #define _SLIMBUS_UTILS_H_
+
+#include "soc_acpu_baseaddr_interface.h"
 #include "slimbus_types.h"
 
-#define IOC_BASE_ADDR		(0xfff11000)
+#define IOC_BASE_ADDR		(SOC_ACPU_AO_IOC_BASE_ADDR)
 #define IOC_REG_SIZE		(0x1000)
 
 #define IOC_SYS_IOMG_011	(0x02c)

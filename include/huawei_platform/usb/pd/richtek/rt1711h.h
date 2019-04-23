@@ -42,7 +42,6 @@
 #define RT1711H_REG_CLK_CTRL3				(0x88)
 
 #define RT1711H_REG_BMC_CTRL				(0x90)
-#define RT1711H_REG_BMCIO_VCONOCP			(0x92)
 #define RT1711H_REG_BMCIO_RXDZSEL			(0x93)
 #define RT1711H_REG_VCONN_CLIMITEN			(0x95)
 
@@ -109,22 +108,6 @@
 #define RT1711H_REG_BMCIO_BG_EN				(1<<2)
 #define RT1711H_REG_VBUS_DET_EN				(1<<1)
 #define RT1711H_REG_BMCIO_OSC_EN			(1<<0)
-
-/*
- * RT1711H_REG_BMCIO_VCONOCP                         (0x92)
- */
-
-#define RT1711H_REG_BMCIO_SOFTSTART_TIME_MASK		((1<<5) | (1<<4) | (1<<3))
-#define RT1711H_REG_BMCIO_SOFTSTART_TIME		((1<<5) | (1<<4))
-
-/*
- * RT1711H_REG_BMCIO_RXDZSEL                         (0x93)
- */
-
-#define RT1711H_REG_BMCIO_OCP_CURRENT_LEVEL_800MA_DFT	((1<<7) | (1<<6) | (1<<0))
-#define RT1711H_REG_BMCIO_OCP_CURRENT_LEVEL_800MA	((1<<7) | (1<<6))
-#define RT1711H_REG_BMCIO_OCP_CURRENT_LEVEL_600MA_DFT   ((1<<7) | (1<<0))
-#define RT1711H_REG_BMCIO_OCP_CURRENT_LEVEL_600MA       (1<<7)
 
 /*
  * RT1711H_REG_RT_STATUS				(0x97)

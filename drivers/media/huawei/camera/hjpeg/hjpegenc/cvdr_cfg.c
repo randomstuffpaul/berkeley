@@ -36,7 +36,7 @@ static int dump_cvdr_reg(hjpeg_hw_ctl_t *hw_ctl)
     }
 
     if (hw_ctl->cvdr_prop.wr_port == WR_PORT_25) {
-        if (is_hjpeg_wr_port_addr_update()) {
+        if (get_hjpeg_wr_port_addr_update()) {
             cam_debug("%s: CVDR reg: 0x%08x=0x%08x", __func__,
                 CVDR_SRT_VP_WR_CFG_25_OFFSET_UPDATE,
                 get_reg_val((void __iomem*)((char*)viraddr+CVDR_SRT_VP_WR_CFG_25_OFFSET_UPDATE)));
@@ -160,7 +160,7 @@ static int cvdr_fmt_desc_vp_wr(u32 wr_port, jpgenc_config_t* config, cvdr_wr_fmt
         }
         case WR_PORT_25:
         {
-            if (is_hjpeg_wr_port_addr_update()) {
+            if (get_hjpeg_wr_port_addr_update()) {
                 desc->access_limiter = ACCESS_LIMITER_VP_WR_0;
                 desc->line_stride = 0x3F;
                 desc->line_wrap   = 0x3FFF;
@@ -180,21 +180,254 @@ static int cvdr_fmt_desc_vp_wr(u32 wr_port, jpgenc_config_t* config, cvdr_wr_fmt
 
     return 0;
 }
+
+void hjpeg_vp_wr_axi_line_update_1(void __iomem *cvdr_srt_base, cvdr_wr_fmt_desc_t *desc, u32 offset)
+{
+    U_VP_WR_AXI_LINE tmp_line;
+
+    if (NULL == cvdr_srt_base || NULL == desc) {
+        cam_err("%s, desc or cvdr_srt_base is null", __func__);
+        return;
+    }
+
+    tmp_line.reg32 = get_reg_val((void __iomem*)((char*)cvdr_srt_base + offset));
+    tmp_line.bits.vpwr_line_stride = desc->line_stride;
+    tmp_line.bits.vpwr_line_wrap   = desc->line_wrap;
+    set_reg_val((void __iomem*)((char*)cvdr_srt_base + offset), tmp_line.reg32);
+}
+
+void hjpeg_vp_wr_axi_line_update_2(void __iomem *cvdr_srt_base, cvdr_wr_fmt_desc_t *desc, u32 offset)
+{
+    U_VP_WR_AXI_LINE_UPDATE_2 tmp_line;
+
+    if (NULL == cvdr_srt_base || NULL == desc) {
+        cam_err("%s, desc or cvdr_srt_base is null", __func__);
+        return;
+    }
+
+    tmp_line.reg32 = get_reg_val((void __iomem*)((char*)cvdr_srt_base + offset));
+    tmp_line.bits.vpwr_line_stride = desc->line_stride;
+    tmp_line.bits.vpwr_line_start_wstrb_4 = 0xF;
+    tmp_line.bits.vpwr_line_wrap   = desc->line_wrap;
+    set_reg_val((void __iomem*)((char*)cvdr_srt_base + offset), tmp_line.reg32);
+}
+
+void hjpeg_config_axi_line(hjpeg_hw_ctl_t *hw_ctl, cvdr_wr_fmt_desc_t *desc)
+{
+    int wr_port_flag;
+
+    if (NULL == hw_ctl || NULL == desc) {
+        cam_err("%s, hw_ctl or desc is null", __func__);
+        return;
+    }
+
+    wr_port_flag  = get_hjpeg_wr_port_addr_update();
+
+    switch(hw_ctl->cvdr_prop.wr_port) {
+        case WR_PORT_0:
+        {
+            hjpeg_vp_wr_axi_line_update_1(hw_ctl->cvdr_viraddr, desc, CVDR_AXI_JPEG_VP_WR_AXI_LINE_0_OFFSET);
+            break;
+        }
+        case WR_PORT_25:
+        {
+            if (CVDR_WR_PORT_UPDATE_2 == wr_port_flag) {
+                hjpeg_vp_wr_axi_line_update_2(hw_ctl->cvdr_viraddr, desc, CVDR_SRT_VP_WR_AXI_LINE_25_OFFSET_UPDATE);
+            } else if (CVDR_WR_PORT_UPDATE_1 == wr_port_flag) {
+                hjpeg_vp_wr_axi_line_update_1(hw_ctl->cvdr_viraddr, desc, CVDR_SRT_VP_WR_AXI_LINE_25_OFFSET_UPDATE);
+            } else {
+                hjpeg_vp_wr_axi_line_update_1(hw_ctl->cvdr_viraddr, desc, CVDR_SRT_VP_WR_AXI_LINE_25_OFFSET);
+            }
+            break;
+        }
+        default:
+        {
+            cam_err("%s, invalid rd port[%d]", __func__, hw_ctl->cvdr_prop.wr_port);
+            return;
+        }
+    }
+}
+
+void hjpeg_config_vp_wr_axi_fs_update_0(void __iomem *cvdr_srt_base, u32 offset, u32 addr)
+{
+    U_VP_WR_AXI_FS tmp_fs;
+    if (NULL == cvdr_srt_base) {
+        cam_err("%s, cvdr_srt_base is null", __func__);
+        return;
+    }
+
+    tmp_fs.reg32 = get_reg_val((void __iomem*)((char*)cvdr_srt_base + offset));
+    tmp_fs.bits.vpwr_address_frame_start = addr >> 4;
+    set_reg_val((void __iomem*)((char*)cvdr_srt_base + offset), tmp_fs.reg32);
+}
+
+void hjpeg_config_vp_wr_axi_fs_update_1(void __iomem *cvdr_srt_base, u32 offset, u32 addr)
+{
+    U_VP_WR_AXI_FS tmp_fs;
+    if (NULL == cvdr_srt_base) {
+        cam_err("%s, cvdr_srt_base is null", __func__);
+        return;
+    }
+
+    tmp_fs.reg32 = get_reg_val((void __iomem*)((char*)cvdr_srt_base + offset));
+    tmp_fs.bits.vpwr_address_frame_start = addr >> 4;
+    set_reg_val((void __iomem*)((char*)cvdr_srt_base + offset), tmp_fs.reg32 >> 2);
+}
+
+void hjpeg_config_vp_wr_axi_fs_update_2(void __iomem *cvdr_srt_base, u32 offset, u32 addr)
+{
+    U_VP_WR_AXI_FS_UPDATE_2 tmp_fs;
+    if (NULL == cvdr_srt_base) {
+        cam_err("%s, cvdr_srt_base is null", __func__);
+        return;
+    }
+
+    tmp_fs.reg32 = get_reg_val((void __iomem*)((char*)cvdr_srt_base + offset));
+    tmp_fs.bits.vpwr_address_frame_start = addr >> 4;
+    set_reg_val((void __iomem*)((char*)cvdr_srt_base + offset), tmp_fs.reg32);
+}
+
+void hjpeg_config_axi_fs(hjpeg_hw_ctl_t *hw_ctl, jpgenc_config_t* config)
+{
+    u32 buf_addr;
+    u32 wr_port;
+    int iova_update_flag;
+    if (NULL == hw_ctl || NULL == config) {
+        cam_err("%s, hw_ctl or config is null", __func__);
+        return;
+    }
+
+    if (NULL == hw_ctl->cvdr_viraddr) {
+        cam_err("%s, hw_ctl cvdr_viraddr is null", __func__);
+        return;
+    }
+
+    wr_port          = hw_ctl->cvdr_prop.wr_port;
+    iova_update_flag = get_hjpeg_iova_update();
+    buf_addr = config->buffer.output_buffer + JPGENC_HEAD_SIZE;
+
+    switch(wr_port) {
+        case WR_PORT_0:
+        {
+            hjpeg_config_vp_wr_axi_fs_update_0(hw_ctl->cvdr_viraddr, CVDR_AXI_JPEG_VP_WR_AXI_FS_0_OFFSET, buf_addr);
+            break;
+        }
+        case WR_PORT_25:
+        {
+            if (CVDR_IOVA_UPDATE_2 == iova_update_flag) {
+                hjpeg_config_vp_wr_axi_fs_update_2(hw_ctl->cvdr_viraddr, CVDR_SRT_VP_WR_AXI_FS_25_OFFSET_UPDATE, buf_addr);
+            } else if (CVDR_IOVA_UPDATE_1 == iova_update_flag) {
+                hjpeg_config_vp_wr_axi_fs_update_1(hw_ctl->cvdr_viraddr, CVDR_SRT_VP_WR_AXI_FS_25_OFFSET_UPDATE, buf_addr);
+            } else {
+                hjpeg_config_vp_wr_axi_fs_update_0(hw_ctl->cvdr_viraddr, CVDR_SRT_VP_WR_AXI_FS_25_OFFSET, buf_addr);
+            }
+            break;
+        }
+        default:
+        {
+            cam_err("%s, invalid rd port[%d]", __func__, wr_port);
+            return;
+        }
+    }
+}
+
+void hjpeg_vp_wr_cfg_update_0(void __iomem *cvdr_srt_base, cvdr_wr_fmt_desc_t *desc, u32 offset)
+{
+    U_VP_WR_CFG tmp_cfg;
+    if (NULL == cvdr_srt_base || NULL == desc) {
+        cam_err("%s, desc or cvdr_srt_base is null", __func__);
+        return;
+    }
+
+    tmp_cfg.reg32 = get_reg_val((void __iomem*)((char*)cvdr_srt_base + offset));
+    tmp_cfg.bits.vpwr_pixel_format    = desc->pix_fmt;
+    tmp_cfg.bits.vpwr_pixel_expansion = desc->pix_expan;
+    tmp_cfg.bits.vpwr_last_page       = desc->last_page;
+    set_reg_val((void __iomem*)((char*)cvdr_srt_base + offset), tmp_cfg.reg32);
+}
+
+void hjpeg_vp_wr_cfg_update_1(void __iomem *cvdr_srt_base, cvdr_wr_fmt_desc_t *desc, u32 offset)
+{
+    U_VP_WR_CFG_UPDATE tmp_cfg_update;
+    if (NULL == cvdr_srt_base || NULL == desc) {
+        cam_err("%s, desc or cvdr_srt_base is null", __func__);
+        return;
+    }
+
+    tmp_cfg_update.reg32 = get_reg_val((void __iomem*)((char*)cvdr_srt_base + offset));
+    tmp_cfg_update.bits.vpwr_pixel_format    = desc->pix_fmt;
+    tmp_cfg_update.bits.vpwr_pixel_expansion = desc->pix_expan;
+    tmp_cfg_update.bits.vpwr_last_page       = desc->last_page;
+    tmp_cfg_update.bits.reserved_1 = 0x0;
+    tmp_cfg_update.bits.vpwr_access_limiter = desc->access_limiter;
+    set_reg_val((void __iomem*)((char*)cvdr_srt_base + offset), tmp_cfg_update.reg32);
+}
+
+void hjpeg_vp_wr_cfg_update_2(void __iomem *cvdr_srt_base, cvdr_wr_fmt_desc_t *desc, u32 offset)
+{
+    U_VP_WR_CFG_UPDATE_1 tmp_cfg_update;
+    if (NULL == cvdr_srt_base || NULL == desc) {
+        cam_err("%s, desc or cvdr_srt_base is null", __func__);
+        return;
+    }
+
+    tmp_cfg_update.reg32 = get_reg_val((void __iomem*)((char*)cvdr_srt_base + offset));
+    tmp_cfg_update.bits.vpwr_pixel_format    = desc->pix_fmt;
+    tmp_cfg_update.bits.vpwr_pixel_expansion = desc->pix_expan;
+    tmp_cfg_update.bits.vpwr_last_page       = desc->last_page;
+    tmp_cfg_update.bits.reserved_0           = 0x0;
+    set_reg_val((void __iomem*)((char*)cvdr_srt_base + offset), tmp_cfg_update.reg32);
+}
+
+void hjpeg_config_vp_wr(hjpeg_hw_ctl_t *hw_ctl, cvdr_wr_fmt_desc_t *desc)
+{
+    int iova_update_flag;
+    u32 wr_port;
+    u32 vp_wr_cfg_offset;
+    if (NULL == hw_ctl || NULL == desc) {
+        cam_err("%s, hw_ctl or desc is null", __func__);
+        return;
+    }
+
+    wr_port          = hw_ctl->cvdr_prop.wr_port;
+    iova_update_flag = get_hjpeg_iova_update();
+
+    switch(wr_port) {
+        case WR_PORT_0:
+        {
+            vp_wr_cfg_offset = CVDR_AXI_JPEG_VP_WR_CFG_0_OFFSET;
+            break;
+        }
+        case WR_PORT_25:
+        {
+            if (get_hjpeg_wr_port_addr_update()) {
+                vp_wr_cfg_offset      = CVDR_SRT_VP_WR_CFG_25_OFFSET_UPDATE;
+            } else {
+                vp_wr_cfg_offset      = CVDR_SRT_VP_WR_CFG_25_OFFSET;
+            }
+            break;
+        }
+        default:
+            cam_err("%s, invalid wr port[%d]", __func__, wr_port);
+            return;
+    }
+
+    if (CVDR_IOVA_UPDATE_1 == iova_update_flag) {
+        hjpeg_vp_wr_cfg_update_1(hw_ctl->cvdr_viraddr, desc, vp_wr_cfg_offset);
+    } else if (CVDR_IOVA_UPDATE_2 == iova_update_flag) {
+        hjpeg_vp_wr_cfg_update_2(hw_ctl->cvdr_viraddr, desc, vp_wr_cfg_offset);
+    } else {
+        hjpeg_vp_wr_cfg_update_0(hw_ctl->cvdr_viraddr, desc, vp_wr_cfg_offset);
+    }
+}
+
 #define PREFETCH_BY_PASS (1 << 31)
 static int set_vp_wr_ready(hjpeg_hw_ctl_t *hw_ctl, jpgenc_config_t* config)
 {
     int ret;
-    U_VP_WR_CFG tmp_cfg;
-    U_VP_WR_CFG_UPDATE tmp_cfg_update;
-    U_VP_WR_AXI_LINE tmp_line;
-    U_VP_WR_AXI_FS tmp_fs;
     U_CVDR_SRT_LIMITER_VP_WR_0 lmt;
 
-    u32 vp_wr_cfg_offset;
-    u32 vp_wr_axi_line_offset;
     u32 vp_wr_if_cfg_offset;
-    u32 vp_wr_axi_fs_offset;
-    u32 buf_addr;
 
     cvdr_wr_fmt_desc_t desc;
 
@@ -211,9 +444,6 @@ static int set_vp_wr_ready(hjpeg_hw_ctl_t *hw_ctl, jpgenc_config_t* config)
     switch(wr_port) {
         case WR_PORT_0:
         {
-            vp_wr_cfg_offset      = CVDR_AXI_JPEG_VP_WR_CFG_0_OFFSET;
-            vp_wr_axi_line_offset = CVDR_AXI_JPEG_VP_WR_AXI_LINE_0_OFFSET;
-            vp_wr_axi_fs_offset   = CVDR_AXI_JPEG_VP_WR_AXI_FS_0_OFFSET;
             // for smmu bypass
             vp_wr_if_cfg_offset   = CVDR_AXI_JPEG_VP_WR_IF_CFG_0_OFFSET;
 
@@ -228,16 +458,10 @@ static int set_vp_wr_ready(hjpeg_hw_ctl_t *hw_ctl, jpgenc_config_t* config)
         }
         case WR_PORT_25:
         {
-            if (is_hjpeg_wr_port_addr_update()) {
-                vp_wr_cfg_offset      = CVDR_SRT_VP_WR_CFG_25_OFFSET_UPDATE;
-                vp_wr_axi_line_offset = CVDR_SRT_VP_WR_AXI_LINE_25_OFFSET_UPDATE;
-                vp_wr_axi_fs_offset   = CVDR_SRT_VP_WR_AXI_FS_25_OFFSET_UPDATE;
+            if (get_hjpeg_wr_port_addr_update()) {
                 // for smmu bypass
                 vp_wr_if_cfg_offset   = CVDR_SRT_VP_WR_IF_CFG_25_OFFSET_UPDATE;
             } else {
-                vp_wr_cfg_offset      = CVDR_SRT_VP_WR_CFG_25_OFFSET;
-                vp_wr_axi_line_offset = CVDR_SRT_VP_WR_AXI_LINE_25_OFFSET;
-                vp_wr_axi_fs_offset   = CVDR_SRT_VP_WR_AXI_FS_25_OFFSET;
                 // for smmu bypass
                 vp_wr_if_cfg_offset   = CVDR_SRT_VP_WR_IF_CFG_25_OFFSET;
             }
@@ -256,34 +480,10 @@ static int set_vp_wr_ready(hjpeg_hw_ctl_t *hw_ctl, jpgenc_config_t* config)
             return -1;
     }
     // config vp wr cfg
-    if (is_hjpeg_iova_update()) {
-        tmp_cfg_update.reg32 = get_reg_val((void __iomem*)((char*)cvdr_srt_base + vp_wr_cfg_offset));
-        tmp_cfg_update.bits.vpwr_pixel_format    = desc.pix_fmt;
-        tmp_cfg_update.bits.vpwr_pixel_expansion = desc.pix_expan;
-        tmp_cfg_update.bits.vpwr_last_page       = desc.last_page;
-        tmp_cfg_update.bits.reserved_1 = 0x0;
-        if (WR_PORT_25 == wr_port) {
-           // FIXME:no vpwr_access_limiter in register table ON ES
-           tmp_cfg_update.bits.vpwr_access_limiter = desc.access_limiter;
-       }
-        set_reg_val((void __iomem*)((char*)cvdr_srt_base + vp_wr_cfg_offset), tmp_cfg_update.reg32);
-    } else {
-        tmp_cfg.reg32 = get_reg_val((void __iomem*)((char*)cvdr_srt_base + vp_wr_cfg_offset));
-        tmp_cfg.bits.vpwr_pixel_format    = desc.pix_fmt;
-        tmp_cfg.bits.vpwr_pixel_expansion = desc.pix_expan;
-        tmp_cfg.bits.vpwr_last_page       = desc.last_page;
-        if (WR_PORT_25 == wr_port) {
-            // FIXME:no vpwr_access_limiter in register table ON ES
-            tmp_cfg.bits.vpwr_access_limiter = desc.access_limiter;
-        }
-        set_reg_val((void __iomem*)((char*)cvdr_srt_base + vp_wr_cfg_offset), tmp_cfg.reg32);
-   }
+    hjpeg_config_vp_wr(hw_ctl, &desc);
 
     // config vp wr axi line
-    tmp_line.reg32 = get_reg_val((void __iomem*)((char*)cvdr_srt_base + vp_wr_axi_line_offset));
-    tmp_line.bits.vpwr_line_stride = desc.line_stride;
-    tmp_line.bits.vpwr_line_wrap   = desc.line_wrap;
-    set_reg_val((void __iomem*)((char*)cvdr_srt_base + vp_wr_axi_line_offset), tmp_line.reg32);
+    hjpeg_config_axi_line(hw_ctl, &desc);
 
     // smmu bypass
     if (hw_ctl->smmu_bypass == BYPASS_YES)
@@ -292,17 +492,9 @@ static int set_vp_wr_ready(hjpeg_hw_ctl_t *hw_ctl, jpgenc_config_t* config)
             (get_reg_val((void __iomem*)((char*)cvdr_srt_base + vp_wr_if_cfg_offset))|(PREFETCH_BY_PASS)));  /*lint !e648*/
     }
 
-    buf_addr = config->buffer.output_buffer + JPGENC_HEAD_SIZE;
+
     // config vp wr axi fs
-    tmp_fs.reg32 = get_reg_val((void __iomem*)((char*)cvdr_srt_base + vp_wr_axi_fs_offset));
-
-    tmp_fs.bits.vpwr_address_frame_start = buf_addr >> 4;
-
-    if (is_hjpeg_iova_update()) {
-        set_reg_val((void __iomem*)((char*)cvdr_srt_base + vp_wr_axi_fs_offset), tmp_fs.reg32 >> 2);
-    } else {
-        set_reg_val((void __iomem*)((char*)cvdr_srt_base + vp_wr_axi_fs_offset), tmp_fs.reg32);
-    }
+    hjpeg_config_axi_fs(hw_ctl, config);
 
     return 0;
 }

@@ -33,9 +33,6 @@
 #include "fusb30x_driver.h"
 #include <huawei_platform/usb/hw_pd_dev.h>
 
-#ifdef CONFIG_CC_ANTI_CORROSION
-#include <huawei_platform/usb/hw_cc_anti_corrosion.h>
-#endif
 #ifdef CONFIG_POGO_PIN
 #include <huawei_platform/usb/huawei_pogopin.h>
 #endif
@@ -124,6 +121,33 @@ static int is_cable_for_direct_charge(void)
 	return 0;
 }
 
+int fusb30x_pd_dpm_get_cc_state(void)
+{
+	FSC_U8 val;
+	FSC_U8 cc2;
+	FSC_U8 cc1;
+	FSC_BOOL ret;
+	FSC_U8 meas_cc2 = 0x02;
+	FSC_U8 meas_cc1 = 0x01;
+	ret = fusb_write_mask(FSC_CC_SELECT_REG_02H, FSC_CC_SELECT_MASK, FSC_CC_SELECT_SHIFT, meas_cc2);
+	msleep(1);
+	ret &= fusb_I2C_ReadData( FSC_CC_STATUS_40H,&cc2);
+	ret &= fusb_write_mask(FSC_CC_SELECT_REG_02H, FSC_CC_SELECT_MASK, FSC_CC_SELECT_SHIFT, meas_cc1);
+	msleep(1);
+	ret &= fusb_I2C_ReadData( FSC_CC_STATUS_40H,&cc1);
+	if (!ret)
+	{
+		pr_info("%s:REG R/W FAIL!!!!\n",__func__);
+		return -1;
+	}
+	pr_info("%s:cc2_REG0x40 = 0x%x\n",__func__,cc2);
+	pr_info("%s:cc1_REG0x40 = 0x%x\n",__func__,cc1);
+	cc2 = cc2 & FSC_CC_STATUS_MASK;
+	cc1 = cc1 & FSC_CC_STATUS_MASK;
+	val = (cc2 << 2) | cc1;
+	return val;
+}
+
 void fusb30x_set_cc_mode(int mode)
 {
        if (!mode){
@@ -138,12 +162,6 @@ int fusb30x_get_cc_mode(void)
 {
        return 0;
 }
-#ifdef CONFIG_CC_ANTI_CORROSION
-struct cc_corrosion_ops fusb30x_corrosion_ops = {
-    .set_cc_mode = fusb30x_set_cc_mode,
-    .get_cc_mode = fusb30x_get_cc_mode,
-};
-#endif
 
 #ifdef CONFIG_POGO_PIN
 static int fusb30x_typec_detect_disable(FSC_BOOL disable)
@@ -257,9 +275,6 @@ static int fusb30x_probe (struct i2c_client* client,
     fusb_InitializeTimer();
     pr_debug("FUSB  %s - Timers initialized!\n", __func__);
 
-#ifdef CONFIG_CC_ANTI_CORROSION
-    cc_corrosion_register_ops(&fusb30x_corrosion_ops);
-#endif
 #ifdef CONFIG_POGO_PIN
 	cc_detect_register_ops(&fusb30x_cc_detect_ops);
 #endif

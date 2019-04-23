@@ -151,7 +151,8 @@ struct kbase_ioctl_get_gpuprops {
  * @commit_pages: The number of physical pages to allocate
  * @extent: The number of extra pages to allocate on each GPU fault which grows
  *          the region
- * @flags: Flags
+ * @flags: Flags. We use the low 32 bit to identify the memory property, use high 8 bit
+ *         to identify the last buffer policy.
  * @gpu_va: The GPU virtual address which is allocated
  *
  * @in: Input parameters

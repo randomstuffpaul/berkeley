@@ -8,11 +8,32 @@ static LIST_HEAD(mptcp_sched_list);
 
 struct defsched_priv {
 	u32	last_rbuf_opti;
+
+	/* the members below is only use by defsched_adv */
+	u32	rcv_bytes;
+	u32	rcv_rate;
+	u32	last_prio_opti;
+	u32	end_seq;
+	u8	is_prio_opti:1,
+		recv_ofo:1;
+};
+
+/* Struct to store the data of the control block */
+struct defsched_cb_data {
+	u32	last_sampling_ts;
+	u32	sampling_rtt;
+	u32	end_seq;
 };
 
 static struct defsched_priv *defsched_get_priv(const struct tcp_sock *tp)
 {
 	return (struct defsched_priv *)&tp->mptcp->mptcp_sched[0];
+}
+
+/* Returns the control block data from a given meta socket */
+static struct defsched_cb_data *defsched_get_cb_data(struct tcp_sock *tp)
+{
+	return (struct defsched_cb_data *)&tp->mpcb->mptcp_sched[0];
 }
 
 bool mptcp_is_def_unavailable(struct sock *sk)
@@ -64,12 +85,6 @@ static bool mptcp_is_temp_unavailable(struct sock *sk,
 		    tp->mptcp->last_end_data_seq != TCP_SKB_CB(skb)->seq)
 			return true;
 	}
-
-	/* If TSQ is already throttling us, do not send on this subflow. When
-	 * TSQ gets cleared the subflow becomes eligible again.
-	 */
-	if (test_bit(TSQ_THROTTLED, &tp->tsq_flags))
-		return true;
 
 	in_flight = tcp_packets_in_flight(tp);
 	/* Not even a single spot in the cwnd */
@@ -223,7 +238,7 @@ struct sock *get_available_subflow(struct sock *meta_sk, struct sk_buff *skb,
 {
 	struct mptcp_cb *mpcb = tcp_sk(meta_sk)->mpcb;
 	struct sock *sk;
-	bool force;
+	bool looping = false, force;
 
 	/* if there is only one subflow, bypass the scheduling function */
 	if (mpcb->cnt_subflows == 1) {
@@ -244,6 +259,7 @@ struct sock *get_available_subflow(struct sock *meta_sk, struct sk_buff *skb,
 	}
 
 	/* Find the best subflow */
+restart:
 	sk = get_subflow_from_selectors(mpcb, skb, &subflow_is_active,
 					zero_wnd_test, &force);
 	if (force)
@@ -254,7 +270,7 @@ struct sock *get_available_subflow(struct sock *meta_sk, struct sk_buff *skb,
 
 	sk = get_subflow_from_selectors(mpcb, skb, &subflow_is_backup,
 					zero_wnd_test, &force);
-	if (!force && skb)
+	if (!force && skb) {
 		/* one used backup sk or one NULL sk where there is no one
 		 * temporally unavailable unused backup sk
 		 *
@@ -262,6 +278,12 @@ struct sock *get_available_subflow(struct sock *meta_sk, struct sk_buff *skb,
 		 * sks, so clean the path mask
 		 */
 		TCP_SKB_CB(skb)->path_mask = 0;
+
+		if (!looping) {
+			looping = true;
+			goto restart;
+		}
+	}
 	return sk;
 }
 EXPORT_SYMBOL_GPL(get_available_subflow);
@@ -456,6 +478,201 @@ static void defsched_init(struct sock *sk)
 	dsp->last_rbuf_opti = tcp_time_stamp;
 }
 
+#define MIN_SAMPLING_INTERVAL (20*1000u) /* 20ms */
+#define MAX_SAMPLING_INTERVAL (300*1000u) /* 300ms */
+#define PRIO_OPTI_INTERVAL (30*1000u) /* 30s */
+
+#define SHIFT_2X	1
+#define SHIFT_4X	2
+#define SHIFT_8X	3
+
+static void defsched_adv_init(struct sock *sk)
+{
+	struct tcp_sock *tp = tcp_sk(sk);
+	struct defsched_priv *dsp = defsched_get_priv(tp);
+	struct sock *meta_sk = tp->meta_sk;
+	struct mptcp_cb *mpcb	= tcp_sk(meta_sk)->mpcb;
+	struct defsched_cb_data *cb_data;
+	u32 now = tcp_time_stamp;
+
+	dsp->last_rbuf_opti = now;
+	dsp->last_prio_opti = now;
+	dsp->rcv_bytes = 0;
+	dsp->rcv_rate = 0;
+	dsp->end_seq = tcp_sk(meta_sk)->rcv_nxt;
+	dsp->is_prio_opti = 0;
+	dsp->recv_ofo = 0;
+
+	/* if the first sub flow, init the cb_data */
+	if (!mpcb->cnt_subflows) {
+		cb_data = defsched_get_cb_data(tp);
+		cb_data->end_seq = dsp->end_seq;
+		cb_data->last_sampling_ts = now;
+		cb_data->sampling_rtt = tp->srtt_us >> SHIFT_8X;
+		if (cb_data->sampling_rtt < MIN_SAMPLING_INTERVAL)
+			cb_data->sampling_rtt = MIN_SAMPLING_INTERVAL;
+		else if (cb_data->sampling_rtt > MAX_SAMPLING_INTERVAL)
+			cb_data->sampling_rtt = MAX_SAMPLING_INTERVAL;
+	}
+}
+
+static void defsched_adv_calc(struct sock *sk, u32 now, u32 *max_rate,
+			      u32 *max_sampling_rtt, u32 *min_rtt, u32 delta_us)
+{
+	struct tcp_sock *tp = tcp_sk(sk);
+	struct mptcp_cb *mpcb = tp->mpcb;
+	struct sock *sub_sk;
+	struct tcp_sock *sub_tp;
+	struct defsched_priv *sub_dsp;
+	u32 rtt_us, rate, tmp;
+	struct dst_entry *dst;
+	char iface[IFNAMSIZ];
+
+	mptcp_for_each_sk(mpcb, sub_sk) {
+		sub_tp = tcp_sk(sub_sk);
+		if (mptcp_is_def_unavailable(sub_sk))
+			continue;
+
+		sub_dsp = defsched_get_priv(sub_tp);
+		if (sub_dsp->is_prio_opti)
+			continue;
+
+		/* rate is bytes per ms */
+		rate = (sub_dsp->rcv_bytes*1000)/delta_us;
+
+		/* rcv_rate is 8X of rate, it is same as tcp_rtt_estimator  */
+		if (!sub_dsp->rcv_rate) {
+			sub_dsp->rcv_rate = rate << SHIFT_8X;
+		} else {
+			tmp = sub_dsp->rcv_rate - (sub_dsp->rcv_rate >> SHIFT_8X);
+			sub_dsp->rcv_rate = rate + tmp; /* rate = 7/8 rate + 1/8 new */
+		}
+
+		if ((sub_dsp->rcv_rate >> SHIFT_8X) > *max_rate)
+			*max_rate = (sub_dsp->rcv_rate >> SHIFT_8X);
+
+		rtt_us = jiffies_to_usecs(sub_tp->rcv_rtt_est.rtt) >> SHIFT_8X;
+		if (!rtt_us)
+			rtt_us = sub_tp->srtt_us >> SHIFT_8X;
+
+		if (!(*min_rtt) || (*min_rtt > rtt_us))
+			*min_rtt = rtt_us;
+
+		if (*max_sampling_rtt < rtt_us)
+			*max_sampling_rtt = rtt_us;
+
+		if (unlikely(sysctl_mptcp_debug > 1)) {
+			dst = sk_dst_get(sub_sk);
+			if (dst) {
+				(void)strncpy(iface, dst->dev->name, IFNAMSIZ);
+				iface[IFNAMSIZ - 1] = '\0';
+				dst_release(dst);
+			} else
+				(void)strncpy(iface, "NULL", IFNAMSIZ);
+
+			mptcp_debug("%s: sub_sk %pK iface %s rcv_rate %u recv_ofo %u rate %u rcv_bytes %u delta_us %u rtt_us %u min_rtt %u\n", __func__,
+				sub_sk, iface, sub_dsp->rcv_rate >> SHIFT_8X, sub_dsp->recv_ofo, rate, sub_dsp->rcv_bytes, delta_us, rtt_us, *min_rtt);
+		}
+	}
+}
+
+static void defsched_adv_rcv_skb(struct sock *sk, unsigned int len,
+			     unsigned int end_seq, bool valid)
+{
+	struct tcp_sock *tp = tcp_sk(sk);
+	struct defsched_cb_data *cb_data = defsched_get_cb_data(tp);
+	struct defsched_priv *dsp = defsched_get_priv(tp);
+	struct mptcp_cb *mpcb = tp->mpcb;
+	u32 now = tcp_time_stamp;
+	u32 delta_us;
+	u32 delta_prio_ts;
+	u32 rtt_us;
+	struct sock *sub_sk;
+	struct tcp_sock *sub_tp;
+	struct tcp_sock *good_tp = NULL;
+	struct defsched_priv *sub_dsp;
+	u32 max_rate = 0;
+	u32 max_sampling_rtt = MIN_SAMPLING_INTERVAL;
+	u32 min_rtt = 0;
+	bool send_mp_other_prio = false;
+
+	if (likely(valid)) {
+		dsp->rcv_bytes += len;
+	} else if (after(end_seq, dsp->end_seq)) {
+		dsp->recv_ofo = 1;
+		mptcp_debug("%s: sub_sk %pK seq %u\n", __func__, sk, end_seq - len);
+	}
+
+	if (after(end_seq, cb_data->end_seq))
+		cb_data->end_seq = end_seq;
+
+	if (likely(after(end_seq, dsp->end_seq)))
+		dsp->end_seq = end_seq;
+
+	delta_us = jiffies_to_usecs(now - cb_data->last_sampling_ts);
+	if (delta_us < cb_data->sampling_rtt)
+		return;
+
+	defsched_adv_calc(sk, now, &max_rate, &max_sampling_rtt, &min_rtt,
+			  delta_us);
+	if (max_sampling_rtt > max(min_rtt, MAX_SAMPLING_INTERVAL))
+		max_sampling_rtt = max(min_rtt, MAX_SAMPLING_INTERVAL);
+
+	mptcp_for_each_sk(mpcb, sub_sk) {
+		sub_tp = tcp_sk(sub_sk);
+		if (mptcp_is_def_unavailable(sub_sk))
+			continue;
+
+		sub_dsp = defsched_get_priv(sub_tp);
+		if (unlikely(sub_dsp->is_prio_opti)) {
+			delta_prio_ts = jiffies_to_msecs(now - sub_dsp->last_prio_opti);
+			if (delta_prio_ts > PRIO_OPTI_INTERVAL) {
+				sub_dsp->rcv_bytes = 0;
+				sub_dsp->rcv_rate = 0;
+				sub_dsp->is_prio_opti = 0;
+				sub_dsp->recv_ofo = 0;
+
+				sub_tp->mptcp->low_prio = 0;
+				sub_tp->mptcp->send_mp_prio = 1;
+				send_mp_other_prio = true;
+			}
+			continue;
+		}
+
+		if (likely(!sub_dsp->recv_ofo)) {
+			sub_dsp->rcv_bytes = 0;
+			if (!good_tp)
+				good_tp = sub_tp;
+			continue;
+		}
+
+		rtt_us = jiffies_to_usecs(sub_tp->rcv_rtt_est.rtt) >> SHIFT_8X;
+		if (!rtt_us)
+			rtt_us = sub_tp->srtt_us >> SHIFT_8X;
+		if ((sub_dsp->rcv_rate < max_rate) &&
+		    (rtt_us > (min_rtt << SHIFT_4X))) {
+			sub_tp->mptcp->low_prio = 1;
+			sub_tp->mptcp->send_mp_prio = 1;
+			send_mp_other_prio = true;
+			sub_dsp->last_prio_opti = now;
+			sub_dsp->is_prio_opti = 1;
+
+			mptcp_debug("%s: sub_sk %pK change to low_prio for rcv_rate %u max_rate %u rtt_us %u min_rtt %u\n", __func__,
+				sub_sk, sub_dsp->rcv_rate >> SHIFT_8X, max_rate, rtt_us, min_rtt);
+		} else if (!good_tp)
+			good_tp = sub_tp;
+
+		sub_dsp->recv_ofo = 0;
+		sub_dsp->rcv_bytes = 0;
+	}
+
+	if (send_mp_other_prio && good_tp)
+		good_tp->mptcp->send_mp_other_prio = 1;
+
+	cb_data->sampling_rtt = max_sampling_rtt;
+	cb_data->last_sampling_ts = now;
+}
+
 struct mptcp_sched_ops mptcp_sched_default = {
 	.get_subflow = get_available_subflow,
 	.next_segment = mptcp_next_segment,
@@ -464,16 +681,45 @@ struct mptcp_sched_ops mptcp_sched_default = {
 	.owner = THIS_MODULE,
 };
 
+struct mptcp_sched_ops mptcp_sched_default_adv = {
+	.get_subflow = get_available_subflow,
+	.next_segment = mptcp_next_segment,
+	.rcv_skb = defsched_adv_rcv_skb,
+	.init = defsched_adv_init,
+	.name = "default_adv",
+	.owner = THIS_MODULE,
+};
+
 static struct mptcp_sched_ops *mptcp_sched_find(const char *name)
 {
 	struct mptcp_sched_ops *e;
+	char tmp_name[MPTCP_SCHED_NAME_MAX] = {0};
+	if (strcmp(name, MPTCP_SCHED_NAME_HANDOVER) == 0)
+		strncpy(tmp_name, MPTCP_SCHED_NAME_REDUNDANT, MPTCP_SCHED_NAME_MAX - 1);
+	else
+		strncpy(tmp_name, name, MPTCP_SCHED_NAME_MAX - 1);
 
 	list_for_each_entry_rcu(e, &mptcp_sched_list, list) {
-		if (strcmp(e->name, name) == 0)
+		if (strcmp(e->name, tmp_name) == 0)
 			return e;
 	}
 
 	return NULL;
+}
+
+bool mptcp_sched_check_exist(const char *name)
+{
+	bool ret = false;
+
+	if (!name)
+		return ret;
+
+	spin_lock(&mptcp_sched_list_lock);
+	if (mptcp_sched_find(name))
+		ret = true;
+	spin_unlock(&mptcp_sched_list_lock);
+
+	return ret;
 }
 
 int mptcp_register_scheduler(struct mptcp_sched_ops *sched)
@@ -522,7 +768,8 @@ void mptcp_get_default_scheduler(char *name)
 
 	rcu_read_lock();
 	sched = list_entry(mptcp_sched_list.next, struct mptcp_sched_ops, list);
-	strncpy(name, sched->name, MPTCP_SCHED_NAME_MAX);
+	(void)strncpy(name, sched->name, MPTCP_SCHED_NAME_MAX);
+	name[MPTCP_SCHED_NAME_MAX - 1] = '\0';
 	rcu_read_unlock();
 }
 
@@ -606,11 +853,21 @@ int mptcp_set_scheduler(struct sock *sk, const char *name)
 
 	if (!sched) {
 		err = -ENOENT;
-	} else if (!ns_capable(sock_net(sk)->user_ns, CAP_NET_ADMIN)) {
+	}/* else if (!ns_capable(sock_net(sk)->user_ns, CAP_NET_ADMIN)) {
 		err = -EPERM;
-	} else {
-		strcpy(tcp_sk(sk)->mptcp_sched_name, name);
+	} */else {
+		(void)strncpy(tcp_sk(sk)->mptcp_sched_name, name, MPTCP_SCHED_NAME_MAX);
+		tcp_sk(sk)->mptcp_sched_name[MPTCP_SCHED_NAME_MAX - 1] = '\0';
 		tcp_sk(sk)->mptcp_sched_setsockopt = 1;
+
+		if (0 == strcmp(name, MPTCP_SCHED_NAME_HANDOVER)) {
+			if (0 == *(u32 *)(tcp_sk(sk)->mptcp_sched_params))
+				*(u32 *)(tcp_sk(sk)->mptcp_sched_params) =
+					MPTCP_HANDOVER_DEFAULT_RTT_THR;
+		}
+
+		if (0 == strcmp(name, MPTCP_SCHED_NAME_REDUNDANT))
+			*(u32 *)(tcp_sk(sk)->mptcp_sched_params) = 0;
 	}
 	rcu_read_unlock();
 
@@ -627,6 +884,7 @@ void mptcp_cleanup_scheduler(struct mptcp_cb *mpcb)
 static int __init mptcp_scheduler_default(void)
 {
 	BUILD_BUG_ON(sizeof(struct defsched_priv) > MPTCP_SCHED_SIZE);
+	BUILD_BUG_ON(sizeof(struct defsched_cb_data) > MPTCP_SCHED_DATA_SIZE);
 
 	return mptcp_set_default_scheduler(CONFIG_DEFAULT_MPTCP_SCHED);
 }

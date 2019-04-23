@@ -92,6 +92,7 @@ static int lcd_kit_dbg_iovcc_voltage(char *par);
 static int lcd_kit_dbg_vdd_voltage(char *par);
 static int lcd_kit_dbg_vsp_voltage(char *par);
 static int lcd_kit_dbg_vsn_voltage(char *par);
+static int lcd_kit_dbg_cmd(char *par);
 
 lcd_kit_dbg_func item_func[] = {
 	{"PanelEsdSupport", lcd_kit_dbg_esd_support},
@@ -170,11 +171,12 @@ lcd_kit_dbg_func item_func[] = {
 	{"LcdVdd", lcd_kit_dbg_vdd_voltage},
 	{"LcdVsp", lcd_kit_dbg_vsp_voltage},
 	{"LcdVsn", lcd_kit_dbg_vsn_voltage},
+	{"PanelDbgCommand", lcd_kit_dbg_cmd},	/*send mipi cmds for debugging, both support tx and rx*/
 };
 
 lcd_kit_dbg_cmds lcd_kit_cmd_list[] = {
 	{LCD_KIT_DBG_LEVEL_SET,                      "set_debug_level"},
-	{LCD_KIT_DBG_PARAM_CONFIG, 					 "set_param_config"},
+	{LCD_KIT_DBG_PARAM_CONFIG,                   "set_param_config"},
 };
 
 struct lcd_kit_debug lcd_kit_dbg;
@@ -500,7 +502,8 @@ int lcd_kit_dbg_parse_cmd(struct lcd_kit_dsi_panel_cmds* pcmds, char* buf, int l
 {
 	int blen = 0, len = 0;
 	char *bp = NULL;
-	struct lcd_kit_dsi_ctrl_hdr* dchdr;
+	struct lcd_kit_dsi_ctrl_hdr* dchdr = NULL;
+	struct lcd_kit_dsi_cmd_desc* newcmds = NULL;
 	int i = 0, cnt = 0;
 
 	if (!pcmds || !buf) {
@@ -534,10 +537,15 @@ int lcd_kit_dbg_parse_cmd(struct lcd_kit_dsi_panel_cmds* pcmds, char* buf, int l
 		return LCD_KIT_FAIL;
 	}
 
-	if (!pcmds->cmds) {
-		LCD_KIT_ERR("pcmds->cmds is null!\n");
+	newcmds = kzalloc(cnt * sizeof(struct lcd_kit_dsi_cmd_desc), GFP_KERNEL);
+	if (newcmds == NULL) {
+		LCD_KIT_ERR("kzalloc fail\n");
 		return LCD_KIT_FAIL;
 	}
+	if (pcmds->cmds != NULL) {
+		kfree(pcmds->cmds);
+	}
+	pcmds->cmds = newcmds;
 
 	pcmds->cmd_cnt = cnt;
 	pcmds->buf = buf;
@@ -562,6 +570,7 @@ int lcd_kit_dbg_parse_cmd(struct lcd_kit_dsi_panel_cmds* pcmds, char* buf, int l
 		bp += dchdr->dlen;
 		len -= dchdr->dlen;
 	}
+	pcmds->link_state = LCD_KIT_DSI_LP_MODE;
 
 	lcd_kit_dump_cmds(pcmds);
 
@@ -1812,6 +1821,61 @@ static int lcd_kit_dbg_effect_on_cmd(char *par)
 		lcd_kit_dbg_parse_cmd(&common_info->effect_on.cmds, lcd_kit_dbg.dbg_effect_on_cmds, len);
 	}
 	return LCD_KIT_OK;
+}
+
+static int lcd_kit_dbg_cmd(char *par)
+{
+	#define LCD_DDIC_INFO_LEN 200
+	#define PRI_LINE_LEN 8
+	struct lcd_kit_dsi_panel_cmds dbgcmds;
+	struct lcd_kit_dbg_ops *dbg_ops = NULL;
+	uint8_t readbuf[LCD_DDIC_INFO_LEN] = {0};
+	int len = 0, i = 0;
+
+	memset(&dbgcmds, 0, sizeof(struct lcd_kit_dsi_panel_cmds));
+	dbg_ops = lcd_kit_get_debug_ops();
+	if (!dbg_ops) {
+		LCD_KIT_ERR("dbg_ops is null!\n");
+		return LCD_KIT_FAIL;
+	}
+
+	if (dbg_ops->panel_power_on) {
+		if(!dbg_ops->panel_power_on()){
+			LCD_KIT_ERR("panel power off!\n");
+			return LCD_KIT_FAIL;
+		}
+	} else {
+		LCD_KIT_ERR("panel_power_on is null!\n");
+		return LCD_KIT_FAIL;
+	}
+
+	lcd_kit_dbg.dbg_cmds = kzalloc(LCD_KIT_CONFIG_TABLE_MAX_NUM, 0);
+	if (!lcd_kit_dbg.dbg_cmds) {
+		LCD_KIT_ERR("kzalloc fail\n");
+		return LCD_KIT_FAIL;
+	}
+	len = lcd_kit_parse_u8_digit(par, lcd_kit_dbg.dbg_cmds, LCD_KIT_CONFIG_TABLE_MAX_NUM);
+	if (len > 0) {
+		lcd_kit_dbg_parse_cmd(&dbgcmds, lcd_kit_dbg.dbg_cmds, len);
+	}
+
+	if (dbg_ops->dbg_mipi_rx) {
+		dbg_ops->dbg_mipi_rx(readbuf, &dbgcmds);
+		readbuf[LCD_DDIC_INFO_LEN-1] = '\0';
+		LCD_KIT_INFO("dbg-cmd read string:%s\n",readbuf);
+		LCD_KIT_INFO("corresponding hex data:\n");
+		for(i = 0; i < LCD_DDIC_INFO_LEN; i++){
+			LCD_KIT_INFO("0x%x  ",readbuf[i]);
+			if((i+1)%PRI_LINE_LEN == 0){
+				LCD_KIT_INFO("\n");
+			}
+		}
+		LCD_KIT_INFO("dbg_mipi_rx done.\n");
+		return LCD_KIT_OK;
+	} else {
+		LCD_KIT_ERR("dbg_mipi_rx is NULL!\n");
+		return LCD_KIT_FAIL;
+	}
 }
 
 static int lcd_kit_dbg_cabc_off_mode(char *par)

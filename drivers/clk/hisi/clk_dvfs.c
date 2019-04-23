@@ -39,7 +39,6 @@
 #define DIV_MUX_DATA_LENGTH 	3
 #define MUX_MAX_BIT					15
 #define FOUR_BITS						0xf
-#define NOUSE_READ_REG		0
 #define FREQ_OFFSET_ADD		1000000 /*For 184.444M to 185M*/
 #define LOW_TEMPERATURE_PROPERTY	1
 #define NORMAL_TEMPRATURE		0
@@ -219,7 +218,8 @@ static int wait_avs_complete(struct peri_dvfs_clk *dfclk)
 	} while (!val && loop > 0);
 
 	if (!val) {
-		pr_err("[%s]:clk prepare wait for avs bitmask timeout, loop = %d,  clk name = %s!\n", __func__, loop, dfclk->hw.core->name);
+		pr_err("[%s]:clk prepare wait for avs bitmask timeout, loop = %d,  clk name = %s, pmctrl 0x350 = 0x%x, 0x354 = 0x%x, SCData24 = 0x%x!\n",
+			__func__, loop, dfclk->hw.core->name, readl(pvp->addr_0), readl(pvp->addr), readl(dfclk->reg_base + SC_SCBAKDATA24_ADDR));
 		ret = -EINVAL;
 	}
 	return ret;
@@ -265,7 +265,7 @@ static int dvfs_block_func(struct peri_volt_poll *pvp, u32 volt)
 
 	do {
 		volt_get = peri_get_volt(pvp);
-		if(volt_get > DVFS_MAX_VOLT_NUM){
+		if(volt_get > DVFS_MAX_VOLT){
 			pr_err("[%s]get volt illegal volt=%d!\n", __func__, volt_get);
 			return -EINVAL;
 		}
@@ -275,7 +275,8 @@ static int dvfs_block_func(struct peri_volt_poll *pvp, u32 volt)
 		}
 	} while (volt_get < volt && loop > 0);
 	if (volt_get < volt) {
-		pr_err("[%s]schedule up volt failed, volt_get = %d, target_volt = %d, loop = %d!\n", __func__, volt_get, volt, loop);
+		pr_err("[%s]schedule up volt failed, volt_get = %u, target_volt = %u, loop = %d, pmctrl 0x350 = 0x%x, 0x354 = 0x%x!\n",
+			__func__, volt_get, volt, loop, readl(pvp->addr_0), readl(pvp->addr));
 		ret = -EINVAL;
 	}
 	return ret;
@@ -426,16 +427,9 @@ static unsigned long peri_dvfs_clk_recalc_rate(struct clk_hw *hw,
 					       unsigned long parent_rate)
 {
 	struct peri_dvfs_clk *dfclk = container_of(hw, struct peri_dvfs_clk, hw);
-	struct clk *ppll;
 	struct clk *clk_friend;
-	const char *source_name;
 	const char *clk_name;
 	u32 rate = 0;
-	u32 ppll_rate;
-	u32 value = 0;
-	u32 mux_value = 0;
-	u32 div_value = 0;
-	int ret;
 
 	clk_friend = __clk_lookup(dfclk->link);
 	if (IS_ERR_OR_NULL(clk_friend)) {
@@ -447,45 +441,7 @@ static unsigned long peri_dvfs_clk_recalc_rate(struct clk_hw *hw,
 		pr_err("[%s] clk name get failed!\n", __func__);
 		return -ENODEV;//lint !e570
 	}
-	if(NOUSE_READ_REG == dfclk->recal_mode){
-		rate = clk_get_rate(clk_friend);
-		return rate;
-	}
-	value = (unsigned int)readl(dfclk->reg_base + dfclk->div);
-	div_value = ((value & dfclk->div_bits) >> dfclk->div_bits_offset) + 1;/*lint !e838 */
-
-	value = (unsigned int)readl(dfclk->reg_base + dfclk->mux);
-	mux_value = (value & dfclk->mux_bits) >> dfclk->mux_bits_offset;/*lint !e838 */
-	/*
-	 * MUX may have 2-bits or 4-bits or others
-	 * if MUX has 2-bits(00/01/10/11), the index is the mux's value
-	 * if MUX has 4-bits(0001/0010/0100/1000), the index should divide 2
-	 */
-	if(FOUR_BITS == (dfclk->mux_bits >> dfclk->mux_bits_offset)) {
-		mux_value = mux_value / 2;
-		if(4 == mux_value)
-			mux_value = 3;
-	}
-
-	source_name = dfclk->parent_names[mux_value];
-	if(0 == strncmp(source_name, "clk_ppll1", sizeof("clk_ppll1"))) {
-		pr_err("%s: vdec chose the wrong ppll: ppll1\n", __func__);
-		return -ENODEV;/*lint !e570 */
-	}
-	ppll = __clk_lookup(source_name);
-	if (IS_ERR_OR_NULL(ppll)) {
-		pr_err("[%s] %s get failed!\n", __func__, source_name);
-		return -ENODEV;/*lint !e570 */
-	}
-	ppll_rate = __clk_get_rate(ppll);
-	rate = ppll_rate/div_value;
-	dfclk->rate = rate;
-
-
-	ret = clk_set_rate_nolock(clk_friend, rate);
-	if (ret < 0)
-		pr_err("[%s]set friend failed, ret = %d!\n", __func__, ret);
-
+	rate = clk_get_rate(clk_friend);
 	return rate;
 }
 
@@ -635,6 +591,7 @@ static int peri_dvfs_clk_set_rate(struct clk_hw *hw, unsigned long rate,
 		ret = peri_dvfs_set(dfclk, rate, dfclk->sensitive_volt[i]);
 		if(ret < 0){
 			pr_err("[%s]pvp set volt failed ret =%d!\n", __func__, ret);
+			return ret;
 		}
 	}
 now:
@@ -857,22 +814,12 @@ static void __init hisi_peri_dvfs_clk_setup(struct device_node *np)
 	u32 sensitive_volt[DVFS_MAX_VOLT_NUM] = {0};
 	u32 sensitive_level = 0;
 	u32 block_mode = 0;
-	u32 recal_mode = 0;
 	u32 divider = 0;
 	u32 low_temperature_freq = 0;
 	u32 user_high_volt = 0;
 
 	unsigned int base_addr_type = HS_SYSCTRL;
 	void __iomem *reg_base;
-	u32 data[3] = {0};
-	unsigned long data_length;
-	int ret;
-
-	if (of_property_read_u32(np, "hisilicon,clk-recal-rate", &recal_mode)) {
-		pr_err("[%s] node %s doesn't have clk-recal-rate property!\n",
-			__func__, np->name);
-		goto err_prop;
-	}
 
 	if (of_property_read_string(np, "clock-output-names", &clk_name)) {
 		pr_err("[%s] node %s doesn't have clock-output-names property!\n",
@@ -947,35 +894,6 @@ static void __init hisi_peri_dvfs_clk_setup(struct device_node *np)
 		goto err_clk;
 	}
 
-	if(1 == recal_mode){
-		if (of_property_read_u32(np, "base_addr_type", &base_addr_type)) {
-			pr_err("[%s] %s node doesn't have crgctrl property!\n", __func__, np->name);
-			goto err_parent_name;
-		}
-		data_length = MUX_SOURCE_NUM;
-		if ((ret = of_property_read_string_array(np, "mux-table", parent_names, data_length)) < 0) {
-			pr_err("[%s] Failed : of_property_read_string_array.%d\n", __func__, ret);
-			goto err_parent_name;
-		}
-		devfreq_clk->parent_names = parent_names;
-		data_length = DIV_MUX_DATA_LENGTH;
-		if (of_property_read_u32_array(np, "div-reg", &data[0], data_length)) {
-			pr_err("[%s] node have no div-reg\n", __func__);
-			goto err_parent_name;
-		}
-		devfreq_clk->div = data[0];
-		devfreq_clk->div_bits = data[1];
-		devfreq_clk->div_bits_offset = data[2];
-
-		if (of_property_read_u32_array(np, "mux-reg", &data[0], data_length)) {
-			pr_err("[%s] node have no mux-reg\n", __func__);
-			goto err_parent_name;
-		}
-		devfreq_clk->mux = data[0];
-		devfreq_clk->mux_bits = data[1];
-		devfreq_clk->mux_bits_offset = data[2];
-	}
-
 	if (of_property_read_bool(np, "low_temperature_property")) {
 		if (of_property_read_u32(np, "hisilicon,low-temperature-freq", &low_temperature_freq)) {
 			pr_err("[%s] node have no low-temperature-freq\n", __func__);
@@ -1001,7 +919,6 @@ static void __init hisi_peri_dvfs_clk_setup(struct device_node *np)
 	devfreq_clk->link = clk_friend;
 	devfreq_clk->reg_base = reg_base;
 	devfreq_clk->rate = 0;
-	devfreq_clk->recal_mode = recal_mode;
 	devfreq_clk->divider = divider;
 	devfreq_clk->enable_pll_name = enable_pll_name;
 

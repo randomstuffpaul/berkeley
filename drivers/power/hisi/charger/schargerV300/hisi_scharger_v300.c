@@ -26,6 +26,8 @@
 #include <linux/power/hisi/coul/hisi_coul_drv.h>
 #include <hisi_scharger_v300.h>
 #include <linux/raid/pq.h>
+#include <linux/mfd/hisi_pmic.h>
+#include <pmic_interface.h>
 #ifdef CONFIG_HUAWEI_HW_DEV_DCT
 #include <huawei_platform/devdetect/hw_dev_dec.h>
 #endif
@@ -41,7 +43,9 @@
 #include <linux/power/hisi/charger/hisi_charger.h>
 #endif
 #include <linux/hisi/hisi_adc.h>
-
+#ifdef CONFIG_SWITCH_FSA9685
+#include <huawei_platform/usb/switch/switch_fsa9685.h>
+#endif
 #ifdef CONFIG_BOOST_5V
 #include <huawei_platform/power/boost_5v.h>
 #endif
@@ -110,6 +114,28 @@ static int scp_get_direct_charge_mode(void)
 	return g_direct_charge_mode;
 }
 #endif
+
+static void set_boot_weaksource_flag(void)
+{
+#ifdef CONFIG_HISI_COUL_HI6421V700
+    unsigned int reg_val = 0;
+    reg_val = hisi_pmic_reg_read(WEAKSOURCE_FLAG_REG);
+    reg_val |= WAEKSOURCE_FLAG;
+    hisi_pmic_reg_write(WEAKSOURCE_FLAG_REG, reg_val);
+#endif
+    return;
+}
+
+static void clr_boot_weaksource_flag(void)
+{
+#ifdef CONFIG_HISI_COUL_HI6421V700
+    unsigned int reg_val = 0;
+    reg_val = hisi_pmic_reg_read(WEAKSOURCE_FLAG_REG);
+    reg_val &= (~WAEKSOURCE_FLAG);
+    hisi_pmic_reg_write(WEAKSOURCE_FLAG_REG, reg_val);
+#endif
+    return;
+}
 /**********************************************************
 *  Function:       is_hi6523_cv_limit
 *  Description:    juege if do cv limit
@@ -2440,6 +2466,7 @@ static int hi6523_rboost_buck_limit(void)
 {
 	if (ILIMIT_RBOOST_CNT < g_rboost_cnt) {
 		SCHARGER_INF("%s:rboost cnt:%d\n", __func__, g_rboost_cnt);
+        set_boot_weaksource_flag();
 		return 1;
 	}
 	else {
@@ -2917,7 +2944,7 @@ static int hi6523_fcp_switch_to_soc(void)
 {
 	SCHARGER_INF("%s\n", __func__);
 #ifdef CONFIG_SWITCH_FSA9685
-	fsa9685_manual_sw(FSA9685_USB1_ID_TO_IDBYPASS);
+	usbswitch_common_manual_sw(FSA9685_USB1_ID_TO_IDBYPASS);
 #endif
 	return 0;
 }
@@ -2934,7 +2961,7 @@ static int hi6523_fcp_switch_to_master(void)
 {
 	SCHARGER_INF("%s\n", __func__);
 #ifdef CONFIG_SWITCH_FSA9685
-	fsa9685_manual_sw(FSA9685_USB2_ID_TO_IDBYPASS);
+	usbswitch_common_manual_sw(FSA9685_USB2_ID_TO_IDBYPASS);
 #endif
 	return 0;
 }
@@ -3134,7 +3161,7 @@ static int hi6523_fcp_adapter_reset(void)
 {
 	u8 val = 0;
 	int ret = 0, i = 0;
-	int output_vol = 0;
+	u8 output_vol = 0;
 
 	ret |= hi6523_set_vbus_vset(VBUS_VSET_5V);
 	ret |= hi6523_fcp_adapter_reg_read((u8*)&output_vol, CHG_FCP_SLAVE_REG_DISCRETE_OUT_V(0));
@@ -3445,8 +3472,15 @@ static int hi6523_scp_adaptor_detect(void)
 			{
 				SCHARGER_INF("scp type B direct charge adapter detect\n ");
 
-				di->adaptor_support |= LVC_MODE;
+				max_voltage = hi6523_scp_get_adaptor_max_voltage();
+				min_voltage = hi6523_scp_get_adaptor_min_voltage();
 
+				if(min_voltage < 3700 && max_voltage > 4800) {
+					di->adaptor_support |= LVC_MODE;
+				}
+
+				SCHARGER_INF("scp type B, max vol = %d, min vol = %d, support mode: 0x%x\n " ,\
+					max_voltage, min_voltage, di->adaptor_support);
 				return SCP_ADAPTOR_DETECT_SUCC;
 			}
 		}
@@ -4263,6 +4297,7 @@ static void hi6523_plugout_check_process(enum hisi_charger_type type)
 	    mutex_lock(&hi6523_ibias_calc_lock);
 		I_bias_all = 0;
 	    mutex_unlock(&hi6523_ibias_calc_lock);
+        clr_boot_weaksource_flag();
 		break;
 	default:
 		break;
@@ -4347,6 +4382,7 @@ static void hi6523_plugout_check_work(struct work_struct *work)
 						SCHARGER_ERR("%s:ibus=%dma, vbus=%dmv, vbat=%dmv, r-boost cnt:%d, shutdown buck.\n",
 							__func__, ibus, vbus, vbatt_mv, g_rboost_cnt);
 						hi6523_set_charger_hiz(TRUE);
+                        set_boot_weaksource_flag();
 					}
 				}
 			}

@@ -18,7 +18,6 @@
 /*lint -e438 -e550 -e647 -e679 -e713 -e732 -e737 -e774 -e838  -esym(438,*) -esym(550,*) -esym(647,*) -esym(679,*) -esym(713,*) -esym(732,*) -esym(737,*) -esym(774,*) -esym(838,*) */
 unsigned int g_rc_num;
 unsigned int dbi_debug_flag = 0;
-atomic_t pll_init_cnt = ATOMIC_INIT(0);
 struct kirin_pcie g_kirin_pcie[] = {
 	{
 		.irq = {
@@ -47,7 +46,7 @@ struct kirin_pcie g_kirin_pcie[] = {
 		.is_enumerated = ATOMIC_INIT(0),
 		.is_power_on = ATOMIC_INIT(0),
 		.usr_suspend = ATOMIC_INIT(0),
-		.hsdtcrg_base = NULL,
+		.is_removed = ATOMIC_INIT(0),
 	},
 	{
 		.irq = {
@@ -76,7 +75,7 @@ struct kirin_pcie g_kirin_pcie[] = {
 		.is_enumerated = ATOMIC_INIT(0),
 		.is_power_on = ATOMIC_INIT(0),
 		.usr_suspend = ATOMIC_INIT(0),
-		.hsdtcrg_base = NULL,
+		.is_removed = ATOMIC_INIT(0),
 	},
 };
 
@@ -258,22 +257,6 @@ static int32_t kirin_pcie_get_baseaddr(struct pcie_port *pp,
 		return -1;
 	}
 
-#ifdef CONFIG_KIRIN_PCIE_APR
-	if (NULL == g_kirin_pcie[0].hsdtcrg_base) {
-		np = of_find_compatible_node(NULL, NULL, "hisilicon,hsdt-crg");
-		if (!np) {
-			PCIE_PR_ERR("Failed to get hsdt-crg Node ");
-			return -1;
-		}
-
-		g_kirin_pcie[0].hsdtcrg_base = of_iomap(np, 0);
-		if (!pcie->hsdtcrg_base) {
-			PCIE_PR_ERR("Failed to iomap hsdt-crg base");
-			return -1;
-		}
-		g_kirin_pcie[1].hsdtcrg_base = g_kirin_pcie[0].hsdtcrg_base;
-	}
-#endif
 	PCIE_PR_DEBUG("Successed to get all resource");
 	return 0;
 }
@@ -308,8 +291,13 @@ static void kirin_pcie_get_boardtype(struct kirin_pcie *pcie,
 		PCIE_PR_INFO("Failed to get chip_type, set default[0x%x]", dtsinfo->chip_type);
 	}
 
-	if (of_find_property(np, "ep_flag", &len))
+	if (of_find_property(np, "ep_flag", &len)) {
 		dtsinfo->ep_flag = 1;
+		if (of_find_property(np, "loopback_flag", &len))
+			dtsinfo->loopback_flag = 1;
+		else
+			dtsinfo->loopback_flag = 0;
+	}
 	else
 		dtsinfo->ep_flag = 0;
 }
@@ -694,6 +682,8 @@ static int kirin_pcie_establish_link(struct pcie_port *pp)
 	/* setup root complex */
 	dw_pcie_setup_rc(pp);
 	PCIE_PR_DEBUG("Setup rc done ");
+
+	kirin_pcie_host_speed_limit(pcie);
 
 	/* assert LTSSM enable */
 	kirin_elb_writel(pcie, PCIE_LTSSM_ENABLE_BIT,
@@ -1105,6 +1095,9 @@ static int kirin_pcie_probe(struct platform_device *pdev)
 	atomic_set(&(pcie->is_ready), 1);
 	spin_lock_init(&pcie->ep_ltssm_lock);
 	mutex_init(&pcie->power_lock);
+	mutex_init(&pcie->pm_lock);
+
+	(void)kirin_pcie_debugfs_init(pcie);
 
 	PCIE_PR_INFO("--");
 	return 0;
@@ -1465,6 +1458,8 @@ static int kirin_pcie_usr_resume(u32 rc_idx)
 */
 int kirin_pcie_pm_control(int power_ops, u32 rc_idx)
 {
+	int ret = 0;
+
 	PCIE_PR_INFO("RC = [%u], power_ops[%d]", rc_idx, power_ops);
 
 	if (rc_idx >= g_rc_num) {
@@ -1477,15 +1472,27 @@ int kirin_pcie_pm_control(int power_ops, u32 rc_idx)
 		return -1;
 	}
 
-	if (power_ops == POWERON ) {
+	mutex_lock(&(g_kirin_pcie[rc_idx].pm_lock));
+
+	switch (power_ops) {
+	case POWERON:
 		dsm_pcie_clear_info();
-		return kirin_pcie_usr_resume(rc_idx);
-	} else if (power_ops == POWEROFF_BUSON || power_ops == POWEROFF_BUSDOWN){
-		return kirin_pcie_usr_suspend(rc_idx, power_ops);
-	} else {
+		ret = kirin_pcie_usr_resume(rc_idx);
+		break;
+
+	case POWEROFF_BUSON:
+	case POWEROFF_BUSDOWN:
+		ret = kirin_pcie_usr_suspend(rc_idx, power_ops);
+		break;
+
+	default:
 		PCIE_PR_ERR("Invalid power_ops[%d]", power_ops);
-		return -EINVAL;
+		ret = -EINVAL;
+		break;
 	}
+
+	mutex_unlock(&(g_kirin_pcie[rc_idx].pm_lock));
+	return ret;
 }
 EXPORT_SYMBOL_GPL(kirin_pcie_pm_control);
 
@@ -1503,11 +1510,28 @@ int kirin_pcie_ep_off(u32 rc_idx)
 }
 EXPORT_SYMBOL_GPL(kirin_pcie_ep_off);
 
+static void kirin_pcie_aspm_enable(struct kirin_pcie *pcie)
+{
+#ifdef CONFIG_KIRIN_PCIE_TEST
+	if (pcie->aspm_ctrl_debug_flag) {
+		kirin_pcie_aspm_special_state(pcie);
+	} else {
+		kirin_pcie_config_l0sl1(pcie->rc_id,
+			(enum link_aspm_state)pcie->dtsinfo.aspm_state);
+		kirin_pcie_config_l1ss(pcie->rc_id, L1SS_PM_ASPM_ALL);
+	}
+#else
+	kirin_pcie_config_l0sl1(pcie->rc_id,
+		(enum link_aspm_state)pcie->dtsinfo.aspm_state);
+	kirin_pcie_config_l1ss(pcie->rc_id, L1SS_PM_ASPM_ALL);
+#endif
+}
+
 /*
 * API FOR EP to control L1&L1-substate
 * param: rc_idx---which rc the EP link with
 * enable: KIRIN_PCIE_LP_ON---enable L1 and L1-substate,
-*         KIRIN_PCIE_LP_Off---disable, 
+*         KIRIN_PCIE_LP_Off---disable,
 *         others---illegal
 */
 int kirin_pcie_lp_ctrl(u32 rc_idx, u32 enable)
@@ -1538,9 +1562,7 @@ int kirin_pcie_lp_ctrl(u32 rc_idx, u32 enable)
 
 	if (enable) {
 		if (pcie->dtsinfo.board_type == BOARD_ASIC) {
-			kirin_pcie_config_l0sl1(pcie->rc_id,
-				(enum link_aspm_state)dtsinfo->aspm_state);
-			kirin_pcie_config_l1ss(pcie->rc_id, L1SS_PM_ASPM_ALL);
+			kirin_pcie_aspm_enable(pcie);
 		}
 	} else {
 		kirin_pcie_config_l1ss(pcie->rc_id, L1SS_CLOSE);
@@ -1649,6 +1671,98 @@ FAIL_TO_POWEROFF:
 	return -1;
 }
 EXPORT_SYMBOL(kirin_pcie_enumerate);
+
+/*
+* Remove EP Function:
+* param: rc_idx---which rc the EP link with
+*/
+int kirin_pcie_remove_ep(u32 rc_idx)
+{
+	struct kirin_pcie *pcie;
+
+	PCIE_PR_INFO("+RC[%u]+", rc_idx);
+
+	if (rc_idx >= g_rc_num) {
+		PCIE_PR_ERR("There is no rc_id = %d", rc_idx);
+		return -EINVAL;
+	}
+	pcie = &g_kirin_pcie[rc_idx];
+
+	if (!atomic_read(&(pcie->is_ready))) {
+		PCIE_PR_ERR("PCIe driver is not ready");
+		return ERROR;
+	}
+
+	if (!atomic_read(&(pcie->is_enumerated))) {
+		PCIE_PR_ERR("Enumeration was not done");
+		return ERROR;
+	}
+
+	if (atomic_read(&(pcie->is_removed))) {
+		PCIE_PR_ERR("Remove was done before");
+		return OK;
+	}
+
+	(void)kirin_pcie_lp_ctrl(pcie->rc_id, DISABLE);
+	pci_stop_and_remove_bus_device_locked(pcie->ep_dev);
+
+	(void)atomic_inc_return(&(pcie->is_removed));
+
+	PCIE_PR_INFO("-RC[%u]-", rc_idx);
+	return OK;
+}
+EXPORT_SYMBOL(kirin_pcie_remove_ep);
+
+/*
+* Rescan EP Function:
+* param: rc_idx---which rc the EP link with
+*/
+int kirin_pcie_rescan_ep(u32 rc_idx)
+{
+	struct kirin_pcie *pcie;
+	struct pci_dev *dev;
+
+	PCIE_PR_INFO("+RC[%u]+", rc_idx);
+
+	if (rc_idx >= g_rc_num) {
+		PCIE_PR_ERR("There is no rc_id = %d", rc_idx);
+		return -EINVAL;
+	}
+	pcie = &g_kirin_pcie[rc_idx];
+
+	if (!atomic_read(&(pcie->is_ready))) {
+		PCIE_PR_ERR("PCIe driver is not ready");
+		return ERROR;
+	}
+
+	if (!atomic_read(&(pcie->is_enumerated))) {
+		PCIE_PR_ERR("Enumeration was not done");
+		return ERROR;
+	}
+
+	if (!atomic_read(&(pcie->is_removed))) {
+		PCIE_PR_ERR("Rescan was done before or Remove was not done");
+		return OK;
+	}
+
+	if (pci_rescan_bus(pcie->rc_dev->subordinate)) {
+		list_for_each_entry(dev, &pcie->rc_dev->subordinate->devices, bus_list) {
+			if (pci_is_pcie(dev)) {
+				pcie->ep_dev = dev;
+				(void)atomic_dec_return(&(pcie->is_removed));
+			} else {
+				PCIE_PR_ERR("No PCIe EP found!");
+				return ERROR;
+			}
+		}
+	}
+
+	(void)kirin_pcie_lp_ctrl(pcie->rc_id, ENABLE);
+
+	PCIE_PR_INFO("-RC[%u]-", rc_idx);
+	return OK;
+}
+EXPORT_SYMBOL(kirin_pcie_rescan_ep);
 
 int pcie_ep_link_ltssm_notify(u32 rc_id, u32 link_status)
 {

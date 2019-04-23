@@ -1521,8 +1521,8 @@ static void throtl_add_bio_weight(struct bio *bio, struct throtl_grp *tg)
         struct throtl_data *td = tg->td;
 
 	throtl_add_bio_weight_trace(bio);
-#ifdef CONFIG_HISI_BLK_CORE
-        bio->io_in_count |= HISI_IO_IN_COUNT_WILL_BE_SEND_AGAIN;
+#ifdef CONFIG_HISI_BLK
+        bio->hisi_bio.io_in_count |= HISI_IO_IN_COUNT_WILL_BE_SEND_AGAIN;
 #endif
         bio_list_add(&tg->bios, bio);
         tg->service_queue.nr_queued[0]++;

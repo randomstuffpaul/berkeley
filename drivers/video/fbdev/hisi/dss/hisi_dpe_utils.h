@@ -25,8 +25,8 @@
 struct dss_vote_cmd * get_dss_vote_cmd(struct hisi_fb_data_type *hisifd);
 int set_dss_vote_cmd(struct hisi_fb_data_type *hisifd, dss_vote_cmd_t dss_vote_cmd);
 int dpe_set_clk_rate(struct platform_device *pdev);
-int dpe_get_voltage_value(struct hisi_fb_data_type *hisifd, dss_vote_cmd_t *vote_cmd);
-int dpe_get_voltage_level(struct hisi_fb_data_type *hisifd, int votage_value);
+int dpe_get_voltage_value(dss_vote_cmd_t *vote_cmd);
+int dpe_get_voltage_level(int votage_value);
 int hisifb_set_mmbuf_clk_rate(struct hisi_fb_data_type *hisifd);
 
 int dpe_set_pixel_clk_rate_on_pll0(struct hisi_fb_data_type *hisifd);

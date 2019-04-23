@@ -366,6 +366,7 @@ struct s_readpages_control {
 
 static spinlock_t g_record_list_lock;
 static LIST_HEAD(g_record_list);
+static bool g_module_initialized;
 static unsigned g_record_cnt;
 static unsigned g_max_records_count = MAX_RECORD_COUNT_ON_1G;
 /*use to interrupt prereading process.*/
@@ -383,7 +384,11 @@ static const char *moniter_states[E_MONITOR_STATE_MAX] = {
 };
 
 /*dynamic debug informatioins controller*/
+#ifdef CONFIG_HW_CGROUP_WS_DEBUG
+static bool ws_debug_enable = true;
+#else
 static bool ws_debug_enable;
+#endif
 module_param_named(debug_enable, ws_debug_enable, bool, S_IRUSR | S_IWUSR);
 #define ws_dbg(x...) \
 	do { \
@@ -1543,7 +1548,7 @@ static int workingset_prepare_record_space_wsrcrdlocked(
 		}
 	}
 	data->array_page_cnt = playload_pages;
-	*pplayload = playload;
+	*pplayload = data->file_array = playload;
 	return 0;
 
 vmap_fail:
@@ -1624,7 +1629,6 @@ static struct s_ws_record *workingset_get_record_from_backup(
 	data->file_cnt = header.file_cnt;
 	data->pageseq_cnt = header.pageseq_cnt;
 	data->page_sum = header.page_sum;
-	data->file_array = playload;
 #ifdef CONFIG_TASK_DELAY_ACCT
 	record->leader_blkio_cnt = header.leader_blkio_cnt;
 	record->need_update = header.need_update;
@@ -1869,6 +1873,11 @@ static void workingset_css_free(struct cgroup_subsys_state *css)
 		free_page((unsigned long)css_workingset(css));
 }
 
+static int workingset_can_attach(struct cgroup_taskset *tset)
+{
+	return g_module_initialized ? 0 : -ENODEV;
+}
+
 #ifdef CONFIG_TASK_DELAY_ACCT
 static void workingset_blkio_monitor_wslocked(struct s_workingset *ws,
 	unsigned monitor_state)
@@ -2080,6 +2089,9 @@ static ssize_t workingset_state_write(struct kernfs_open_file *of,
 	struct cgroup_subsys_state *css;
 	struct s_workingset *ws;
 
+	if (!g_module_initialized)
+		return -ENODEV;
+
 	if (!of || !buf)
 		return -EINVAL;
 	css = of_css(of);
@@ -2118,6 +2130,9 @@ static ssize_t workingset_state_write(struct kernfs_open_file *of,
 static int workingset_state_read(struct seq_file *m, void *v)
 {
 	struct cgroup_subsys_state *css;
+
+	if (!g_module_initialized)
+		return -ENODEV;
 
 	if (!m)
 		return -EINVAL;
@@ -2189,6 +2204,7 @@ static int workingset_data_parse_owner(struct s_workingset *ws,
 	ret = strncpy_s(owner_name, len, token, len);
 	if (ret) {
 		ws_dbg("%s Line%d,ret=%d\n", __func__, __LINE__, ret);
+		ret = -EINVAL;
 		goto parse_path_failed;
 	}
 
@@ -2207,6 +2223,7 @@ static int workingset_data_parse_owner(struct s_workingset *ws,
 	ret = strncpy_s(record_path, len, str, len);
 	if (ret) {
 		ws_dbg("%s Line%d,ret=%d\n", __func__, __LINE__, ret);
+		ret = -EINVAL;
 		goto copy_path_failed;
 	}
 
@@ -2236,16 +2253,19 @@ static ssize_t workingset_data_write(struct kernfs_open_file *of,
 	int ret;
 	struct cgroup_subsys_state *css;
 
+	if (!g_module_initialized)
+		return -ENODEV;
+
 	if (!of || !buf)
-		return 0;
+		return -EINVAL;
 	css = of_css(of);
 	if (!css)
-		return 0;
+		return -EINVAL;
 
 	buf = strstrip(buf);
 	ret = workingset_data_parse_owner(css_workingset(css), buf);
 	if (ret)
-		return 0;
+		return ret;
 	else
 		return nbytes;
 }
@@ -2255,6 +2275,9 @@ static int workingset_data_read(struct seq_file *m, void *v)
 	struct cgroup_subsys_state *css;
 	struct s_workingset *ws;
 	struct s_ws_record *record;
+
+	if (!g_module_initialized)
+		return -ENODEV;
 
 	if (!m)
 		return -EINVAL;
@@ -2305,6 +2328,7 @@ struct cgroup_subsys workingset_cgrp_subsys = {
 	.css_online	= workingset_css_online,
 	.css_offline	= workingset_css_offline,
 	.css_free	= workingset_css_free,
+	.can_attach = workingset_can_attach,
 	.legacy_cftypes	= files,
 };
 
@@ -2759,10 +2783,8 @@ static int workingset_collector_prepare_record_space_wsrcrdlocked(
 	playload_size = pathnode_size + sizeof(unsigned) * ws->pageseq_count;
 	ret = workingset_prepare_record_space_wsrcrdlocked(&ws->owner,
 		record, is_exist, playload_size, &playload);
-	if (!ret) {
-		data->file_array = playload;
+	if (!ret)
 		data->cacheseq = playload + pathnode_size;
-	}
 
 	return ret;
 }
@@ -3443,10 +3465,59 @@ try_next:
 		move_lru_cnt, read_pages_cnt);
 }
 
+#ifdef CONFIG_HW_CGROUP_WS_DEBUG
+static void workingset_page_readonly(const void *vmalloc_addr, bool enable)
+{
+	unsigned long addr = (unsigned long) vmalloc_addr;
+	pgd_t *pgd = pgd_offset_k(addr);
+
+	BUG_ON(!is_vmalloc_or_module_addr(vmalloc_addr));
+	if (!pgd_none(*pgd)) {
+		pud_t *pud = pud_offset(pgd, addr);
+
+		BUG_ON(pud_bad(*pud));
+		if (!pud_none(*pud) && !pud_bad(*pud)) {
+			pmd_t *pmd = pmd_offset(pud, addr);
+
+			BUG_ON(pmd_bad(*pmd));
+			if (!pmd_none(*pmd) && !pmd_bad(*pmd)) {
+				pte_t *ptep, pte;
+
+				ptep = pte_offset_map(pmd, addr);
+				pte = *ptep;
+				ws_dbg("%s %p = %llx\n",
+					__func__,
+					vmalloc_addr,
+					pte_val(*ptep));
+				if (!enable) {
+				pte = clear_pte_bit(pte,
+				__pgprot(PTE_RDONLY));
+				pte = set_pte_bit(pte,
+				__pgprot(PTE_WRITE));
+				set_pte(ptep, pte);
+				} else {
+				pte = clear_pte_bit(pte,
+				__pgprot(PTE_WRITE));
+				pte = set_pte_bit(pte,
+				__pgprot(PTE_RDONLY));
+				set_pte(ptep, pte);
+				}
+				pte_unmap(ptep);
+				flush_tlb_kernel_range(addr,
+					addr + PAGE_SIZE);
+			}
+		}
+	}
+}
+#endif
+
 static void workingset_do_preread_work_rcrdlocked(struct s_ws_record *record)
 {
 	struct file **filpp;
 	struct s_ws_data *data = &record->data;
+#ifdef CONFIG_HW_CGROUP_WS_DEBUG
+	unsigned preread_file_cnt = data->file_cnt;
+#endif
 
 	if (!data->file_cnt || !data->pageseq_cnt ||
 		!data->file_array || !data->cacheseq)
@@ -3461,7 +3532,23 @@ static void workingset_do_preread_work_rcrdlocked(struct s_ws_record *record)
 		return;
 
 	workingset_prereader_open_all_files_rcrdlocked(record, filpp);
+#ifdef CONFIG_HW_CGROUP_WS_DEBUG
+	if (data->file_cnt > FILPS_PER_PAGE) {
+		int idx;
+
+		for (idx = 0; idx < FILP_PAGES_COUNT; idx++)/*lint !e574*/
+			workingset_page_readonly(
+			filpp + (FILPS_PER_PAGE * idx), true);
+	}
+#endif
 	workingset_read_filepages_rcrdlocked(record, filpp);
+#ifdef CONFIG_HW_CGROUP_WS_DEBUG
+	if (data->file_cnt != preread_file_cnt) {
+		pr_err("%s, a bad file_cnt=%u, pread_cnt=%u\n",
+			__func__, data->file_cnt, preread_file_cnt);
+		BUG();
+	}
+#endif
 	workingset_preread_post_work_rcrdlocked(record, filpp);
 }
 
@@ -3477,6 +3564,14 @@ static void workingset_preread_post_work_rcrdlocked(
 			if (filpp[file_idx])
 				filp_close(filpp[file_idx], NULL);
 		}
+#ifdef CONFIG_HW_CGROUP_WS_DEBUG
+		if (data->file_cnt > FILPS_PER_PAGE) {
+			for (idx = 0; idx < FILP_PAGES_COUNT; idx++)
+				workingset_page_readonly(
+				filpp + (FILPS_PER_PAGE * idx),
+				false);
+		}
+#endif
 	}
 
 	for (idx = 0; idx < FILP_PAGES_COUNT; idx++) {
@@ -3663,7 +3758,7 @@ static int __init cgroup_workingset_init(void)
 		g_max_records_count = MAX_RECORD_COUNT_ON_1G;
 	ws_dbg("%s, totalram %lu pages, max count of records = %u\n",
 		__func__, totalram_pages, g_max_records_count);
-
+	g_module_initialized = true;
 	return 0;
 
 create_collector_thread_fail:
@@ -3704,6 +3799,6 @@ static void __exit cgroup_workingset_exit(void)
 	g_tfm = NULL;
 }
 
-module_init(cgroup_workingset_init);
+late_initcall(cgroup_workingset_init);
 module_exit(cgroup_workingset_exit);
 

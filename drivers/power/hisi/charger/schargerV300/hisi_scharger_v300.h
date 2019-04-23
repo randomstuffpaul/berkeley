@@ -13,8 +13,6 @@
 #include <linux/i2c.h>      /*for struct device_info*/
 #include <linux/device.h>   /*for struct device_info*/
 #include <linux/workqueue.h>    /*for struct evice_info*/
-#include <huawei_platform/usb/switch/switch_ap/switch_chip.h>
-extern int fsa9685_manual_sw(int input_select);
 
 #define HI6523_MODULE_NAME              hi6523
 #define HI6523_MODULE_NAME_STR          "hi6523"
@@ -102,6 +100,9 @@ extern int fsa9685_manual_sw(int input_select);
 
 #define WATER_VOLT_PARA_LEVEL  (6)
 #define WATER_VOLT_PARA (2)
+
+#define WEAKSOURCE_FLAG_REG                PMIC_HRST_REG12_ADDR(0)
+#define WAEKSOURCE_FLAG                    BIT(2)
 /*************************struct define area***************************/
 struct check_vol {
 	unsigned int vol_min;

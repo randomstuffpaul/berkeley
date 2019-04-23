@@ -334,7 +334,7 @@ VOID SMMU_ConfigSMR(VOID)
 	UINT32 i = 0;
 	for(i = 0; i < SMRx_ID_SIZE; i++)
 	{
-		set_common_reg(SMMU_SMRx_P + i * 0x4, 0x0, 32, 0); //smmu_smrx_p.smr_prtectec_en=1
+		set_common_reg(SMMU_SMRx_P + i * 0x4, 0x0, 32, 0);
 	}
 }
 
@@ -361,11 +361,11 @@ VOID SMMU_InitGlobalReg(VOID)
 	//SMRX_S had set default value. Only need to set SMMU_SMRx_NS secure SID  bypass
 	//SMMU_SMRx[0]smr_bypass=0(non-bypass); SMMU_SMRx[2:3]smr_ptw_qos=0x3;
 	for (i = 0; i < SMRx_ID_SIZE; i += 2) {
-		set_common_reg(SMMU_SMRx_NS + i * 0x4, 0x1C, 32, 0);//0x00000003 none secure
+		set_common_reg(SMMU_SMRx_NS + i * 0x4, 0x1C, 32, 0);
 	}
 
 	for (i = 1; i < SMRx_ID_SIZE; i += 2) {
-		set_common_reg(SMMU_SMRx_NS + i * 0x4, 0x1D, 32, 0);//0x00000002 secure
+		set_common_reg(SMMU_SMRx_NS + i * 0x4, 0x1D, 32, 0);
 	}
 	set_common_reg(SMMU_CB_TTBR0, gSmmuPageBase, 32, 0);
 	set_common_reg(SMMU_FAMA_CTRL1_NS, (gSmmuPageBase>>32)&0x7F, 32, 0);

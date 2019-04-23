@@ -6318,6 +6318,8 @@ oal_uint32  hmac_config_list_sta(mac_vap_stru *pst_mac_vap, oal_uint16 us_len, o
     oal_strcat(pc_print_buff, "User assoc id         ADDR         Protocol Type \n");
     l_remainder_len = (oal_int32)(OAM_REPORT_MAX_STRING_LEN - OAL_STRLEN(pc_print_buff));
 
+    oal_spin_lock_bh(&pst_mac_vap->st_cache_user_lock);
+
     /* AP侧的USER信息 */
     for (uc_user_idx = 0; uc_user_idx < MAC_VAP_USER_HASH_MAX_VALUE; uc_user_idx++)
     {
@@ -6365,6 +6367,7 @@ oal_uint32  hmac_config_list_sta(mac_vap_stru *pst_mac_vap, oal_uint16 us_len, o
         }
 
     }
+    oal_spin_unlock_bh(&pst_mac_vap->st_cache_user_lock);
 
     oam_print(pc_print_buff);
     OAL_MEM_FREE(pc_print_buff, OAL_TRUE);
@@ -6403,6 +6406,7 @@ oal_uint32  hmac_config_get_sta_list(mac_vap_stru *pst_mac_vap, oal_uint16 *us_l
     OAL_MEMZERO(pc_sta_list_buff, OAM_REPORT_MAX_STRING_LEN);
     l_remainder_len = (oal_int32)(OAM_REPORT_MAX_STRING_LEN - OAL_STRLEN(pc_sta_list_buff));
 
+    oal_spin_lock_bh(&pst_mac_vap->st_cache_user_lock);
     /* AP侧的USER信息 */
     for (uc_user_idx = 0; uc_user_idx < MAC_VAP_USER_HASH_MAX_VALUE; uc_user_idx++)
     {
@@ -6446,6 +6450,7 @@ oal_uint32  hmac_config_get_sta_list(mac_vap_stru *pst_mac_vap, oal_uint16 *us_l
             pst_head = pst_res_hash->st_entry.pst_next;
         }
     }
+    oal_spin_unlock_bh(&pst_mac_vap->st_cache_user_lock);
 
     ul_netbuf_len = OAL_STRLEN(pc_sta_list_buff);
     pst_netbuf = OAL_MEM_NETBUF_ALLOC(OAL_NORMAL_NETBUF,ul_netbuf_len, OAL_NETBUF_PRIORITY_MID);
@@ -6960,6 +6965,16 @@ oal_uint32  hmac_config_connect(mac_vap_stru *pst_mac_vap, oal_uint16 us_len, oa
     {
         hmac_config_del_p2p_ie(pst_connect_param->puc_ie, &(pst_connect_param->ul_ie_len));
     }
+
+    /* 判断传入内存长度，避免拷贝内存越界 */
+    if (pst_connect_param->ul_ie_len > WLAN_WPS_IE_MAX_SIZE)
+    {
+        OAM_ERROR_LOG1(pst_mac_vap->uc_vap_id, OAM_SF_CFG,
+                        "{hmac_config_connect:: connect ie is too large to save. [%d]!}",
+                        pst_connect_param->ul_ie_len);
+        return OAL_ERR_CODE_INVALID_CONFIG;
+    }
+
     st_app_ie.ul_ie_len      = pst_connect_param->ul_ie_len;
     oal_memcopy(st_app_ie.auc_ie, pst_connect_param->puc_ie, st_app_ie.ul_ie_len);
     st_app_ie.en_app_ie_type = OAL_APP_ASSOC_REQ_IE;

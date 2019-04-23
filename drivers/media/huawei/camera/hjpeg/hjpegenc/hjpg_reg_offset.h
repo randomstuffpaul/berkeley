@@ -86,4 +86,15 @@
 #define JPGENC_DBG_12_REG                0x230
 #define JPGENC_DBG_13_REG                0x234
 
+/*
+   IRQ related cfg register
+   reg of jpg_sub_ctrl module
+ */
+#define JPGENC_IRQ_REG0                  0x110
+#define JPGENC_IRQ_REG1                  0x114
+#define JPGENC_IRQ_REG2                  0x118
+
+#define JPGENC_CRG_CFG0                  0x100
+
+
 #endif // __HJPG_REG_OFFSET_H__

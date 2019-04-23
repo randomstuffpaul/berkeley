@@ -61,7 +61,7 @@ static inline void mptcp_set_md(const struct sock *meta_sk, u64 md)
 
 static inline u64 mptcp_balia_scale(u64 val, int scale)
 {
-	return (u64)val << scale;
+	return (u64) val << scale;
 }
 
 static inline bool mptcp_get_forced(const struct sock *meta_sk)
@@ -210,7 +210,7 @@ static void mptcp_balia_cong_avoid(struct sock *sk, u32 ack, u32 acked)
 	}
 
 	if (mpcb->cnt_established > 1)
-		snd_cwnd = (int)mptcp_get_ai(sk);
+		snd_cwnd = (int) mptcp_get_ai(sk);
 	else
 		snd_cwnd = tp->snd_cwnd;
 

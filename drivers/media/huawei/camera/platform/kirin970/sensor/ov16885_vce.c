@@ -62,7 +62,7 @@ struct sensor_power_setting hw_ov16885vce_power_up_setting[] = {
         .delay        = POWER_DELAY_0,
     },
 
-    //M0 DVDD  2.80V  [PMU-LDO19]
+    //M0 DVDD  1.20V  [PMU-LDO19]
     {
         .seq_type     = SENSOR_DVDD,
         .config_val = LDO_VOLTAGE_V1P2V,
@@ -155,6 +155,14 @@ int ov16885vce_power_up(hwsensor_intf_t* si)
     }
     cam_info("enter %s. index = %d name = %s", __func__, sensor->board_info->sensor_index, sensor->board_info->name);
 
+    ret = hw_sensor_power_up_config(sensor->dev, sensor->board_info);
+    if (0 == ret){
+        cam_info("%s. power up config success.", __func__);
+    }else{
+        cam_err("%s. power up config fail.", __func__);
+        return ret;
+    }
+
     if (hw_is_fpga_board()) {
         ret = do_sensor_power_on(sensor->board_info->sensor_index, sensor->board_info->name);
     } else {
@@ -200,6 +208,8 @@ int ov16885vce_power_down(hwsensor_intf_t* si)
     {
         cam_err("%s. power down sensor fail.", __func__);
     }
+
+    hw_sensor_power_down_config(sensor->board_info);
 
     return ret;
 }

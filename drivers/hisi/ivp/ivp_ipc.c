@@ -75,6 +75,7 @@ extern struct ivp_ipc_device ivp_ipc_dev;
 extern struct ivp_device ivp_dev;
 static struct mutex ivp_ipc_ion_mutex;
 static struct mutex ivp_ipc_read_mutex;
+
 static const struct of_device_id ivp_ipc_of_descriptor[] = {
         {.compatible = "hisilicon,hisi-ivp-ipc",},
         {},
@@ -393,6 +394,7 @@ static ssize_t ivp_ipc_read(struct file *file,
         mutex_unlock(&ivp_ipc_read_mutex);
         return -EINVAL;
     }
+    ivp_info("send ipc cmd 0x%x,0x%x,0x%x,0x%x", packet->buff[0], packet->buff[1], packet->buff[2], packet->buff[3]);
 
     *off += size;
     ret = size;
@@ -443,6 +445,10 @@ static ssize_t ivp_ipc_write(struct file *file,
                 goto OUT;
             }
         }
+    }
+    if (0 == tmp_buff[0])
+    {
+        ivp_info("receive ipc cmd 0x%x",(tmp_buff[3] & 0x7F));
     }
     ret = RPROC_ASYNC_SEND(pdev->send_ipc, (rproc_msg_t *) tmp_buff, size/sizeof(rproc_msg_len_t));
     if (ret) {

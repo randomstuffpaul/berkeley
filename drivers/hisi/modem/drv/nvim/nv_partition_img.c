@@ -54,6 +54,7 @@
 #include <bsp_blk.h>
 #include <bsp_onoff.h>
 #include <ptable_com.h>
+#include <securec.h>
 #include "nv_comm.h"
 #include "nv_ctrl.h"
 #include "nv_debug.h"
@@ -209,10 +210,10 @@ u32 nv_img_check_white_list(const s8 * source, u32 depth)
             }
 
             /* 存储文件/目录名 */
-            nv_memset((void*)pdir_name, 0, src_len);
-            strncpy(pdir_name, source, src_len);
-            strncat(pdir_name, "/", src_len);
-            strncat(pdir_name, (char*)pdirent->d_name, src_len);
+            (void)memset_s((void*)pdir_name, src_len, 0, src_len);
+            strncpy_s(pdir_name, src_len, source, src_len);
+            strncat_s(pdir_name, src_len, "/", src_len);
+            strncat_s(pdir_name, src_len, (char*)pdirent->d_name, src_len);
 
             // cppcheck-suppress *
             chk_ret = nv_img_check_white_list(pdir_name, depth+1);
@@ -452,7 +453,11 @@ u32 nv_img_resume_item(nv_item_info_s *item_info, u32 modem_id)
         buff_size       = resume_size;
         need_crc        = false;
     }
-
+    if(NULL == resume_data)
+    {
+        nv_printf("can't get nv base\n");
+        return BSP_ERR_NV_NO_THIS_ID;
+    }
     if(true != nv_check_file_validity((s8 *)g_nv_path.file_path[NV_IMG], (s8 *)NV_IMG_FLAG_PATH))
     {
         nv_debug(NV_FUN_RESUME_IMG_ITEM,1,0,0,0);

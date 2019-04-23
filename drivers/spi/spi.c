@@ -1148,21 +1148,28 @@ static void __spi_pump_messages(struct spi_master *master, bool in_kthread)
 		master->dummy_rx = NULL;
 		kfree(master->dummy_tx);
 		master->dummy_tx = NULL;
+#if defined CONFIG_HISI_SPI
+		if (master->auto_runtime_pm) {
+			mutex_lock(&master->msg_mutex);
+			disable_spi(master);
+			pm_runtime_mark_last_busy(master->dev.parent);
+			pm_runtime_put_sync(master->dev.parent);
+			mutex_unlock(&master->msg_mutex);
+		}
+		if (master->unprepare_transfer_hardware &&
+		    master->unprepare_transfer_hardware(master))
+			dev_err(&master->dev,
+				"failed to unprepare transfer hardware\n");
+#else
 		if (master->unprepare_transfer_hardware &&
 		    master->unprepare_transfer_hardware(master))
 			dev_err(&master->dev,
 				"failed to unprepare transfer hardware\n");
 		if (master->auto_runtime_pm) {
-#if defined CONFIG_HISI_SPI
-			mutex_lock(&master->msg_mutex);
 			pm_runtime_mark_last_busy(master->dev.parent);
 			pm_runtime_put_autosuspend(master->dev.parent);
-			mutex_unlock(&master->msg_mutex);
-#else
-			pm_runtime_mark_last_busy(master->dev.parent);
-			pm_runtime_put_autosuspend(master->dev.parent);
-#endif
 		}
+#endif
 		trace_spi_master_idle(master);
 
 		spin_lock_irqsave(&master->queue_lock, flags);
@@ -1184,6 +1191,35 @@ static void __spi_pump_messages(struct spi_master *master, bool in_kthread)
 
 	mutex_lock(&master->io_mutex);
 
+#if defined CONFIG_HISI_SPI
+	if (!was_busy)
+		trace_spi_master_busy(master);
+
+	if (!was_busy && master->prepare_transfer_hardware) {
+		ret = master->prepare_transfer_hardware(master);
+		if (ret) {
+			dev_err(&master->dev,
+				"failed to prepare transfer hardware\n");
+
+			mutex_unlock(&master->io_mutex);
+
+			return;
+		}
+	}
+
+	if (!was_busy && master->auto_runtime_pm) {
+		ret = pm_runtime_get_sync(master->dev.parent);
+		if (ret < 0) {
+			dev_err(&master->dev, "Failed to power device: %d\n",
+				ret);
+			if (master->unprepare_transfer_hardware) {
+				master->unprepare_transfer_hardware(master);
+			}
+			mutex_unlock(&master->io_mutex);
+			return;
+		}
+	}
+#else
 	if (!was_busy && master->auto_runtime_pm) {
 		ret = pm_runtime_get_sync(master->dev.parent);
 		if (ret < 0) {
@@ -1209,6 +1245,7 @@ static void __spi_pump_messages(struct spi_master *master, bool in_kthread)
 			return;
 		}
 	}
+#endif
 
 	trace_spi_message_start(master->cur_msg);
 

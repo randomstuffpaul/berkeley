@@ -43,6 +43,7 @@
 #define PLATFORM_ID_BIT_ATLA         (7U)
 #define PLATFORM_ID_BIT_ORLA         (8U)
 #define PLATFORM_ID_BIT_PHOE_ES      (9U)
+#define PLATFORM_ID_BIT_PHOE         (10U)
 
 /*hisi platform noc bus info struct.*/
 struct noc_platform_info {
@@ -168,6 +169,16 @@ static struct noc_platform_info g_noc_platform_info[] = {
 	       .p_noc_info_filter_initflow = hisi_filter_initflow_PHOE_es,
 	       .pfun_get_size = hisi_noc_get_array_size_PHOE_es,
 	       .pfun_clock_enable = hisi_noc_clock_enable_PHOE_es,
+	       },
+	/*hisi platform: PHOE */
+	[10] = {
+	       .name = "PHOE",
+	       .platform_id = 1 << PLATFORM_ID_BIT_PHOE,	/* must be same as the value defined in DTS. */
+	       .p_noc_info_bus = noc_buses_info_PHOE,
+	       .p_noc_info_dump = noc_dump_reg_list_PHOE,
+	       .p_noc_info_filter_initflow = hisi_filter_initflow_PHOE,
+	       .pfun_get_size = hisi_noc_get_array_size_PHOE,
+	       .pfun_clock_enable = hisi_noc_clock_enable_PHOE,
 	       }
 };
 

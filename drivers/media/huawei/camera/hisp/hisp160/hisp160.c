@@ -396,13 +396,8 @@ hisp160_rpmsg_ept_cb(struct rpmsg_channel *rpdev,
 
 	msg = (hisp_msg_t *) (data);
 	/* save the data and wait for hisp160_recv_rpmsg to get the data*/
+	hisp_recvx(data);
 	hisp160_save_rpmsg_data(data, len);
-    hisp_recvx();
-    if(msg->api_name == RELEASE_CAMERA_RESPONSE)
-    {
-        hisp_rpmsgrefs_dump();
-    }
-
 }
 
 char const *hisp160_get_name(hisp_intf_t *i)
@@ -1076,34 +1071,37 @@ static int hisp160_config(hisp_intf_t *i, void *cfg)
         rc = hisp160_free_r8isp_addr(cfg);
         break;
 
-case HISP_CONFIG_ISP_TURBO:
-    cam_info("%s HISP_CONFIG_ISP_TURBO", __func__);
-    rc = hisp_set_clk_rate(VIVOBUS_CLK, 600000000);
-    rc = hisp_set_clk_rate(ISPFUNC_CLK, 554000000);
-    break;
-case HISP_CONFIG_ISP_NORMAL:
-    cam_info("%s HISP_CONFIG_ISP_NORMAL", __func__);
-    rc = hisp_set_clk_rate(VIVOBUS_CLK, 400000000);
-    rc = hisp_set_clk_rate(ISPFUNC_CLK, 480000000);
-    break;
-case HISP_CONFIG_ISP_LOWPOWER:
-    cam_info("%s HISP_CONFIG_ISP_LOWPOWER", __func__);
-    rc = hisp_set_clk_rate(VIVOBUS_CLK, 300000000);
-    rc = hisp_set_clk_rate(ISPFUNC_CLK, 300000000);
-    break;
-case HISP_CONFIG_R8_TURBO:
-    cam_info("%s HISP_CONFIG_R8_TURBO", __func__);
-    rc = hisp_set_clk_rate(ISPCPU_CLK,  900000000);
-    break;
-case HISP_CONFIG_R8_NORMAL:
-    cam_info("%s HISP_CONFIG_R8_NORMAL", __func__);
-    rc = hisp_set_clk_rate(ISPCPU_CLK,  830000000);
-    break;
-case HISP_CONFIG_R8_LOWPOWER:
-    cam_info("%s HISP_CONFIG_R8_TURBO", __func__);
-    rc = hisp_set_clk_rate(ISPCPU_CLK,  600000000);
-    break;
-
+    case HISP_CONFIG_ISP_TURBO:
+        cam_info("%s HISP_CONFIG_ISP_TURBO", __func__);
+        rc = hisp_set_clk_rate(VIVOBUS_CLK, 600000000);
+        rc = hisp_set_clk_rate(ISPFUNC_CLK, 554000000);
+        break;
+    case HISP_CONFIG_ISP_NORMAL:
+        cam_info("%s HISP_CONFIG_ISP_NORMAL", __func__);
+        rc = hisp_set_clk_rate(VIVOBUS_CLK, 400000000);
+        rc = hisp_set_clk_rate(ISPFUNC_CLK, 480000000);
+        break;
+    case HISP_CONFIG_ISP_LOWPOWER:
+        cam_info("%s HISP_CONFIG_ISP_LOWPOWER", __func__);
+        rc = hisp_set_clk_rate(VIVOBUS_CLK, 300000000);
+        rc = hisp_set_clk_rate(ISPFUNC_CLK, 300000000);
+        break;
+    case HISP_CONFIG_R8_TURBO:
+        cam_info("%s HISP_CONFIG_R8_TURBO", __func__);
+        rc = hisp_set_clk_rate(ISPCPU_CLK,  900000000);
+        break;
+    case HISP_CONFIG_R8_NORMAL:
+        cam_info("%s HISP_CONFIG_R8_NORMAL", __func__);
+        rc = hisp_set_clk_rate(ISPCPU_CLK,  830000000);
+        break;
+    case HISP_CONFIG_R8_LOWPOWER:
+        cam_info("%s HISP_CONFIG_R8_TURBO", __func__);
+        rc = hisp_set_clk_rate(ISPCPU_CLK,  600000000);
+        break;
+    case HISP_CONFIG_PROC_TIMEOUT:
+        cam_info("%s message_id.0x%x",__func__, pcfg->cfgdata[0]);
+        hisp_dump_rpmsg_with_id(pcfg->cfgdata[0]);
+        break;
     default:
         break;
 	}
@@ -1422,7 +1420,7 @@ hisp160_send_rpmsg(hisp_intf_t *i, hisp_msg_t *from_user, size_t len)
 			rc = -ENODEV;
 			goto UNLOCK_RET;
 		}
-
+		hisp_sendin(msg);
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,9,0))
 		rc = rpmsg_send_offchannel(hisi_serv->ept,
 					   hisi_serv->ept->addr,
@@ -1439,10 +1437,9 @@ hisp160_send_rpmsg(hisp_intf_t *i, hisp_msg_t *from_user, size_t len)
 			cam_err("%s() %d failed: first rpmsg_send_offchannel ret is %d!\n", __func__,
 				__LINE__, rc);
 		}
-         hisp_sendin();
 		goto UNLOCK_RET;
 	}
-
+	hisp_sendin(msg);
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4,9,0))
 	rc = rpmsg_send_offchannel(hisi_serv->ept, hisi_serv->ept->addr,
 				   hisi_serv->dst, (void *)msg, len);
@@ -1456,7 +1453,6 @@ hisp160_send_rpmsg(hisp_intf_t *i, hisp_msg_t *from_user, size_t len)
 			__LINE__, rc);
 		goto UNLOCK_RET;
 	}
-    hisp_sendin();
 UNLOCK_RET:
 	mutex_unlock(&hisi_serv->send_lock);
 RET:
@@ -1548,7 +1544,11 @@ hisp160_recv_rpmsg(hisp_intf_t *i, hisp_msg_t *user_addr, size_t len)
 
 	rc = min((unsigned int)len, skb->len);
 	msg = (hisp_msg_t *) (skb->data);
-
+	hisp_recvdone((void *)msg);
+	if(msg->api_name == ISP_CPU_POWER_OFF_RESPONSE)
+	{
+		hisp_rpmsgrefs_dump();
+	}
 	cam_debug("%s: api_name(0x%x)\n", __func__, msg->api_name);
 
 	if (msg->message_id % HISP_MSG_LOG_MOD == 0) {

@@ -1,3 +1,8 @@
+
+ifneq ($(TARGET_BUILD_VARIANT),user)
+EXTRA_CFLAGS += -DLCD_KIT_DEBUG_ENABLE
+endif
+
 obj-$(CONFIG_LCD_KIT_HISI)	+= lcd_kit_disp.o
 obj-$(CONFIG_LCD_KIT_HISI)	+= lcd_kit_power.o
 obj-$(CONFIG_LCD_KIT_HISI) 	+= lcd_kit_utils.o

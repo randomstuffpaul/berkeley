@@ -861,7 +861,6 @@ static const struct file_operations diag_debug_fops = {
 VOS_UINT32 MSP_AppDiagFidInit(enum VOS_INIT_PHASE_DEFINE ip)
 {
     VOS_UINT32 ulRelVal = 0;
-    struct dentry * d_file;
 
     switch (ip)
     {
@@ -879,20 +878,6 @@ VOS_UINT32 MSP_AppDiagFidInit(enum VOS_INIT_PHASE_DEFINE ip)
             ulRelVal = VOS_RegisterMsgTaskPrio(MSP_FID_DIAG_ACPU, VOS_PRIORITY_M2);
             if (ulRelVal != VOS_OK)
             {
-                return VOS_ERR;
-            }
-
-            /* coverity[var_deref_model] */
-            d_file = debugfs_create_dir("modem_diag", NULL);
-            if(!d_file)
-            {
-                diag_printf("create debugfs dir modem_diag fail\n");
-                return VOS_ERR;
-            }
-
-            if(!debugfs_create_file("diag", 0640, d_file, NULL, &diag_debug_fops))
-            {
-                diag_printf("create debugfs file modem_diag/diag file\n");
                 return VOS_ERR;
             }
 

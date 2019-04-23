@@ -350,6 +350,15 @@ static int __kprobes do_page_fault(unsigned long addr, unsigned int esr,
 			die("Accessing user space memory outside uaccess.h routines", regs, esr);
 	}
 
+#ifdef CONFIG_SPECULATIVE_PAGE_FAULT
+	/*
+	 * let's try a speculative page fault without grabbing the
+	 * mmap_sem.
+	 */
+	fault = handle_speculative_fault(mm, addr, mm_flags, vm_flags);
+	if (fault != VM_FAULT_RETRY)
+		goto done;
+#endif
 	/*
 	 * As per x86, we may deadlock here. However, since the kernel only
 	 * validly references user space from well defined areas of the code,
@@ -414,14 +423,15 @@ retry:
 	}
 
 	up_read(&mm->mmap_sem);
-
+#ifdef CONFIG_SPECULATIVE_PAGE_FAULT
+done:
+#endif
 	/*
 	 * Handle the "normal" case first - VM_FAULT_MAJOR
 	 */
 	if (likely(!(fault & (VM_FAULT_ERROR | VM_FAULT_BADMAP |
 			      VM_FAULT_BADACCESS))))
 		return 0;
-
 	/*
 	 * If we are in kernel mode at this point, we have no context to
 	 * handle this fault with.

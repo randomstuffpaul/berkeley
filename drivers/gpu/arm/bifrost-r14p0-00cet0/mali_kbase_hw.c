@@ -31,7 +31,7 @@
 #include <mali_midg_regmap.h>
 #include "mali_kbase.h"
 #include "mali_kbase_hw.h"
-
+/*lint -e661*/
 void kbase_hw_set_features_mask(struct kbase_device *kbdev)
 {
 	const enum base_hw_feature *features;
@@ -107,9 +107,9 @@ void kbase_hw_set_features_mask(struct kbase_device *kbdev)
 	}
 
 	for (; *features != BASE_HW_FEATURE_END; features++)
-		set_bit(*features, &kbdev->hw_features_mask[0]);
+		set_bit(*features, &kbdev->hw_features_mask[0]);//lint !e661
 }
-
+/*lint +e661*/
 /**
  * kbase_hw_get_issues_for_new_id - Get the hardware issues for a new GPU ID
  * @kbdev: Device pointer

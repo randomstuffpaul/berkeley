@@ -32,6 +32,8 @@
 #include "ilitek_upgrade.h"
 #include "ilitek_firmware.h"
 
+#define ILITEK_CMD_MIN                         2
+#define ILITEK_CMD_MAX                         512
 #define USER_STR_BUFF                          128
 #define ILITEK_IOCTL_MAGIC                     100
 #define ILITEK_IOCTL_MAXNR                     18
@@ -91,21 +93,23 @@ static ssize_t ilitek_proc_debug_switch_read(struct file *pFile, char __user *bu
 static ssize_t ilitek_proc_debug_message_write(struct file *filp, const char *buff, size_t size, loff_t *pPos)
 {
     int ret = 0;
-    unsigned char buffer[512] = { 0 };
+    u8 cmd[ILITEK_CMD_MAX] = { 0 };
 
-    /* check the buffer size whether it exceeds the local buffer size or not */
-    if (size > 512) {
-        ilitek_err("buffer exceed 512 bytes\n");
-        size = 512;
+    if (size < ILITEK_CMD_MIN ||
+        size >= ILITEK_CMD_MAX ||
+        *pPos != 0 ||
+        IS_ERR_OR_NULL(buff)) {
+        ilitek_err("write size or buff is invaild\n");
+        return -EINVAL;
     }
 
-    ret = copy_from_user(buffer, buff, size - 1);
-    if (ret < 0) {
+    ret = copy_from_user(cmd, buff, size - 1);
+    if (ret) {
         ilitek_err("copy data from user space, failed");
-        return -1;
+        return -EINVAL;
     }
 
-    if (strcmp(buffer, "dbg_flag") == 0) {
+    if (strcmp(cmd, "dbg_flag") == 0) {
         g_ilitek_ts->debug_node_open = !g_ilitek_ts->debug_node_open;
         ilitek_info(" %s debug_flag message(%X).\n", g_ilitek_ts->debug_node_open ? "Enabled" : "Disabled",
              g_ilitek_ts->debug_node_open);
@@ -229,7 +233,6 @@ static ssize_t ilitek_proc_debug_message_read(struct file *filp, char __user *bu
 static ssize_t ilitek_proc_mp_test_read(struct file *filp, char __user *buff, size_t size, loff_t *pPos)
 {
     u32 len = 0;
-    u8 test_cmd[2] = { 0 };
 
     if (*pPos != 0)
         return 0;
@@ -253,7 +256,7 @@ static ssize_t ilitek_proc_mp_test_read(struct file *filp, char __user *buff, si
     ilitek_config_disable_report_irq();
 
     /* Switch to Test mode */
-    ilitek_config_mode_ctrl(ILITEK_TEST_MODE, test_cmd);
+    ilitek_config_mode_ctrl(ILITEK_TEST_MODE, NULL);
 
     /* Do not chang the sequence of test */
     core_mp_run_test("Noise Peak To Peak(With Panel)", true);
@@ -277,19 +280,11 @@ static ssize_t ilitek_proc_mp_test_read(struct file *filp, char __user *buff, si
 
     core_mp_test_free();
 
-    /* Code reset */
-    ilitek_config_ice_mode_enable();
-
-    if (ilitek_config_set_watch_dog(false) < 0) {
-        ilitek_err("Failed to disable watch dog\n");
-    }
-
-    ilitek_config_ic_reset();
-
-    ilitek_config_ice_mode_disable();
+    /* hw reset avoid i2c error */
+    ilitek_chip_reset();
 
     /* Switch to Demo mode */
-    ilitek_config_mode_ctrl(ILITEK_DEMO_MODE, test_cmd);
+    ilitek_config_mode_ctrl(ILITEK_DEMO_MODE, NULL);
 
     ilitek_config_enable_report_irq();
 
@@ -303,17 +298,23 @@ out:
 static ssize_t ilitek_proc_mp_test_write(struct file *filp, const char *buff, size_t size, loff_t *pPos)
 {
     int i, res = 0, count = 0;
-    char cmd[64] = {0}, str[512] = {0};
+    char str[512] = {0};
     char *token = NULL, *cur = NULL;
     u8 *va = NULL;
-    u8 test_cmd[2] = {0};
+    u8 cmd[ILITEK_CMD_MAX] = { 0 };
 
-    if (buff != NULL) {
-        res = copy_from_user(cmd, buff, size - 1);
-        if (res < 0) {
-            ilitek_info("copy data from user space, failed\n");
-            return -1;
-        }
+    if (size < ILITEK_CMD_MIN ||
+        size >= ILITEK_CMD_MAX ||
+        *pPos != 0 ||
+        IS_ERR_OR_NULL(buff)) {
+        ilitek_err("write size or buff is invaild\n");
+        return -EINVAL;
+    }
+
+    res = copy_from_user(cmd, buff, size - 1);
+    if (res) {
+        ilitek_info("copy data from user space, failed\n");
+        return -EINVAL;
     }
 
     ilitek_info("size = %d, cmd = %s\n", (int)size, cmd);
@@ -335,16 +336,16 @@ static ssize_t ilitek_proc_mp_test_write(struct file *filp, const char *buff, si
 
     ilitek_info("cmd = %s\n", cmd);
 
+    if (ilitek_test_init()) {
+        ilitek_err("alloc test data failed\n");
+        goto out;
+    }
+
     /* Init MP structure */
     if(core_mp_init() < 0) {
         ilitek_err("Failed to init mp\n");
-        return size;
+        goto out;
     }
-
-    ilitek_config_disable_report_irq();
-
-    /* Switch to Test mode */
-    ilitek_config_mode_ctrl(ILITEK_TEST_MODE, test_cmd);
 
     for (i = 0; i < core_mp->mp_items; i++) {
         if (strcmp(cmd, tItems[i].name) == 0) {
@@ -357,31 +358,35 @@ static ssize_t ilitek_proc_mp_test_write(struct file *filp, const char *buff, si
         }
     }
 
+    if (i == core_mp->mp_items) {
+        ilitek_err("input invaild, can't find test item\n");
+        core_mp_test_free();
+        goto out;
+    }
+
+    ilitek_config_disable_report_irq();
+
+    /* Switch to Test mode */
+    ilitek_config_mode_ctrl(ILITEK_TEST_MODE, NULL);
+
     core_mp_run_test(str, false);
 
     core_mp_show_result();
 
     core_mp_test_free();
 
-    /* Code reset */
-    ilitek_config_ice_mode_enable();
-
-    /* Disable watch dog */
-    if (ilitek_config_set_watch_dog(false) < 0) {
-        ilitek_err("Failed to disable watch dog\n");
-    }
-
-    ilitek_config_ic_reset();
-
-    ilitek_config_ice_mode_disable();
+    /* hw reset avoid i2c error */
+    ilitek_chip_reset();
 
     /* Switch to Demo mode it prevents if fw fails to be switched */
-    ilitek_config_mode_ctrl(ILITEK_DEMO_MODE, test_cmd);
+    ilitek_config_mode_ctrl(ILITEK_DEMO_MODE, NULL);
 
     ilitek_config_enable_report_irq();
 
-    ilitek_info("MP Test DONE\n");
+out:
+    ilitek_test_exit();
     ipio_kfree((void **)&va);
+    ilitek_info("MP Test DONE\n");
     return size;
 }
 
@@ -432,14 +437,20 @@ static ssize_t ilitek_proc_debug_level_read(struct file *filp, char __user *buff
 static ssize_t ilitek_proc_debug_level_write(struct file *filp, const char *buff, size_t size, loff_t *pPos)
 {
     int res = 0;
-    char cmd[10] = { 0 };
+    u8 cmd[ILITEK_CMD_MAX] = { 0 };
 
-    if (buff != NULL) {
-        res = copy_from_user(cmd, buff, size - 1);
-        if (res < 0) {
-            ilitek_info("copy data from user space, failed\n");
-            return -1;
-        }
+    if (size < ILITEK_CMD_MIN ||
+        size >= ILITEK_CMD_MAX ||
+        *pPos != 0 ||
+        IS_ERR_OR_NULL(buff)) {
+        ilitek_err("write size or buff is invaild\n");
+        return -EINVAL;
+    }
+
+    res = copy_from_user(cmd, buff, size - 1);
+    if (res) {
+        ilitek_info("copy data from user space, failed\n");
+        return -EINVAL;
     }
 
     ilitek_debug_level = katoi(cmd);
@@ -476,14 +487,20 @@ static ssize_t ilitek_proc_gesture_read(struct file *filp, char __user *buff, si
 static ssize_t ilitek_proc_gesture_write(struct file *filp, const char *buff, size_t size, loff_t *pPos)
 {
     int res = 0;
-    char cmd[10] = { 0 };
+    u8 cmd[ILITEK_CMD_MAX] = { 0 };
 
-    if (buff != NULL) {
-        res = copy_from_user(cmd, buff, size - 1);
-        if (res < 0) {
-            ilitek_info("copy data from user space, failed\n");
-            return -1;
-        }
+    if (size < ILITEK_CMD_MIN ||
+        size >= ILITEK_CMD_MAX ||
+        *pPos != 0 ||
+        IS_ERR_OR_NULL(buff)) {
+        ilitek_err("write size or buff is invaild\n");
+        return -EINVAL;
+    }
+
+    res = copy_from_user(cmd, buff, size - 1);
+    if (res) {
+        ilitek_info("copy data from user space, failed\n");
+        return -EINVAL;
     }
 
     ilitek_info("size = %d, cmd = %s\n", (int)size, cmd);
@@ -527,14 +544,20 @@ static ssize_t ilitek_proc_check_battery_read(struct file *filp, char __user *bu
 static ssize_t ilitek_proc_check_battery_write(struct file *filp, const char *buff, size_t size, loff_t *pPos)
 {
     int res = 0;
-    char cmd[10] = { 0 };
+    u8 cmd[ILITEK_CMD_MAX] = { 0 };
 
-    if (buff != NULL) {
-        res = copy_from_user(cmd, buff, size - 1);
-        if (res < 0) {
-            ilitek_info("copy data from user space, failed\n");
-            return -1;
-        }
+    if (size < ILITEK_CMD_MIN ||
+        size >= ILITEK_CMD_MAX ||
+        *pPos != 0 ||
+        IS_ERR_OR_NULL(buff)) {
+        ilitek_err("write size or buff is invaild\n");
+        return -EINVAL;
+    }
+
+    res = copy_from_user(cmd, buff, size - 1);
+    if (res) {
+        ilitek_info("copy data from user space, failed\n");
+        return -EINVAL;
     }
 
     ilitek_info("size = %d, cmd = %s\n", (int)size, cmd);
@@ -660,17 +683,20 @@ static ssize_t ilitek_proc_ioctl_read(struct file *filp, char __user *buff, size
 {
     int res = 0;
     u32 len = 0;
-    u8 cmd[2] = { 0 };
+    u8 cmd[ILITEK_CMD_MAX] = { 0 };
 
-    if (*pPos != 0)
-        return 0;
+    if (size < ILITEK_CMD_MIN ||
+        size >= ILITEK_CMD_MAX ||
+        *pPos != 0 ||
+        IS_ERR_OR_NULL(buff)) {
+        ilitek_err("write size or buff is invaild\n");
+        return -EINVAL;
+    }
 
-    if (size < 4095) {
-        res = copy_from_user(cmd, buff, size - 1);
-        if (res < 0) {
-            ilitek_info("copy data from user space, failed\n");
-            return -1;
-        }
+    res = copy_from_user(cmd, buff, size - 1);
+    if (res) {
+        ilitek_info("copy data from user space, failed\n");
+        return -EINVAL;
     }
 
     ilitek_info("size = %d, cmd = %d", (int)size, cmd[0]);
@@ -700,18 +726,24 @@ static ssize_t ilitek_proc_ioctl_write(struct file *filp, const char *buff, size
 {
     int res = 0, count = 0, i;
     int w_len = 0, r_len = 0, i2c_delay = 0;
-    char cmd[512] = { 0 };
     char *token = NULL, *cur = NULL;
     u8 temp[256] = { 0 };
     u8 *data = NULL;
+    u8 cmd[ILITEK_CMD_MAX] = { 0 };
     int reset_gpio = g_ilitek_ts->ts_dev_data->ts_platform_data->reset_gpio;
 
-    if (buff != NULL) {
-        res = copy_from_user(cmd, buff, size - 1);
-        if (res < 0) {
-            ilitek_info("copy data from user space, failed\n");
-            return -1;
-        }
+    if (size < ILITEK_CMD_MIN ||
+        size >= ILITEK_CMD_MAX ||
+        *pPos != 0 ||
+        IS_ERR_OR_NULL(buff)) {
+        ilitek_err("write size or buff is invaild\n");
+        return -EINVAL;
+    }
+
+    res = copy_from_user(cmd, buff, size - 1);
+    if (res) {
+        ilitek_info("copy data from user space, failed\n");
+        return -EINVAL;
     }
 
     ilitek_info("size = %d, cmd = %s\n", (int)size, cmd);
@@ -789,12 +821,12 @@ static ssize_t ilitek_proc_ioctl_write(struct file *filp, const char *buff, size
     } else if (strcmp(cmd, "debugmode") == 0) {
         ilitek_info("debug mode test enter\n");
         ilitek_config_disable_report_irq();
-        ilitek_config_mode_ctrl(ILITEK_DEBUG_MODE, temp);
+        ilitek_config_mode_ctrl(ILITEK_DEBUG_MODE, NULL);
         ilitek_config_enable_report_irq();
     } else if (strcmp(cmd, "baseline") == 0) {
         ilitek_info("test baseline raw\n");
         ilitek_config_disable_report_irq();
-        ilitek_config_mode_ctrl(ILITEK_DEBUG_MODE, temp);
+        ilitek_config_mode_ctrl(ILITEK_DEBUG_MODE, NULL);
         temp[0] = 0xFA;
         temp[1] = 0x08;
         ilitek_i2c_write(temp, 2);
@@ -802,7 +834,7 @@ static ssize_t ilitek_proc_ioctl_write(struct file *filp, const char *buff, size
     } else if (strcmp(cmd, "delac_on") == 0) {
         ilitek_info("test get delac\n");
         ilitek_config_disable_report_irq();
-        ilitek_config_mode_ctrl(ILITEK_DEBUG_MODE, temp);
+        ilitek_config_mode_ctrl(ILITEK_DEBUG_MODE, NULL);
         temp[0] = 0xFA;
         temp[1] = 0x03;
         ilitek_i2c_write(temp, 2);
@@ -810,7 +842,7 @@ static ssize_t ilitek_proc_ioctl_write(struct file *filp, const char *buff, size
     } else if (strcmp(cmd, "delac_off") == 0) {
         ilitek_info("test get delac\n");
         ilitek_config_disable_report_irq();
-        ilitek_config_mode_ctrl(ILITEK_DEMO_MODE, temp);
+        ilitek_config_mode_ctrl(ILITEK_DEMO_MODE, NULL);
         ilitek_config_enable_report_irq();
     }else if (strcmp(cmd, "test") == 0) {
         ilitek_info("test test_reset test 1\n");
@@ -1123,19 +1155,10 @@ static long ilitek_proc_ioctl(struct file *filp, unsigned int cmd, unsigned long
 }
 
 static struct proc_dir_entry *proc_dir_ilitek;
-static struct proc_dir_entry *proc_ioctl;
-static struct proc_dir_entry *proc_fw_process;
-static struct proc_dir_entry *proc_fw_upgrade;
-static struct proc_dir_entry *proc_iram_upgrade;
-static struct proc_dir_entry *proc_gesture;
-static struct proc_dir_entry *proc_debug_level;
-static struct proc_dir_entry *proc_mp_test;
-static struct proc_dir_entry *proc_debug_message;
-static struct proc_dir_entry *proc_debug_message_switch;
 
 static struct file_operations proc_ioctl_fops = {
     .unlocked_ioctl = ilitek_proc_ioctl,
-    .read = ilitek_proc_ioctl_read,
+    //.read = ilitek_proc_ioctl_read,
     .write = ilitek_proc_ioctl_write,
 };
 

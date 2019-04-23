@@ -1375,17 +1375,18 @@ void pl022_resume_spi(struct spi_master *master)
 	master->dummy_rx = NULL;
 	kfree(master->dummy_tx);
 	master->dummy_tx = NULL;
-	if (master->unprepare_transfer_hardware &&
-		master->unprepare_transfer_hardware(master))
-		dev_err(&master->dev,
-			"failed to unprepare transfer hardware\n");
 	if (master->auto_runtime_pm) {
 		mutex_lock(&master->msg_mutex);
+		disable_spi(master);
 		pm_runtime_mark_last_busy(master->dev.parent);
 		pm_runtime_put_autosuspend(master->dev.parent);
 		mutex_unlock(&master->msg_mutex);
 
 	}
+	if (master->unprepare_transfer_hardware &&
+		master->unprepare_transfer_hardware(master))
+		dev_err(&master->dev,
+			"failed to unprepare transfer hardware\n");
 
 	return;
 }
@@ -1889,6 +1890,19 @@ static int pl022_transfer_one_message(struct spi_master *master,
 	return 0;
 }
 
+#if defined CONFIG_HISI_SPI
+void disable_spi(struct spi_master *master)
+{
+	struct pl022 *pl022 = spi_master_get_devdata(master);
+
+	/* nothing more to do - disable spi/ssp and power off */
+	writew((readw(SSP_CR1(pl022->virtbase)) &
+		(~SSP_CR1_MASK_SSE)), SSP_CR1(pl022->virtbase));
+
+	return;
+}
+#endif
+
 static int pl022_unprepare_transfer_hardware(struct spi_master *master)
 {
 	struct pl022 *pl022 = spi_master_get_devdata(master);
@@ -1897,9 +1911,12 @@ static int pl022_unprepare_transfer_hardware(struct spi_master *master)
 	struct hwspinlock *hwlock = pl022->spi_hwspin_lock;
 #endif
 
+#if defined CONFIG_HISI_SPI
+#else
 	/* nothing more to do - disable spi/ssp and power off */
 	writew((readw(SSP_CR1(pl022->virtbase)) &
 		(~SSP_CR1_MASK_SSE)), SSP_CR1(pl022->virtbase));
+#endif
 
 #if defined CONFIG_HISI_SPI
 	if (pl022->hardware_mutex) {
@@ -2727,12 +2744,44 @@ pl022_remove(struct amba_device *adev)
 }
 
 #ifdef CONFIG_PM_SLEEP
+#if defined CONFIG_HISI_SPI
+static int pl022_suspend(struct device *dev)
+{
+	struct pl022 *pl022 = dev_get_drvdata(dev);
+	int ret = 0;
+
+	dev_err(dev, "%s: +\n", __func__);
+	ret = spi_master_suspend(pl022->master);
+	if (ret) {
+		dev_err(dev, "cannot suspend master\n");
+		return ret;
+	}
+
+	dev_err(dev, "%s: -\n", __func__);
+	return 0;
+}
+
+static int pl022_resume(struct device *dev)
+{
+	struct pl022 *pl022 = dev_get_drvdata(dev);
+	int ret;
+
+	dev_err(dev, "%s: +\n", __func__);
+	/* Start the queue running */
+	ret = spi_master_resume(pl022->master);
+	if (ret)
+		dev_err(dev, "problem starting queue (%d)\n", ret);
+
+	dev_err(dev, "%s: -\n", __func__);
+
+	return ret;
+}
+#else
 static int pl022_suspend(struct device *dev)
 {
 	struct pl022 *pl022 = dev_get_drvdata(dev);
 	int ret;
 
-	dev_info(dev, "%s: +\n", __func__);
 	ret = spi_master_suspend(pl022->master);
 	if (ret) {
 		dev_warn(dev, "cannot suspend master\n");
@@ -2748,7 +2797,6 @@ static int pl022_suspend(struct device *dev)
 	pinctrl_pm_select_sleep_state(dev);
 
 	dev_dbg(dev, "suspended\n");
-	dev_info(dev, "%s: -\n", __func__);
 	return 0;
 }
 
@@ -2757,7 +2805,6 @@ static int pl022_resume(struct device *dev)
 	struct pl022 *pl022 = dev_get_drvdata(dev);
 	int ret;
 
-	dev_info(dev, "%s: +\n", __func__);
 	ret = pm_runtime_force_resume(dev);
 	if (ret)
 		dev_err(dev, "problem resuming\n");
@@ -2769,9 +2816,9 @@ static int pl022_resume(struct device *dev)
 	else
 		dev_dbg(dev, "resumed\n");
 
-	dev_info(dev, "%s: -\n", __func__);
 	return ret;
 }
+#endif
 #endif
 
 #ifdef CONFIG_PM

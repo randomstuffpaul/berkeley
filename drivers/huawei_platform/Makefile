@@ -47,3 +47,4 @@ obj-$(CONFIG_DP_AUX_SWITCH) += dp_aux_switch/
 obj-$(CONFIG_OASES) += oases/
 obj-$(CONFIG_HW_DP_SOURCE) += dp_source/
 obj-$(CONFIG_HW_SW_DEVICES)   += sw/
+obj-$(CONFIG_HUAWEI_VENDOR_EXCEPTION) += vendor_exception/

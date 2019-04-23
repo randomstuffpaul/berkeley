@@ -150,6 +150,7 @@ module_param_named(debug_mask, debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
 #define REVISION_ID_OFFSET                  (0x20008)
 
 /* PCtrl Regs Offset */
+#define PCTRL_PERI_STAT2_ADDR       (0x09C)
 #define PCTRL_PERI_STAT10_ADDR      (0x0BC)
 
 /* MEDIA1 Regs Offset */
@@ -216,6 +217,7 @@ struct rproc_boot_device {
     unsigned int ap_a7_mbox;
     enum hisi_isp_rproc_case_attr case_type;
 	int secisp;
+    int loadbin;
 	int rpmsg_status;
     int ispcpu_status;
     struct wake_lock ispcpu_wakelock;
@@ -234,8 +236,13 @@ struct rproc_boot_device {
     struct hisi_isp_vring_s hisi_isp_vring[HISI_ISP_VRING_NUM];
 #endif
     int probe_finished;
+    int sec_thread_wake;
     struct hisi_isp_clk_dump_s hisi_isp_clk;
     unsigned char isp_efuse_flag;
+    void* isp_bin_vaddr;
+    void* rsctable_vaddr;
+    unsigned int isp_bin_state;
+    struct task_struct *loadispbin;
 } rproc_boot_dev;
 
 int last_boot_state;
@@ -282,6 +289,18 @@ int is_ispcpu_powerup(void)
     return dev->ispcpu_status;
 }
 
+static int is_use_loadbin(void)
+{
+    struct rproc_boot_device *dev = &rproc_boot_dev;
+    return dev->loadbin;
+}
+
+static int is_use_secisp(void)
+{
+    struct rproc_boot_device *dev = &rproc_boot_dev;
+    return dev->secisp;
+}
+
 int hisp_rproc_enable_iommu(struct rproc *rproc, iommu_fault_handler_t handler)
 {
 	struct iommu_domain *domain;
@@ -303,11 +322,10 @@ void hisp_rproc_disable_iommu(struct rproc *rproc)
 
 void hisp_rproc_init(struct rproc *rproc)
 {
-	if (use_sec_isp())
-		rproc->fw_ops = &rproc_bin_fw_ops;
-	else
-		rproc->fw_ops = &rproc_elf_fw_ops;
-
+    if (use_sec_isp() || is_use_loadbin())
+        rproc->fw_ops = &rproc_bin_fw_ops;
+    else
+        rproc->fw_ops = &rproc_elf_fw_ops;
 	pr_info("[%s] elf.%pK, bin.%pK, use.%pK\n", __func__, (void *)&rproc_elf_fw_ops, (void *)&rproc_bin_fw_ops, (void *)rproc->fw_ops);
 
 	INIT_LIST_HEAD(&rproc->dynamic_mems);
@@ -516,6 +534,17 @@ static int isp_mem_add_page_list(struct rproc *rproc, struct sg_table *table)
     list_add_tail(&r_page->node, &rproc->pages);
     return 0;
 }
+
+void hisp_free_rsctable(void)
+{
+    struct rproc_boot_device *rproc_dev = &rproc_boot_dev;
+
+    if(rproc_dev->rsctable_vaddr != NULL) {
+        kfree(rproc_dev->rsctable_vaddr);
+        rproc_dev->rsctable_vaddr = NULL;
+    }
+}
+
 /*lint +e429*/
 void hisp_rproc_resource_cleanup(struct rproc *rproc)
 {
@@ -579,13 +608,20 @@ void hisp_rproc_resource_cleanup(struct rproc *rproc)
 		list_del(&cache_entry->node);
 		kfree(cache_entry);
 	}
+	/*clean up sec tsctable mem*/
+    if (is_use_secisp()) {
+        if (use_sec_isp())
+            free_secmem_rsctable();
+        else if(is_use_loadbin())
+            hisp_free_rsctable();
+    }
 	/* clean dynamic mem pool */
 	hisp_dynamic_mem_pool_clean();
 }
 
 void hisp_virtio_boot_complete(struct rproc *rproc, int flag)
 {
-	if (flag) {
+	if (flag != 0) {
 		rproc->rproc_enable_flag = false;
 		pr_err("[%s] Failed : handle resources flag.%d\n", __func__, flag);
 	} else {
@@ -658,13 +694,24 @@ int hisp_rproc_boot(struct rproc *rproc)
 
 	dev_info(dev, "powering up %s\n", rproc->name);
 
-	if (use_sec_isp()) {
-		ret = sec_rproc_boot(rproc);
-		if (0 != ret) {
-			pr_err("%s: sec_rproc_boot failed.\n", __func__);
-		}
-		goto unlock_mutex;
-	}
+    if (is_use_secisp()) {
+        if (use_sec_isp()) {
+            ret = sec_rproc_boot(rproc);
+            if (0 != ret) {
+            pr_err("%s: sec_rproc_boot failed.\n", __func__);
+            }
+            goto unlock_mutex;
+        } else if(is_use_loadbin()){
+            ret = nonsec_rproc_boot(rproc);
+            if (0 != ret) {
+            pr_err("%s: rproc_fw_boot failed.\n", __func__);
+            } else {
+                /* flush memory cache */
+                rproc_memory_cache_flush(rproc);
+            }
+            goto unlock_mutex;
+        }
+    }
 
 	/* loading a firmware is required */
 	if (!rproc->firmware) {
@@ -686,7 +733,6 @@ int hisp_rproc_boot(struct rproc *rproc)
 		dev_err(dev, "request_firmware failed: %d\n", ret);
 		goto unlock_mutex;
 	}
-
 
 	ret = rproc_fw_boot(rproc, firmware_p);
 	release_firmware(firmware_p);
@@ -854,7 +900,6 @@ int sec_rproc_boot(struct rproc *rproc)
 	    pr_err("[%s] Failed : rproc_find_rsc_table.%pK\n", __func__, table);
 		return -EINVAL;
 	}
-
 	/* Verify that resource table in loaded fw is unchanged */
 	if (rproc->table_csum != crc32(0, table, tablesz)) {
 		dev_err(dev, "Failed : resource checksum 0x%x = 0x%x\n", rproc->table_csum, crc32(0, table, tablesz));
@@ -905,20 +950,46 @@ clean_up:
     return ret;
 }
 
-void sec_rscwork_func(struct work_struct *work)
+int hisp_rproc_rsctable_init(void)
 {
-    struct rproc *rproc;
-    int ret;
+    struct rproc_boot_device *rproc_dev = &rproc_boot_dev;
 
-    if ((ret = hisp_rsctable_init()) < 0) {
-        pr_err("[%s] Failed : hisp_rsctable_init.%d\n", __func__, ret);
-        return;
+    pr_info("[%s] +\n", __func__);
+    if (!rproc_dev->isp_bin_vaddr) {
+        pr_err("[%s] isp_bin_vaddr.%pK\n", __func__, rproc_dev->isp_bin_vaddr);
+        return -ENOMEM;
     }
+    rproc_dev->rsctable_vaddr = kmemdup(rproc_dev->isp_bin_vaddr + 0x00003000, 0x1000, GFP_KERNEL);
+    if (!rproc_dev->rsctable_vaddr) {
+        pr_err("%s: kmalloc failed.\n", __func__);
+        return -ENOMEM;
+    }
+    pr_info("[%s] -\n", __func__);
 
-    rproc = container_of(work, struct rproc, sec_rscwork);
-    rproc_fw_config_virtio(NULL, rproc);
+    return 0;
 }
 
+int hisi_firmware_load_func(struct rproc *rproc)
+{
+    int ret = 0;
+
+    if (is_use_secisp()) {
+        if (use_sec_isp()) {
+            if ((ret = hisp_rsctable_init()) < 0) {
+                pr_err("[%s] Failed : hisp_rsctable_init.%d\n", __func__, ret);
+                return ret;
+            }
+        } else if(is_use_loadbin()){
+            if ((ret = hisp_rproc_rsctable_init()) < 0) {
+                pr_err("[%s] Failed : hisp_rproc_rsctable_init.%d\n", __func__, ret);
+                return ret;
+            }
+        }
+    }
+
+    rproc_fw_config_virtio(NULL, rproc);
+    return 0;
+}
 struct rproc_shared_para *rproc_get_share_para(void)
 {
     pr_debug("%s: enter.\n", __func__);
@@ -1892,10 +1963,10 @@ static void hisi_isp_efuse_deskew(void)
     }
 
     if ((ret = get_efuse_deskew_value(&efuse, 1, 1000)) < 0) {
-        pr_err("[%s] Failed: pefuse.%d, ret.%d\n", __func__, efuse, ret);
+        pr_err("[%s] Failed: ret.%d\n", __func__, ret);
     }
-    pr_err("[%s] : efuse.%d\n", __func__, efuse);
 
+    pr_err("[%s] : efuse.%d\n", __func__, ret);
     hisp_lock_sharedbuf();
     share_para = rproc_get_share_para();
     if (!share_para) {
@@ -1945,14 +2016,16 @@ int hisi_isp_rproc_case_set(enum hisi_isp_rproc_case_attr type)
 	    pr_err("[%s] Failed: sync_isplogcat\n", __func__);
 
     dev->case_type = type;
-	if (type == SEC_CASE) {
+
+	if (type == SEC_CASE)
 		hisi_ispsec_share_para_set();
-		if (likely(hisi_rproc)) /*lint !e730 */
-			hisi_rproc->fw_ops = &rproc_bin_fw_ops;
-	} else {
-		if (likely(hisi_rproc)) /*lint !e730 */
-			hisi_rproc->fw_ops = &rproc_elf_fw_ops;
-	}
+
+    if (likely(hisi_rproc)) { /*lint !e730 */
+        if ((type == SEC_CASE) || is_use_loadbin())
+            hisi_rproc->fw_ops = &rproc_bin_fw_ops;
+        else
+            hisi_rproc->fw_ops = &rproc_elf_fw_ops;
+    }
 
 	pr_info("%s.%d: type.%u, rporc.%pK\n", __func__, __LINE__, type, hisi_rproc);
 
@@ -2311,6 +2384,14 @@ void dump_media1_regs(void)
 {
 #ifdef CONFIG_HUAWEI_CAMERA_USE_HISP200
     void __iomem *media1_base = NULL;
+    void __iomem *pctrl_addr = NULL;
+    int ret = 0;
+
+    pr_info("[%s] +\n", __func__);
+    if ((ret = get_media1_subsys_power_state()) == 0) {
+        pr_err("[%s] Failed : get_media1_subsys_power_state. %d\n", __func__, ret);
+        return ;
+    }
 
     media1_base = get_regaddr_by_pa(MEDIA1);
 
@@ -2325,6 +2406,62 @@ void dump_media1_regs(void)
         __raw_readl(media1_base + MEDIA1_PERCLKEN1_ADDR),
         __raw_readl(media1_base + MEDIA1_PERSTAT1_ADDR),
         __raw_readl(media1_base + MEDIA1_CLKDIV9_ADDR));
+
+    pctrl_addr = get_regaddr_by_pa(PCTRL);
+    if (!pctrl_addr) {
+        RPROC_ERR("Failed : pctrl ioremap\n");
+        return;
+    }
+
+    pr_alert("PCTRL:PERI_STAT2.0x%x\n",
+        __raw_readl(pctrl_addr + PCTRL_PERI_STAT2_ADDR));
+#endif
+}
+
+void dump_smmu500_regs(void)
+{
+#ifdef CONFIG_HUAWEI_CAMERA_USE_HISP200
+    void __iomem *smmu500_addr = NULL;
+    int ret = 0;
+
+    pr_info("[%s] +\n", __func__);
+    if ((ret = get_media1_subsys_power_state()) == 0) {
+        pr_err("[%s] Failed : get_media1_subsys_power_state. %d\n", __func__, ret);
+        return ;
+    }
+
+    smmu500_addr = get_regaddr_by_pa(ISPCORE);
+    if (!smmu500_addr) {
+        pr_alert("Failed : smmu500 ioremap\n");
+        return;
+    }
+
+    smmu500_addr += 0x001F0000;
+
+    pr_alert("SMMU500:SMMU_SIDR0.0x%x\n", __raw_readl(smmu500_addr + 0x0020));
+    pr_alert("SMMU500:SMMU_SIDR1.0x%x\n", __raw_readl(smmu500_addr + 0x0024));
+    pr_alert("SMMU500:SMMU_SIDR2.0x%x\n", __raw_readl(smmu500_addr + 0x0028));
+    pr_alert("SMMU500:SMMU_SIDR7.0x%x\n", __raw_readl(smmu500_addr + 0x003C));
+    pr_alert("SMMU500:SMMU_SGFSYNR0.0x%x\n", __raw_readl(smmu500_addr + 0x0050));
+    pr_alert("SMMU500:SMMU_SGFSYNR1.0x%x\n", __raw_readl(smmu500_addr + 0x0054));
+    pr_alert("SMMU500:SMMU_STLBGSTATUS.0x%x\n", __raw_readl(smmu500_addr + 0x0074));
+    pr_alert("SMMU500:SMMU_DBGRDATATBU.0x%x\n", __raw_readl(smmu500_addr + 0x0084));
+    pr_alert("SMMU500:SMMU_DBGRDATATCU.0x%x\n", __raw_readl(smmu500_addr + 0x008C));
+    pr_alert("SMMU500:PMCGCR0.0x%x\n", __raw_readl(smmu500_addr + 0x3800));
+    pr_alert("SMMU500:PMCFGR.0x%x\n", __raw_readl(smmu500_addr + 0x3E00));
+    pr_alert("SMMU500:PMAUTHSTATUS.0x%x\n", __raw_readl(smmu500_addr + 0x3FB8));
+    pr_alert("SMMU500:SMMU_CB0_FAR_LOW.0x%x\n", __raw_readl(smmu500_addr + 0x8060));
+    pr_alert("SMMU500:SMMU_CB0_FAR_HIGH.0x%x\n", __raw_readl(smmu500_addr + 0x8064));
+    pr_alert("SMMU500:SMMU_CB0_IPAFAR_LOW.0x%x\n", __raw_readl(smmu500_addr + 0x8070));
+    pr_alert("SMMU500:SMMU_CB0_IPAFAR_HIGH.0x%x\n", __raw_readl(smmu500_addr + 0x8074));
+    pr_alert("SMMU500:SMMU_CB0_PMAUTHSTATUS.0x%x\n", __raw_readl(smmu500_addr + 0x8FB8));
+    pr_alert("SMMU500:SMMU_CB1_FAR_LOW.0x%x\n", __raw_readl(smmu500_addr + 0x9060));
+    pr_alert("SMMU500:SMMU_CB1_FAR_HIGH.0x%x\n", __raw_readl(smmu500_addr + 0x9064));
+    pr_alert("SMMU500:SMMU_CB1_IPAFAR_LOW.0x%x\n", __raw_readl(smmu500_addr + 0x9070));
+    pr_alert("SMMU500:SMMU_CB1_IPAFAR_HIGH.0x%x\n", __raw_readl(smmu500_addr + 0x9074));
+    pr_alert("SMMU500:SMMU_CB1_TLBSTATUS.0x%x\n", __raw_readl(smmu500_addr + 0x97F4));
+    pr_alert("SMMU500:SMMU_CB1_ATSR.0x%x\n", __raw_readl(smmu500_addr + 0x98F0));
+    pr_alert("SMMU500:SMMU_CB1_PMAUTHSTATUS.0x%x\n", __raw_readl(smmu500_addr + 0x9FB8));
 #endif
 }
 
@@ -2668,6 +2805,7 @@ static int isp_mbox_rx_thread(void *context)
             mutex_unlock(&rproc_dev->hisi_isp_power_mutex);
             return -ENODEV;
         }
+        hisp_recvthread();
         isp_mbox_rx_work();
         mutex_unlock(&rproc_dev->hisi_isp_power_mutex);
     }
@@ -2870,12 +3008,300 @@ int set_isp_remap_addr(u64 remap_addr)
     param = rproc_get_share_para();
     if(param == NULL){
         RPROC_ERR("Failed : rproc_get_share_para\n");
+        hisp_unlock_sharedbuf();
         return -ENOMEM;
     }
     param->bootware_paddr           = remap_addr;
     hisp_unlock_sharedbuf();
 
     return 0;
+}
+
+#ifdef DEBUG_HISI_ISP
+static int ispupdate_elf_load(char **buffer, int *length)
+{
+#define PART_ISPFW_SIZE 0x00E00000
+    int ret          = -1;
+    char *pathname   = "/system/vendor/firmware/isp_fw.elf";
+    struct file *fp;
+    mm_segment_t fs;
+    loff_t pos = 0;
+    struct kstat m_stat;
+
+    if ((NULL == buffer)) {
+        RPROC_ERR("buffer(%pK) is null", buffer);
+        return -1;
+    }
+
+    /*get resource*/
+    fp = filp_open(pathname, O_RDONLY, 0600);
+    if (IS_ERR(fp)) {
+        RPROC_ERR("filp_open(%s) failed", pathname);
+        return -ENOENT;
+    }
+
+    *buffer = vmalloc(PART_ISPFW_SIZE);
+    if (*buffer == NULL) {
+        RPROC_ERR("Failed : vmalloc.%pK\n", *buffer);
+        goto error2;
+    }
+
+    ret = vfs_llseek(fp, 0, SEEK_SET);
+    if (ret < 0) {
+        RPROC_ERR("seek ops failed, ret %d", ret);
+        goto error2;
+    }
+
+    fs = get_fs();/*lint !e501*/
+    set_fs(KERNEL_DS);/*lint !e501 */
+
+    if ((ret = vfs_stat(pathname, &m_stat)) < 0) {
+        RPROC_ERR("Failed :%s vfs_stat: %d\n", pathname, ret);
+        set_fs(fs);
+        goto error2;
+    }
+    *length = m_stat.size;
+
+    pos = fp->f_pos;/*lint !e613 */
+    ret = vfs_read(fp, (char __user *)*buffer, *length, &pos);/*lint !e613 */
+    if (ret != *length) {
+        RPROC_ERR("read ops failed, ret=%d(len=%d)", ret, *length);
+        set_fs(fs);
+        goto error2;
+    }
+    set_fs(fs);
+
+    filp_close(fp, NULL);/*lint !e668 */
+
+    return 0;
+
+error2:
+    filp_close(fp, NULL);/*lint !e668 */
+    RPROC_ERR("failed");
+    return -1;
+}
+
+static int hisp_elf_load_segments(const u8 *data, void* dst, int fw_size)
+{
+    struct elf32_hdr *ehdr;
+    struct elf32_phdr *phdr;
+    int i, ret = 0;
+    const u8 *elf_data = data;
+    u32 start_addr = 0;
+
+    ehdr = (struct elf32_hdr *)elf_data;
+    phdr = (struct elf32_phdr *)(elf_data + ehdr->e_phoff);
+
+    start_addr = phdr->p_paddr;
+    pr_debug("[%s] start_addr.0x%x\n", __func__, start_addr);
+
+    /* go through the available ELF segments */
+    for (i = 0; i < ehdr->e_phnum; i++, phdr++) {
+        u32 da = phdr->p_paddr;
+        u32 memsz = phdr->p_memsz;
+        u32 filesz = phdr->p_filesz;
+        u32 offset = phdr->p_offset;
+        void *ptr;
+
+        if (phdr->p_type != PT_LOAD)
+            continue;
+
+        pr_debug("phdr: type %d da 0x%x memsz 0x%x filesz 0x%x\n",
+            phdr->p_type, da, memsz, filesz);
+
+        if (filesz > memsz) {
+            RPROC_ERR("bad phdr filesz 0x%x memsz 0x%x\n", filesz, memsz);
+            ret = -EINVAL;
+            break;
+        }
+        if (offset + filesz > (u32)fw_size) {
+            RPROC_ERR("truncated fw: need 0x%x avail 0x%x\n", offset + filesz, fw_size);
+            ret = -EINVAL;
+            break;
+        }
+        /* grab the kernel address for this device address */
+        ptr = dst + da - start_addr;
+        if (!ptr) {
+            RPROC_ERR("bad phdr da 0x%x mem 0x%x\n", da, memsz);
+            ret = -EINVAL;
+            break;
+        }
+
+        /* put the segment where the remote processor expects it */
+        if (phdr->p_filesz)
+            memcpy(ptr, elf_data + phdr->p_offset, filesz);
+
+        /*
+        * Zero out remaining memory for this segment.
+        *
+        * This isn't strictly required since dma_alloc_coherent already
+        * did this for us. albeit harmless, we may consider removing
+        * this.
+        */
+        if (memsz > filesz)
+            memset(ptr + filesz, 0, memsz - filesz);
+    }
+
+    return ret;
+}
+
+static int isp_elf_load(void)
+{
+    struct rproc_boot_device *rproc_dev = &rproc_boot_dev;
+    int ret = -1;
+    void* isp_elf_vaddr = NULL;
+    int length = 0;
+
+    RPROC_INFO("+\n");
+    if(rproc_dev->probe_finished != 1)
+    {
+        RPROC_ERR("hisi_rproc_probe failed\n");
+        return -EPERM;
+    }
+
+    if (rproc_dev->isp_bin_vaddr == NULL) {
+        RPROC_ERR("Failed : isp_bin_vaddr.NULL\n");
+        return -ENOMEM;
+    }
+
+    if ((ret = ispupdate_elf_load((char **)&isp_elf_vaddr, &length)) < 0) {
+        if (isp_elf_vaddr)
+            vfree(isp_elf_vaddr);
+        RPROC_ERR("Failed : ispupdate_elf_load\n");
+        return ret;
+    }
+
+    if ((ret = hisp_elf_load_segments(isp_elf_vaddr, rproc_dev->isp_bin_vaddr, length)) < 0) {
+        RPROC_ERR("Failed : hisp_elf_load_segments isp_elf_vaddr.0x%pK, isp_bin_vaddr.0x%pK, length.0x%x\n",
+            isp_elf_vaddr, rproc_dev->isp_bin_vaddr, length);
+    }
+    vfree(isp_elf_vaddr);
+
+    RPROC_INFO("-\n");
+    return ret;
+}
+#endif
+
+static int isp_bin_load(void *data)
+{
+#define PART_ISPFW_SIZE 0x00E00000
+    int ret = -1;
+    struct rproc_boot_device *rproc_dev = &rproc_boot_dev;
+    unsigned int fw_size = (ISP_FW_SIZE>PART_ISPFW_SIZE)?ISP_FW_SIZE:PART_ISPFW_SIZE;
+
+    RPROC_INFO("+\n");
+    rproc_dev->isp_bin_vaddr = vmalloc(fw_size);
+    if (rproc_dev->isp_bin_vaddr == NULL) {
+        RPROC_ERR("Failed : vmalloc.%pK\n", rproc_dev->isp_bin_vaddr);
+        return -ENOMEM;
+    }
+
+    if ((ret = hisp_bsp_read_bin("isp_firmware", 0, PART_ISPFW_SIZE, rproc_dev->isp_bin_vaddr)) < 0) {
+        vfree(rproc_dev->isp_bin_vaddr);
+        rproc_dev->isp_bin_vaddr = NULL;
+        RPROC_ERR("Failed : hisp_bsp_read_bin.%d\n", ret);
+        return ret;
+    }
+    rproc_dev->isp_bin_state = 1;
+    RPROC_INFO("-\n");
+
+    return 0;
+}
+
+int wakeup_ispbin_kthread(void)
+{
+    struct rproc_boot_device *rproc_dev = &rproc_boot_dev;
+    int timeout = 1000;
+
+    RPROC_INFO("+\n");
+
+    if (rproc_dev->isp_bin_state == 1) {
+        return 0;
+    }
+
+    if (rproc_dev->loadispbin == NULL) {
+        RPROC_ERR("Failed : loadispbin is NULL\n");
+        return -1;
+    }
+
+    wake_up_process(rproc_dev->loadispbin);
+    do {
+        timeout--;
+        mdelay(10);
+        if (rproc_dev->isp_bin_state == 1) {
+            break;
+        }
+    } while (timeout > 0);
+
+    RPROC_INFO("isp_bin_state.%d, timeout.%d\n", rproc_dev->isp_bin_state, timeout);
+
+    return (timeout>0)? 0 : -1;
+}
+
+void *hisp_get_rsctable(int *tablesz)
+{
+    struct rproc_boot_device *rproc_dev = &rproc_boot_dev;
+
+    if (use_sec_isp()) {
+        return get_rsctable(tablesz);
+    }
+
+    *tablesz = 0x00001000;
+    return rproc_dev->rsctable_vaddr;
+}
+
+int hisp_bin_load_segments(struct rproc *rproc)
+{
+#define MEM_BOOTWARE_DA                0xFFFF0000
+#define MEM_BOOTWARE_SIZE              0xF000
+
+	struct rproc_boot_device *rproc_dev = &rproc_boot_dev;
+	int ret = 0;
+	void *ptr;
+	u32 da = TEXT_BASE;
+	u32 memsz = ISP_TEXT_SIZE;
+
+    RPROC_INFO("+\n");
+
+	/* go through the available ELF segments */
+	/* grab the kernel address for this device address */
+	ptr = rproc_da_to_va(rproc, da, memsz);
+    RPROC_INFO("text section ptr = %pK\n", ptr);
+	if (!ptr) {
+		RPROC_ERR("bad phdr da 0x%x mem 0x%x\n", da, memsz);
+		ret = -EINVAL;
+		return ret;
+	}
+	/* put the segment where the remote processor expects it */
+	memcpy(ptr, rproc_dev->isp_bin_vaddr, memsz);
+
+	/* go through the available ELF segments */
+	da = DATA_BASE;
+	memsz = ISP_BIN_DATA_SIZE;
+	ptr = rproc_da_to_va(rproc, da, memsz);
+    RPROC_INFO("data section ptr = %pK\n", ptr);
+	if (!ptr) {
+		RPROC_ERR("bad phdr da 0x%x mem 0x%x\n", da, memsz);
+		ret = -EINVAL;
+		return ret;
+	}
+	/* put the segment where the remote processor expects it */
+	memcpy(ptr, rproc_dev->isp_bin_vaddr +ISP_TEXT_SIZE, memsz);
+
+	/* go through the available ELF segments */
+	da = MEM_BOOTWARE_DA;
+	memsz = MEM_BOOTWARE_SIZE;
+	ptr = rproc_da_to_va(rproc, da, memsz);
+	if (!ptr) {
+		RPROC_ERR("bad phdr da 0x%x mem 0x%x\n", da, memsz);
+		ret = -EINVAL;
+		return ret;
+	}
+    RPROC_INFO("bootware ptr = %pK\n", ptr);
+	/* put the segment where the remote processor expects it */
+	memcpy(ptr, rproc_dev->isp_bin_vaddr, memsz);
+
+	return 0;
 }
 
 int hisi_isp_rproc_disable(void)
@@ -2978,13 +3404,39 @@ int hisi_isp_rproc_enable(void)
         RPROC_INFO("Failed : isp_rproc.%pK\n", rproc_dev->isp_rproc);
         return -ENOMEM;
     }
-
     if (atomic_read(&rproc_dev->rproc_enable_status) > 0 ) {
         pr_err("[%s] hisi_isp_rproc had been enabled, rproc_enable_status.0x%x\n", __func__, atomic_read(&rproc_dev->rproc_enable_status));
         return -ENODEV;
     }
     else
         atomic_set(&rproc_dev->rproc_enable_status, 1);
+
+    if (is_use_secisp()) {
+        if(rproc_dev->sec_thread_wake == 0) {
+            wakeup_secisp_kthread();
+            rproc_dev->sec_thread_wake = 1;
+        }
+    }
+
+    if (is_use_loadbin()) {
+        if ((err = wakeup_ispbin_kthread()) != 0) {
+            RPROC_ERR("Failed : wakeup_ispbin_kthread.0x%x\n", err);
+            atomic_set(&rproc_dev->rproc_enable_status, 0);
+            return -ENODEV;
+        }
+
+#ifdef DEBUG_HISI_ISP
+        if (use_nonsec_isp()) {
+            if ((err = isp_elf_load()) < 0) {
+                RPROC_ERR("Failed : isp_elf_load.0x%x\n", err);
+                if (err != -ENOENT) {
+                    atomic_set(&rproc_dev->rproc_enable_status, 0);
+                    return err;
+                }
+            }
+        }
+#endif
+    }
 
     rproc = rproc_dev->isp_rproc->rproc;
 
@@ -3662,8 +4114,12 @@ static int hisi_rproc_probe(struct platform_device *pdev)
     int ret;
 
     RPROC_INFO("+\n");
-    rproc_dev->probe_finished = 0;
+    rproc_dev->probe_finished  = 0;
+    rproc_dev->sec_thread_wake = 0;
     rproc_dev->isp_pdev = pdev;
+    rproc_dev->isp_bin_state = 0;
+    rproc_dev->isp_bin_vaddr = NULL;
+    rproc_dev->rsctable_vaddr = NULL;
     memset(&rproc_dev->hisi_isp_clk,0,sizeof(struct hisi_isp_clk_dump_s));
     mutex_init(&rproc_dev->sharedbuf_mutex);
     wake_lock_init(&rproc_dev->jpeg_wakelock, WAKE_LOCK_SUSPEND, "jpeg_wakelock");
@@ -3696,7 +4152,21 @@ static int hisi_rproc_probe(struct platform_device *pdev)
         goto free_regaddr_init;
     }
 
-    if (rproc_dev->secisp) {
+    if ((ret = of_property_read_u32(np, "useloadbin", &rproc_dev->loadbin)) < 0 ) {/*lint !e64 */
+        RPROC_ERR("Failed: loadbin.0x%x of_property_read_u32.%d\n", rproc_dev->loadbin, ret);
+        goto free_regaddr_init;
+    }
+
+    if (rproc_dev->loadbin) {
+        rproc_dev->loadispbin = kthread_create(isp_bin_load, NULL, "loadispbin");
+        if (IS_ERR(rproc_dev->loadispbin)) {
+            ret = -1;
+            pr_err("[%s] Failed : kthread_create.%ld\n", __func__, PTR_ERR(rproc_dev->loadispbin));
+            goto free_regaddr_init;
+        }
+    }
+
+    if (is_use_secisp()) {
         ret = hisi_isp_rproc_case_set(SEC_CASE);
         if (ret) {
             pr_err("%s: case set falied, case.%x\n", __func__, SEC_CASE);
@@ -3724,7 +4194,6 @@ static int hisi_rproc_probe(struct platform_device *pdev)
             }
         }
     }
-
 	if ((data = hisi_rproc_data_dtget(dev)) == NULL ) {
 		dev_err(&pdev->dev, "hisi_rproc_data_dtget: %pK\n", data);
 		goto free_regaddr_init;
@@ -3796,7 +4265,9 @@ static int hisi_rproc_probe(struct platform_device *pdev)
 #ifdef ISP_CORESIGHT
     coresight_mem_init(dev);
 #endif
-
+    if ((ret = hisp_rpmsg_rdr_init()) < 0 ) {
+        dev_err(&pdev->dev, "Fail :hisp_rpmsg_rdr_init: %d\n", ret);
+    }
     if (!client_isp)
         client_isp = dsm_register_client(&dev_isp);
     rproc_dev->probe_finished = 1;
@@ -3861,7 +4332,7 @@ static int hisi_rproc_remove(struct platform_device *pdev)
     rproc_del(rproc);
     rproc_put(rproc);
 
-    if (rproc_dev->secisp) {
+    if (is_use_secisp()) {
         if ((ret = hisi_atfisp_remove(pdev)) < 0)
             RPROC_ERR("Failed : hisi_atfisp_remove.%d\n", ret);
 
@@ -3870,6 +4341,17 @@ static int hisi_rproc_remove(struct platform_device *pdev)
         free_mdc_ion(MEM_MDC_SIZE);
     }
     hisp_regaddr_deinit();
+    if ((ret = hisp_rpmsg_rdr_deinit()) < 0 )
+        RPROC_ERR("Fail :hisp_rpmsg_rdr_deinit: %d\n", ret);
+
+    if (rproc_dev->loadbin) {
+        if(rproc_dev->loadispbin) {
+            kthread_stop(rproc_dev->loadispbin);
+            rproc_dev->loadispbin = NULL;
+        }
+    }
+    if (rproc_dev->isp_bin_vaddr != NULL)
+        vfree(rproc_dev->isp_bin_vaddr);
 
     RPROC_INFO("-\n");
     return 0;
@@ -3894,3 +4376,93 @@ module_platform_driver(hisi_rproc_driver);
 
 MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("HiStar V100 Remote Processor control driver");
+
+#ifdef DEBUG_HISI_ISP
+static int ispupdate_bin_load(char *buffer)
+{
+    int ret          = -1;
+    char *pathname   = "/system/vendor/firmware/isp.bin";
+    struct file *fp;
+    mm_segment_t fs;
+    loff_t pos = 0;
+    struct kstat m_stat;
+    int length;
+
+    if ((NULL == buffer)) {
+        pr_err("buffer(%pK) is null", buffer);
+        return -1;
+    }
+
+    /*get resource*/
+    fp = filp_open(pathname, O_RDONLY, 0600);
+    if (IS_ERR(fp)) {
+        pr_err("filp_open(%s) failed", pathname);
+        goto error;
+    }
+
+    ret = vfs_llseek(fp, 0, SEEK_SET);
+    if (ret < 0) {
+        pr_err("seek ops failed, ret %d", ret);
+        goto error2;
+    }
+
+    fs = get_fs();/*lint !e501*/
+    set_fs(KERNEL_DS);/*lint !e501 */
+
+    if ((ret = vfs_stat(pathname, &m_stat)) < 0) {
+        RPROC_ERR("Failed :%s vfs_stat: %d\n", pathname, ret);
+        set_fs(fs);
+        goto error2;
+    }
+    length = m_stat.size;
+
+    pos = fp->f_pos;/*lint !e613 */
+    ret = vfs_read(fp, (char __user *)buffer, length, &pos);/*lint !e613 */
+    if (ret != length) {
+        pr_err("read ops failed, ret=%d(len=%d)", ret, length);
+        set_fs(fs);
+        goto error2;
+    }
+    set_fs(fs);
+
+    filp_close(fp, NULL);/*lint !e668 */
+
+    return 0;
+
+error2:
+    filp_close(fp, NULL);/*lint !e668 */
+error:
+    pr_err("failed");
+    return -1;
+}
+
+ssize_t ispbinupdate_show(struct device *pdev, struct device_attribute *attr, char *buf)
+{
+    struct rproc_boot_device *rproc_dev = &rproc_boot_dev;
+    int ret = 0;
+
+    RPROC_INFO("+\n");
+
+    if(rproc_dev->probe_finished != 1)
+    {
+        RPROC_ERR("hisi_rproc_probe failed\n");
+        return -EPERM;
+    }
+    if (atomic_read(&rproc_dev->rproc_enable_status) > 0 ) {
+        pr_err("[%s] hisi_isp_rproc had been enabled, rproc_enable_status.0x%x\n", __func__, atomic_read(&rproc_dev->rproc_enable_status));
+        return -ENODEV;
+    }
+
+    if (rproc_dev->isp_bin_vaddr == NULL) {
+        RPROC_ERR("Failed : isp_bin_vaddr.NULL\n");
+        return -ENOMEM;
+    }
+
+    if ((ret = ispupdate_bin_load(rproc_dev->isp_bin_vaddr)) < 0) {
+        RPROC_ERR("Failed : ispupdate_bin_load\n");
+        return -ENOMEM;
+    }
+    RPROC_INFO("-\n");
+    return 0;
+}
+#endif

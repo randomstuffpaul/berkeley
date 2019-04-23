@@ -37,6 +37,30 @@ subdir-ccflags-y += -I$(srctree)/drivers/hisi/modem/include/taf/common/
 subdir-ccflags-y += -I$(srctree)/drivers/hisi/modem/include/taf/acore/
 subdir-ccflags-y += -I$(srctree)/drivers/hisi/modem/config/product/$(OBB_PRODUCT_NAME)/config
 
+ifeq ($(strip $(MODEM_FULL_DUMP)),true)
+subdir-ccflags-y += -DMODEM_FULL_DUMP_INUSER
+endif
+
+ifeq ($(strip $(MODEM_DDR_MINI_DUMP)),true)
+subdir-ccflags-y += -DMODEM_DDR_MINI_DUMP_INUSER
+endif
+
+ifeq ($(strip $(MODEM_LOGCAT_INUSER)),true)
+subdir-ccflags-y += -DMODEM_LOGCAT_INUSER
+endif
+
+ifeq ($(strip $(MODEM_LOG_FILTER_NVCONTROL)),true)
+subdir-ccflags-y += -DMODEM_LOG_FILTER_INUSER
+endif
+
+ifeq ($(strip $(MODEM_CHR_INUSER)),true)
+subdir-ccflags-y += -DMODEM_CHR_INUSER
+endif
+
+ifeq ($(strip $(MODEM_PM_OM_INUSER)),true)
+subdir-ccflags-y += -DMODEM_PM_OM_INUSER
+endif
+
 ifeq ($(strip $(OBB_LLT_MDRV)),y)
 subdir-ccflags-y += -DDRV_BUILD_LLT
 endif

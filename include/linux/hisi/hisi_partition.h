@@ -240,4 +240,7 @@ enum {
 #define PART_BATT_TP_PARA             "batt_tp_para"
 #define PART_MODEM_PATCH_NV_A         "modem_patch_nv_a"
 #define PART_MODEM_DRIVER_A           "modem_driver_a"
+#define PART_HIEPS                    "hieps"
+#define PART_HIEPS_A                  "hieps_a"
+#define PART_HIEPS_B                  "hieps_b"
 #endif

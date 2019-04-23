@@ -16,6 +16,13 @@ config VCODEC_PLATFORM_HIVCODECV300
         tristate "v300 Vcodec configs"
         default n
 
+config VCODEC_PLATFORM_HIVCODECV310
+       tristate "v310 Vcodec configs"
+       default n
+
+config VCODEC_PLATFORM_HIVCODECV500
+        tristate "v500 Vcodec configs"
+        default n
 
 if VCODEC_PLATFORM_HI3660
 source "drivers/vcodec/hi_vcodec/vdec/Kconfig"
@@ -33,6 +40,16 @@ source "drivers/vcodec/hi_vcodec/venc_hivna/drv/venc/Kconfig"
 endif
 
 if VCODEC_PLATFORM_HIVCODECV300
+source "drivers/vcodec/hi_vcodec/vdec_hivna/Kconfig"
+source "drivers/vcodec/hi_vcodec/venc_hivna/drv/venc/Kconfig"
+endif
+
+if VCODEC_PLATFORM_HIVCODECV310
+source "drivers/vcodec/hi_vcodec/vdec_hivna/Kconfig"
+source "drivers/vcodec/hi_vcodec/venc_hivna/drv/venc/Kconfig"
+endif
+
+if VCODEC_PLATFORM_HIVCODECV500
 source "drivers/vcodec/hi_vcodec/vdec_hivna/Kconfig"
 source "drivers/vcodec/hi_vcodec/venc_hivna/drv/venc/Kconfig"
 endif

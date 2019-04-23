@@ -31,7 +31,7 @@ static struct kmem_cache *victim_entry_slab;
 #define MIN_WT 1000
 #define DEF_GC_BALANCE_MIN_SLEEP_TIME	10000	/* milliseconds */
 #define DEF_GC_FRAG_MIN_SLEEP_TIME	1000	/* milliseconds */
-#define GC_URGENT_DISABLE_BLKS		(32<<18)	/* 32G */
+#define GC_URGENT_DISABLE_BLKS		(16<<18)	/* 16G */
 #define GC_URGENT_SPACE			(10<<18)	/* 10G */
 
 extern int find_next_free_extent(const unsigned long *addr,
@@ -44,7 +44,7 @@ static bool __is_frag_urgent(struct f2fs_sb_info *sbi)
 	unsigned int i;
 	unsigned int block_count[10];
 	unsigned int tot_blocks = 0;
-	u64 total_blocks = le64_to_cpu(sbi->raw_super->block_count);
+	unsigned int total_blocks = sbi->raw_super->block_count;
 	unsigned int valid_blocks = sbi->total_valid_block_count;
 
 	if(total_blocks < GC_URGENT_DISABLE_BLKS)
@@ -158,7 +158,8 @@ static int gc_thread_func(void *data)
 		int ret;
 
 		/*lint -save -e574 -e666 */
-		if (is_frag_urgent(sbi) &&
+		if (!is_gc_test_set(sbi, GC_TEST_DISABLE_FRAG_URGENT) &&
+			is_frag_urgent(sbi) &&
 			free_segments(sbi) < 3 * overprovision_segments(sbi) &&
 			is_reclaimable_dirty_blocks_enough(sbi))
 			gc_th->gc_preference = GC_FRAG;
@@ -200,19 +201,20 @@ static int gc_thread_func(void *data)
 		if (!ret) {
 			if (sbi->sb->s_writers.frozen >= SB_FREEZE_WRITE) {
 				increase_sleep_time(gc_th, &wait_ms);
-				continue;
+				goto next;
 			}
 
 			if (!mutex_trylock(&sbi->gc_mutex))
-				continue;
+				goto next;
 
 		} else if (try_to_freeze()) {
-			continue;
+			goto next;
 		} else if (kthread_should_stop()) {
+			sb_end_write(sbi->sb);
 			break;
 		} else if (ret < 0) {
 			pr_err("f2fs-gc: some signals have been received...\n");
-			continue;
+			goto next;
 		} else {
 			int ssr_gc_count;
 			ssr_gc_count = atomic_read(&sbi->need_ssr_gc);
@@ -223,7 +225,7 @@ static int gc_thread_func(void *data)
 			}
 			if (!has_not_enough_free_secs(sbi, 0, 0)) {
 				wake_up_all(&gc_th->fg_gc_wait);
-				continue;
+				goto next;
 			}
 
 			/* run into FG_GC
@@ -232,7 +234,7 @@ static int gc_thread_func(void *data)
 
 			f2fs_gc(sbi, false, false, NULL_SEGNO);
 			wake_up_all(&gc_th->fg_gc_wait);
-			continue;
+			goto next;
 		}
 
 		/*
@@ -255,9 +257,9 @@ static int gc_thread_func(void *data)
 		}
 
 #ifdef CONFIG_HISI_BLK
-		if (!gc_th->block_idle) {
+		if (!gc_th->block_idle && !is_gc_test_set(sbi, GC_TEST_DISABLE_IO_AWARE)) {
 #else
-		if (!is_idle(sbi)) {
+		if (!is_idle(sbi) && !is_gc_test_set(sbi, GC_TEST_DISABLE_IO_AWARE)) {
 #endif
 			increase_sleep_time(gc_th, &wait_ms);
 			mutex_unlock(&sbi->gc_mutex);
@@ -1263,11 +1265,24 @@ static int move_data_block(struct inode *inode, block_t bidx,
 		goto put_out;
 	}
 
+	if (unlikely(dn.data_blkaddr == NEW_ADDR)) {
+		f2fs_gc_loop_debug(F2FS_I_SB(inode)); /*lint !e666*/
+		f2fs_msg(F2FS_I_SB(inode)->sb, KERN_ERR,
+			"%s: dn.data_blkaddr is NEW_ADDR, bidx %x, page index %lu, status %lx,"
+			"ino %lu i_mode %x,i_size %llu, i_advise %x, flags %lx",
+			__func__, bidx, page->index, page->flags,
+			inode->i_ino, inode->i_mode, inode->i_size,
+			F2FS_I(inode)->i_advise, F2FS_I(inode)->flags);
+		goto put_out;
+	}
+
 	/*
 	 * don't cache encrypted data into meta inode until previous dirty
 	 * data were writebacked to avoid racing between GC and flush.
 	 */
 	f2fs_wait_on_page_writeback(page, DATA, true);
+
+	f2fs_wait_on_block_writeback(inode, dn.data_blkaddr);
 
 	get_node_info(fio.sbi, dn.nid, &ni);
 	set_summary(&sum, dn.nid, dn.ofs_in_node, ni.version);

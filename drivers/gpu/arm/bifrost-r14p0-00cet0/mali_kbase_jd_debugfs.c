@@ -35,7 +35,7 @@ struct kbase_jd_debugfs_depinfo {
 	u8 id;
 	char type;
 };
-
+/*lint -e616*/
 static void kbase_jd_debugfs_fence_info(struct kbase_jd_atom *atom,
 					struct seq_file *sfile)
 {
@@ -61,6 +61,7 @@ static void kbase_jd_debugfs_fence_info(struct kbase_jd_atom *atom,
 	default:
 		break;
 	}
+/*lint +e616*/
 #endif /* CONFIG_SYNC || CONFIG_SYNC_FILE */
 
 #ifdef CONFIG_MALI_DMA_FENCE
@@ -148,6 +149,7 @@ static void kbasep_jd_debugfs_atom_deps(
  * Return: 0 if successfully prints data in debugfs entry file, failure
  * otherwise
  */
+/*lint -e446*/
 static int kbasep_jd_debugfs_atoms_show(struct seq_file *sfile, void *data)
 {
 	struct kbase_context *kctx = sfile->private;
@@ -207,7 +209,7 @@ static int kbasep_jd_debugfs_atoms_show(struct seq_file *sfile, void *data)
 
 	return 0;
 }
-
+/*lint +e446*/
 
 /**
  * kbasep_jd_debugfs_atoms_open - open operation for atom debugfs file

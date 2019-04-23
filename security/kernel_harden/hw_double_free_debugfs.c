@@ -58,14 +58,22 @@ static int slub_double_free_show(struct seq_file *m, void *v)
     freelist = this_cpu_read(my_cachep->cpu_slab->freelist);
     seq_printf(m, "After free object, the freelist object's addr is 0x%lx\n", freelist);
 
+#ifdef CONFIG_HW_SLUB_DF
+    if (!(my_cachep->flags & SLAB_DOUBLEFREE_CHECK))
+#else
     if (!(my_cachep->flags & SLAB_CLEAR))
+#endif
     {
         seq_printf(m, "Before object is double freed, Don't detect double free\n");
     }
 
     kfree(object);
 
+#ifdef CONFIG_HW_SLUB_DF
+    if (my_cachep->flags & SLAB_DOUBLEFREE_CHECK)
+#else
     if (my_cachep->flags & SLAB_CLEAR)
+#endif
     {
         seq_printf(m, "After object is double freed, Detect double free\n");
     }

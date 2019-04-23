@@ -234,7 +234,7 @@ static void kbase_gpu_mmu_handle_write_fault(struct kbase_context *kctx,
 	/* Find region and check if it should be writable. */
 	region = kbase_region_tracker_find_region_enclosing_address(kctx,
 			faulting_as->fault_addr);
-	if (!region || region->flags & KBASE_REG_FREE) {
+	if (kbase_is_region_invalid_or_free(region)) {
 		kbase_gpu_vm_unlock(kctx);
 		kbase_mmu_report_fault_and_kill(kctx, faulting_as,
 				"Memory is not mapped on the GPU");
@@ -431,11 +431,13 @@ static bool page_fault_try_alloc(struct kbase_context *kctx,
 
 #ifdef CONFIG_MALI_2MB_ALLOC
 	if (new_pages >= (SZ_2M / SZ_4K)) {
-		root_pool = &kctx->lp_mem_pool;
+		root_pool = kbase_mem_select_pool(kctx, region->gpu_alloc->lb_policy_id, true);
+		KBASE_DEBUG_ASSERT(root_pool);
 		*grow_2mb_pool = true;
 	} else {
 #endif
-		root_pool = &kctx->mem_pool;
+		root_pool = kbase_mem_select_pool(kctx, region->gpu_alloc->lb_policy_id, false);
+		KBASE_DEBUG_ASSERT(root_pool);
 		*grow_2mb_pool = false;
 #ifdef CONFIG_MALI_2MB_ALLOC
 	}
@@ -584,7 +586,8 @@ static bool page_fault_try_alloc(struct kbase_context *kctx,
 
 	return true;
 }
-
+/*lint -e648*/
+/*lint -e666*/
 void page_fault_worker(struct work_struct *data)
 {
 	u64 fault_pfn;
@@ -705,7 +708,7 @@ page_fault_retry:
 
 	region = kbase_region_tracker_find_region_enclosing_address(kctx,
 			faulting_as->fault_addr);
-	if (!region || region->flags & KBASE_REG_FREE) {
+	if (kbase_is_region_invalid_or_free(region)) {
 		kbase_gpu_vm_unlock(kctx);
 		kbase_mmu_report_fault_and_kill(kctx, faulting_as,
 				"Memory is not mapped on the GPU");
@@ -804,7 +807,6 @@ page_fault_retry:
 #endif
 
 	new_pages = reg_grow_calc_extra_pages(kbdev, region, fault_rel_pfn);
-
 	/* cap to max vsize */
 	new_pages = min(new_pages, region->nr_pages - kbase_reg_current_backed_size(region));
 
@@ -931,21 +933,22 @@ page_fault_retry:
 		 * Otherwise fail the allocation.
 		 */
 		if (pages_to_grow > 0) {
+			struct kbase_mem_pool * pool = NULL;
+
 #ifdef CONFIG_MALI_2MB_ALLOC
 			if (grow_2mb_pool) {
 				/* Round page requirement up to nearest 2 MB */
+				pool = kbase_mem_select_pool(kctx, region->gpu_alloc->lb_policy_id, true);
 				pages_to_grow = (pages_to_grow +
-					((1 << kctx->lp_mem_pool.order) - 1))
-						>> kctx->lp_mem_pool.order;
-				ret = kbase_mem_pool_grow(&kctx->lp_mem_pool,
-						pages_to_grow);
+					((1 << pool.order) - 1))
+						>> pool.order;
 			} else {
 #endif
-				ret = kbase_mem_pool_grow(&kctx->mem_pool,
-						pages_to_grow);
+			pool = kbase_mem_select_pool(kctx, region->gpu_alloc->lb_policy_id, false);
 #ifdef CONFIG_MALI_2MB_ALLOC
 			}
 #endif
+			ret = kbase_mem_pool_grow(pool, pages_to_grow);
 		}
 		if (ret < 0) {
 			/* failed to extend, handle as a normal PF */
@@ -968,7 +971,9 @@ fault_done:
 
 	atomic_dec(&kbdev->faults_pending);
 }
+/*lint +e666*/
 
+/*lint -e571*/
 static phys_addr_t kbase_mmu_alloc_pgd(struct kbase_device *kbdev,
 		struct kbase_mmu_table *mmut)
 {
@@ -990,7 +995,6 @@ static phys_addr_t kbase_mmu_alloc_pgd(struct kbase_device *kbdev,
 	 */
 	if (mmut->kctx) {
 		int new_page_count;
-
 		new_page_count = kbase_atomic_add_pages(1,
 				&mmut->kctx->used_pages);
 		KBASE_TLSTREAM_AUX_PAGESALLOC(
@@ -1014,7 +1018,8 @@ alloc_free:
 
 	return 0;
 }
-
+/*lint +e571*/
+/*lint +e648*/
 /* Given PGD PFN for level N, return PGD PFN for level N+1, allocating the
  * new table from the pool if needed and possible
  */
@@ -1070,6 +1075,7 @@ static int mmu_get_next_pgd(struct kbase_device *kbdev,
 /*
  * Returns the PGD for the specified level of translation
  */
+/*lint -e574*/
 static int mmu_get_pgd_at_level(struct kbase_device *kbdev,
 					struct kbase_mmu_table *mmut,
 					u64 vpfn,
@@ -1097,7 +1103,7 @@ static int mmu_get_pgd_at_level(struct kbase_device *kbdev,
 
 	return 0;
 }
-
+/*lint +e574*/
 static int mmu_get_bottom_pgd(struct kbase_device *kbdev,
 		struct kbase_mmu_table *mmut,
 		u64 vpfn,
@@ -1106,7 +1112,8 @@ static int mmu_get_bottom_pgd(struct kbase_device *kbdev,
 	return mmu_get_pgd_at_level(kbdev, mmut, vpfn, MIDGARD_MMU_BOTTOMLEVEL,
 			out_pgd);
 }
-
+/*lint -e647*/
+/*lint -e679*/
 static void mmu_insert_pages_failure_recovery(struct kbase_device *kbdev,
 		struct kbase_mmu_table *mmut,
 		u64 from_vpfn, u64 to_vpfn)
@@ -1176,7 +1183,8 @@ next:
 		vpfn += count;
 	}
 }
-
+/*lint +e647*/
+/*lint +e679*/
 /*
  * Map the single page 'phys' 'nr' of times, starting at GPU PFN 'vpfn'
  */
@@ -1271,7 +1279,7 @@ int kbase_mmu_insert_single_page(struct kbase_context *kctx, u64 vpfn,
 			/* Fail if the current page is a valid ATE entry */
 			KBASE_DEBUG_ASSERT(0 == (pgd_page[ofs] & 1UL));
 
-			mmu_mode->entry_set_ate(&pgd_page[ofs],
+			mmu_mode->entry_set_ate(kctx->kbdev, &pgd_page[ofs],
 						phys, flags,
 						MIDGARD_MMU_BOTTOMLEVEL);
 		}
@@ -1418,7 +1426,7 @@ int kbase_mmu_insert_pages_no_flush(struct kbase_device *kbdev,
 			if(phys->is_scrambled)
 				flags |= ENTRY_SCRAMBLE_BIT;
 #endif
-			mmu_mode->entry_set_ate(target, *phys, flags,
+			mmu_mode->entry_set_ate(kbdev, target, *phys, flags,
 						cur_level);
 		} else {
 			for (i = 0; i < count; i++) {
@@ -1438,13 +1446,13 @@ int kbase_mmu_insert_pages_no_flush(struct kbase_device *kbdev,
 				if(phys->is_scrambled)
 					flags |= ENTRY_SCRAMBLE_BIT;
 				if (kbase_is_entry_decompressed(phys[i])) {
-					kbdev->mmu_mode->entry_set_ate(target,
+					kbdev->mmu_mode->entry_set_ate(kbdev, target,
 						phys[i], flags, cur_level);
 				} else
 					kbdev->mmu_mode->entry_invalidate(target);
 			}
 #else
-				kbdev->mmu_mode->entry_set_ate(target,
+				kbdev->mmu_mode->entry_set_ate(kbdev, target,
 						phys[i], flags, cur_level);
 			}
 #endif
@@ -1567,7 +1575,7 @@ int kbase_mmu_insert_pages_with_scramble_bit_no_flush(struct kbase_device *kbdev
 			if(phys->is_scrambled)
 				flags |= ENTRY_SCRAMBLE_BIT;
 #endif
-			mmu_mode->entry_set_ate(target, *phys, flags,
+			mmu_mode->entry_set_ate(kbdev, target, *phys, flags,
 						cur_level);
 		} else {
 			for (i = 0; i < count; i++) {
@@ -1589,13 +1597,13 @@ int kbase_mmu_insert_pages_with_scramble_bit_no_flush(struct kbase_device *kbdev
 				if (kbase_is_entry_decompressed(phys[i])) {
 					if (header_flags < header_page_number)
 					{
-						kbdev->mmu_mode->entry_set_ate(target,
+						kbdev->mmu_mode->entry_set_ate(kbdev, target,
 								phys[i], flags, cur_level);
 						header_flags++;
 					}
 					else
 					{
-						kbdev->mmu_mode->entry_set_ate_scramble_bit(target,
+						kbdev->mmu_mode->entry_set_ate_scramble_bit(kbdev, target,
 								phys[i], flags, cur_level);
 					}
 				} else
@@ -1603,13 +1611,13 @@ int kbase_mmu_insert_pages_with_scramble_bit_no_flush(struct kbase_device *kbdev
 #else
 				if (header_flags < header_page_number)
 				{
-					kbdev->mmu_mode->entry_set_ate(target,
+					kbdev->mmu_mode->entry_set_ate(kbdev, target,
 							phys[i], flags, cur_level);
 					header_flags++;
 				}
 				else
 				{
-					kbdev->mmu_mode->entry_set_ate_scramble_bit(target,
+					kbdev->mmu_mode->entry_set_ate_scramble_bit(kbdev, target,
 							phys[i], flags, cur_level);
 				}
 #endif
@@ -1725,7 +1733,7 @@ static void kbase_mmu_flush_invalidate_noretain(struct kbase_context *kctx,
 #ifdef CONFIG_HISI_ENABLE_HPM_DATA_COLLECT
 		/*benchmark data collect */
 		if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0009)) {
-			BUG_ON(1);  //lint !e730
+			BUG_ON(1);//lint !e730
 		}
 #endif
 		if (kbase_prepare_to_reset_gpu_locked(kbdev))
@@ -1747,6 +1755,7 @@ static void kbase_mmu_flush_invalidate_noretain(struct kbase_context *kctx,
 
 /* Perform a flush/invalidate on a particular address space
  */
+/*lint -e514*/
 static void kbase_mmu_flush_invalidate_as(struct kbase_device *kbdev,
 		struct kbase_as *as,
 		u64 vpfn, size_t nr, bool sync, bool drain_pending)
@@ -1784,7 +1793,7 @@ static void kbase_mmu_flush_invalidate_as(struct kbase_device *kbdev,
 #ifdef CONFIG_HISI_ENABLE_HPM_DATA_COLLECT
 				/*benchmark data collect */
 				if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0009)) {
-					BUG_ON(1);  //lint !e730
+					BUG_ON(1);//lint !e730
 				}
 #endif
 		/* for AS BIT STUCK most time GPU is total abnormal, so softstop and
@@ -1817,7 +1826,7 @@ static void kbase_mmu_flush_invalidate_as(struct kbase_device *kbdev,
 
 	kbase_pm_context_idle(kbdev);
 }
-
+/*lint +e514*/
 static void kbase_mmu_flush_invalidate_no_ctx(struct kbase_device *kbdev,
 		u64 vpfn, size_t nr, bool sync, int as_nr)
 {
@@ -1914,6 +1923,8 @@ KBASE_EXPORT_TEST_API(kbase_mmu_disable);
  * already held by the caller. Refer to kbasep_js_runpool_release_ctx() for more
  * information.
  */
+/*lint -e647*/
+/*lint -e679*/
 int kbase_mmu_teardown_pages(struct kbase_device *kbdev,
 	struct kbase_mmu_table *mmut, u64 vpfn, size_t nr, int as_nr)
 {
@@ -2034,7 +2045,8 @@ out:
 
 	return err;
 }
-
+/*lint +e647*/
+/*lint +e679*/
 KBASE_EXPORT_TEST_API(kbase_mmu_teardown_pages);
 
 /**
@@ -2053,6 +2065,7 @@ KBASE_EXPORT_TEST_API(kbase_mmu_teardown_pages);
  * @nr:    Number of pages to update
  * @flags: Flags
  */
+/*lint -e679*/
 static int kbase_mmu_update_pages_no_flush(struct kbase_context *kctx, u64 vpfn,
 					struct tagged_addr *phys, size_t nr,
 					unsigned long flags)
@@ -2110,7 +2123,7 @@ static int kbase_mmu_update_pages_no_flush(struct kbase_context *kctx, u64 vpfn,
 		}
 
 		for (i = 0; i < count; i++)
-			mmu_mode->entry_set_ate(&pgd_page[index + i], phys[i],
+			mmu_mode->entry_set_ate(kctx->kbdev, &pgd_page[index + i], phys[i],
 						flags, MIDGARD_MMU_BOTTOMLEVEL);
 
 		phys += count;
@@ -2131,7 +2144,7 @@ fail_unlock:
 	mutex_unlock(&kctx->mmu.mmu_lock);
 	return err;
 }
-
+/*lint +e679*/
 int kbase_mmu_update_pages(struct kbase_context *kctx, u64 vpfn,
 			   struct tagged_addr *phys, size_t nr,
 			   unsigned long flags)
@@ -2227,7 +2240,7 @@ int kbase_mmu_init(struct kbase_device *kbdev, struct kbase_mmu_table *mmut,
 
 	return 0;
 }
-
+/*lint -e648*/
 void kbase_mmu_term(struct kbase_device *kbdev, struct kbase_mmu_table *mmut)
 {
 	if (mmut->pgd) {
@@ -2243,7 +2256,7 @@ void kbase_mmu_term(struct kbase_device *kbdev, struct kbase_mmu_table *mmut)
 	kfree(mmut->mmu_teardown_pages);
 	mutex_destroy(&mmut->mmu_lock);
 }
-
+/*lint +e648*/
 static size_t kbasep_mmu_dump_level(struct kbase_context *kctx, phys_addr_t pgd, int level, char ** const buffer, size_t *size_left)
 {
 	phys_addr_t target_pgd;
@@ -2427,7 +2440,7 @@ void bus_fault_worker(struct work_struct *data)
 #ifdef CONFIG_HISI_ENABLE_HPM_DATA_COLLECT
 		/*benchmark data collect */
 		if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0009)) {
-			BUG_ON(1);  //lint !e730
+			BUG_ON(1);//lint !e730
 		}
 #endif
 		reset_status = kbase_prepare_to_reset_gpu(kbdev);
@@ -2659,6 +2672,8 @@ static const char *access_type_name(struct kbase_device *kbdev,
 /**
  * The caller must ensure it's retained the ctx to prevent it from being scheduled out whilst it's being worked on.
  */
+/*lint -e674*/
+/*lint -e647*/
 static void kbase_mmu_report_fault_and_kill(struct kbase_context *kctx,
 		struct kbase_as *as, const char *reason_str)
 {
@@ -2713,7 +2728,7 @@ static void kbase_mmu_report_fault_and_kill(struct kbase_context *kctx,
 #ifdef CONFIG_HISI_ENABLE_HPM_DATA_COLLECT
 	/*benchmark data collect */
 	if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0009)) {
-		BUG_ON(1);  //lint !e730
+		BUG_ON(1);//lint !e730
 	}
 #endif
 	/* hardware counters dump fault handling */
@@ -2721,7 +2736,6 @@ static void kbase_mmu_report_fault_and_kill(struct kbase_context *kctx,
 			(kbdev->hwcnt.backend.state ==
 						KBASE_INSTR_STATE_DUMPING)) {
 		unsigned int num_core_groups = kbdev->gpu_props.num_core_groups;
-
 		if ((as->fault_addr >= kbdev->hwcnt.addr) &&
 				(as->fault_addr < (kbdev->hwcnt.addr +
 						(num_core_groups * 2048))))
@@ -2754,12 +2768,12 @@ static void kbase_mmu_report_fault_and_kill(struct kbase_context *kctx,
 #ifdef CONFIG_HISI_ENABLE_HPM_DATA_COLLECT
 		/*benchmark data collect */
 		if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0009)) {
-			BUG_ON(1);  //lint !e730
+			BUG_ON(1);//lint !e730
 		}
 #endif
 #ifdef CONFIG_MALI_GPU_BUG_ON
 		if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0016)) {
-			BUG_ON(1);  //lint !e730
+			BUG_ON(1);//lint !e730
 		}
 #endif
 		reset_status = kbase_prepare_to_reset_gpu(kbdev);
@@ -2783,7 +2797,8 @@ static void kbase_mmu_report_fault_and_kill(struct kbase_context *kctx,
 		kbase_reset_gpu(kbdev);
 #endif /* KBASE_GPU_RESET_EN */
 }
-
+/*lint +e647*/
+/*lint +e674*/
 void kbasep_as_do_poke(struct work_struct *work)
 {
 	struct kbase_as *as;
@@ -2982,7 +2997,7 @@ void kbase_mmu_interrupt_process(struct kbase_device *kbdev, struct kbase_contex
 #ifdef CONFIG_HISI_ENABLE_HPM_DATA_COLLECT
 			/*benchmark data collect */
 			if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0009)) {
-				BUG_ON(1);  //lint !e730
+				BUG_ON(1);//lint !e730
 			}
 #endif
 			reset_status = kbase_prepare_to_reset_gpu_locked(kbdev);

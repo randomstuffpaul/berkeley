@@ -284,6 +284,15 @@ oal_void hmac_chr_get_disasoc_reason(hmac_chr_disasoc_reason_stru *pst_disasoc_r
     return;
 }
 
+oal_void hmac_chr_set_ba_session_num(oal_uint8 uc_ba_num)
+{
+    hmac_chr_del_ba_info_stru *pst_del_ba_info = OAL_PTR_NULL;
+
+    pst_del_ba_info = hmac_chr_del_ba_info_get_pointer();
+    pst_del_ba_info->uc_ba_num = uc_ba_num;
+    return;
+}
+
 /*打点*/
 /*梳理删减聚合的流程 计数统计*/
 oal_void hmac_chr_set_del_ba_info(oal_uint8 uc_tid, oal_uint16 reason_id)
@@ -304,8 +313,8 @@ oal_void hmac_chr_get_del_ba_info(mac_vap_stru *pst_mac_vap, hmac_chr_del_ba_inf
     hmac_chr_del_ba_info_stru *pst_del_ba_info = OAL_PTR_NULL;
 
     pst_del_ba_info = hmac_chr_del_ba_info_get_pointer();
-    
-    pst_del_ba_reason->uc_ba_num = mac_mib_get_TxBASessionNumber(pst_mac_vap);
+
+    pst_del_ba_reason->uc_ba_num = pst_del_ba_info->uc_ba_num;
     pst_del_ba_reason->uc_del_ba_tid = pst_del_ba_info->uc_del_ba_tid;
     pst_del_ba_reason->en_del_ba_reason = pst_del_ba_info->en_del_ba_reason;
 

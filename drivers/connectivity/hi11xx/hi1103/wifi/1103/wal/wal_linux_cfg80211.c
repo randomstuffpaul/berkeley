@@ -55,6 +55,10 @@ extern "C" {
 #endif
 #include "hmac_dfs.h"
 
+#if (_PRE_OS_VERSION_LINUX == _PRE_OS_VERSION)
+#include "board.h"
+#endif
+
 #undef  THIS_FILE_ID
 #define THIS_FILE_ID OAM_FILE_ID_WAL_LINUX_CFG80211_C
 #define WAL_BCN_BSSID_LENGTH_ADDR    (37)
@@ -2726,13 +2730,13 @@ OAL_STATIC oal_int32 wal_cfg80211_fill_beacon_param(oal_net_device_stru *pst_net
                                                            mac_beacon_param_stru       *pst_beacon_param)
 {
     oal_beacon_parameters st_beacon_info_tmp;
-    oal_uint32  ul_ret;
-    oal_uint8  *puc_beacon_info_tmp;
-    oal_uint32  ul_beacon_head_len;
-    oal_uint32  ul_beacon_tail_len;
-    oal_uint8   uc_vap_id;
+    oal_uint32    ul_ret;
+    oal_uint8    *puc_beacon_info_tmp;
+    oal_uint32    ul_beacon_head_len;
+    oal_uint32    ul_beacon_tail_len;
+    oal_uint8     uc_vap_id;
+    oal_uint32    ul_offset;
     mac_vap_stru *pst_mac_vap;
-
 
     if (OAL_PTR_NULL == pst_netdev
        || OAL_PTR_NULL == pst_beacon_info
@@ -2758,6 +2762,14 @@ OAL_STATIC oal_int32 wal_cfg80211_fill_beacon_param(oal_net_device_stru *pst_net
     {
         OAM_ERROR_LOG2(uc_vap_id, OAM_SF_ANY, "{wal_cfg80211_fill_beacon_param::beacon frame error tail = %x, head = %x!}",
                        pst_beacon_info->tail, pst_beacon_info->head);
+        return -OAL_EINVAL;
+    }
+
+    ul_offset = MAC_TIME_STAMP_LEN + MAC_BEACON_INTERVAL_LEN + MAC_CAP_INFO_LEN;
+    /* oal_ieee80211_mgmt 前面公共部分size为 MAC_80211_FRAME_LEN(24)  */
+    if (pst_beacon_info->head_len < (ul_offset + MAC_80211_FRAME_LEN))
+    {
+        OAM_ERROR_LOG1(0, OAM_SF_CFG, "{wal_cfg80211_fill_beacon_param::pst_beacon_info head_len[%d] error.}", pst_beacon_info->head_len);
         return -OAL_EINVAL;
     }
 
@@ -6749,8 +6761,8 @@ OAL_STATIC oal_int32 wal_cfg2io_fill_beacon_param(mac_vap_stru               *ps
     oal_uint8  *puc_beacon_info_tmp;
     oal_uint32  ul_beacon_head_len;
     oal_uint32  ul_beacon_tail_len;
+    oal_uint32  ul_offset;
     oal_uint8   uc_vap_id;
-
 
     if (OAL_PTR_NULL == pst_mac_vap
        || OAL_PTR_NULL == pst_beacon_info
@@ -6769,6 +6781,14 @@ OAL_STATIC oal_int32 wal_cfg2io_fill_beacon_param(mac_vap_stru               *ps
     {
         OAM_ERROR_LOG2(uc_vap_id, OAM_SF_ANY, "{wal_cfg2io_fill_beacon_param::beacon frame error tail = %x, head = %x!}",
                        pst_beacon_info->tail, pst_beacon_info->head);
+        return -OAL_EINVAL;
+    }
+
+    ul_offset = MAC_TIME_STAMP_LEN + MAC_BEACON_INTERVAL_LEN + MAC_CAP_INFO_LEN;
+    /* oal_ieee80211_mgmt 前面公共部分size为 MAC_80211_FRAME_LEN(24)  */
+    if (pst_beacon_info->head_len < (ul_offset + MAC_80211_FRAME_LEN))
+    {
+        OAM_ERROR_LOG1(0, OAM_SF_CFG, "{wal_cfg2io_fill_beacon_param::pst_beacon_info head_len[%d] error. }", pst_beacon_info->head_len);
         return -OAL_EINVAL;
     }
 
@@ -7102,6 +7122,7 @@ oal_uint32 wal_cfg80211_tas_rssi_access_report(frw_event_mem_stru *pst_event_mem
     hmac_vap_stru                       *pst_hmac_vap;
     oal_uint8                            uc_vap_idx;
     dmac_tas_rssi_notify_stru           *pst_tas_rssi_comp_status;
+    oal_int32                            l_tas_state;
 
     if (OAL_UNLIKELY(OAL_PTR_NULL == pst_event_mem))
     {
@@ -7122,8 +7143,9 @@ oal_uint32 wal_cfg80211_tas_rssi_access_report(frw_event_mem_stru *pst_event_mem
 
     pst_tas_rssi_comp_status  = (dmac_tas_rssi_notify_stru *)(pst_event->auc_event_data);
 
-    OAM_WARNING_LOG2(uc_vap_idx, OAM_SF_ANY, "{wal_cfg80211_tas_rssi_access_report::core[%d] c_ant0_rssi[%d].}",
-                     pst_tas_rssi_comp_status->l_core_idx, pst_tas_rssi_comp_status->l_rssi);
+    l_tas_state = board_get_wifi_tas_gpio_state();
+    OAM_WARNING_LOG3(uc_vap_idx, OAM_SF_ANY, "{wal_cfg80211_tas_rssi_access_report::core[%d] c_ant[%d] rssi[%d].}",
+                     pst_tas_rssi_comp_status->l_core_idx, l_tas_state, pst_tas_rssi_comp_status->l_rssi);
 
     /* 上报内核 */
     oal_cfg80211_tas_rssi_access_report(pst_hmac_vap->pst_net_device, GFP_KERNEL, (oal_uint8 *)pst_tas_rssi_comp_status,

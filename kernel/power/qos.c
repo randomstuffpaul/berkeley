@@ -180,6 +180,23 @@ static struct pm_qos_object acpuddr_link_gov_lvl_pm_qos = {
 	.name = "acpuddr_link_governor_level",
 };
 #endif
+
+#ifdef CONFIG_HISI_NPUFREQ_PM_QOS
+static BLOCKING_NOTIFIER_HEAD(hisi_npu_freq_dnlimit_notifier);
+static struct pm_qos_constraints hisi_npu_freq_dnlimit_constraints = {
+	.list = PLIST_HEAD_INIT(hisi_npu_freq_dnlimit_constraints.list),
+	.target_value = PM_QOS_HISI_NPU_FREQ_DNLIMIT_DEFAULT_VALUE,
+	.default_value = PM_QOS_HISI_NPU_FREQ_DNLIMIT_DEFAULT_VALUE,
+	.no_constraint_value = PM_QOS_HISI_NPU_FREQ_DNLIMIT_DEFAULT_VALUE,
+	.type = PM_QOS_MIN,
+	.notifiers = &hisi_npu_freq_dnlimit_notifier,
+};
+static struct pm_qos_object hisi_npu_freq_dnlimit_pm_qos = {
+	.constraints = &hisi_npu_freq_dnlimit_constraints,
+	.name = "npu_freq_dnlimit",
+};
+#endif
+
 static struct pm_qos_object *pm_qos_array[] = {
 	&null_pm_qos,
 	&cpu_dma_pm_qos,
@@ -193,6 +210,9 @@ static struct pm_qos_object *pm_qos_array[] = {
 #endif
 #ifdef CONFIG_HISI_CPUDDR_FREQ_LINK
 	&acpuddr_link_gov_lvl_pm_qos,
+#endif
+#ifdef CONFIG_HISI_NPUFREQ_PM_QOS
+	&hisi_npu_freq_dnlimit_pm_qos,
 #endif
 };
 

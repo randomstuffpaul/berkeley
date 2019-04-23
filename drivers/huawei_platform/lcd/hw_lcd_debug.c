@@ -13,6 +13,7 @@
 #include "hw_lcd_debug.h"
 #include <asm/uaccess.h>
 #include <linux/ctype.h>
+#include <securec.h>
 #define IS_VALID_CHAR(_ch) ((_ch >= '0' && _ch <= '9')?1:\
                             (_ch >= 'a' && _ch <= 'f')?1:(_ch >= 'A' && _ch <= 'F'))?1:0
 
@@ -214,7 +215,7 @@ int hw_parse_dsi_cmds(struct dsi_panel_cmds* pcmds)
 	struct dsi_cmd_desc* cmds_temp;
 	int i = 0, cnt = 0;
 
-	memset(pcmds, 0, sizeof(struct dsi_panel_cmds));
+	(void)memset_s(pcmds, sizeof(struct dsi_panel_cmds), 0, sizeof(struct dsi_panel_cmds));
 
 	if (!lcd_debug_malloc_dtsi_para((void**)&buf, &blen)) {
 		HISI_FB_ERR("failed\n");
@@ -415,47 +416,47 @@ static ssize_t lcd_dbg_read(struct file* file,  char __user* buff, size_t count,
 	if (*ppos)
 	{ return 0; }
 	/* show usage */
-	len = snprintf(cur, buf_len, "Usage: \n");
+	len = snprintf_s(cur, buf_len, buf_len - 1, "Usage: \n");
 	buf_len -= len;
 	cur += len;
 
-	len = snprintf(cur, buf_len, "\teg. echo \"set_init_param:1\" > hw_lcd_debug to open set init parameter\n");
+	len = snprintf_s(cur, buf_len, buf_len - 1, "\teg. echo \"set_init_param:1\" > hw_lcd_debug to open set init parameter\n");
 	buf_len -= len;
 	cur += len;
 
-	len = snprintf(cur, buf_len, "\teg. echo \"set_init_param:0\" > hw_lcd_debug to close set init parameter\n");
+	len = snprintf_s(cur, buf_len, buf_len - 1, "\teg. echo \"set_init_param:0\" > hw_lcd_debug to close set init parameter\n");
 	buf_len -= len;
 	cur += len;
 
-	len = snprintf(cur, buf_len, "\teg. echo \"set_mipi_clock:486\" > hw_lcd_debug to set mipi clock\n");
+	len = snprintf_s(cur, buf_len, buf_len - 1, "\teg. echo \"set_mipi_clock:486\" > hw_lcd_debug to set mipi clock\n");
 	buf_len -= len;
 	cur += len;
 
-	len = snprintf(cur, buf_len, "\teg. echo \"lcd_esd_debug_enable:0/1\" > hw_lcd_debug to set mipi clock\n");
+	len = snprintf_s(cur, buf_len, buf_len - 1, "\teg. echo \"lcd_esd_debug_enable:0/1\" > hw_lcd_debug to set mipi clock\n");
 	buf_len -= len;
 	cur += len;
 
-	len = snprintf(cur, buf_len, "\teg. echo \"set_panel_vsp_vsn:5400000\" > hw_lcd_debug to set vsp/vsn voltage\n");
+	len = snprintf_s(cur, buf_len, buf_len - 1, "\teg. echo \"set_panel_vsp_vsn:5400000\" > hw_lcd_debug to set vsp/vsn voltage\n");
 	buf_len -= len;
 	cur += len;
 
-	len = snprintf(cur, buf_len, "\teg. echo \"lcd_esd_debug_reset:1\" > hw_lcd_debug to reset esd debug\n");
+	len = snprintf_s(cur, buf_len, buf_len - 1, "\teg. echo \"lcd_esd_debug_reset:1\" > hw_lcd_debug to reset esd debug\n");
 	buf_len -= len;
 	cur += len;
 
-	len = snprintf(cur, buf_len, "\teg. echo \"lcd_esd_debug_bl_enable:0/1\" > hw_lcd_debug to disable/enable write backlight enable\n");
+	len = snprintf_s(cur, buf_len, buf_len - 1, "\teg. echo \"lcd_esd_debug_bl_enable:0/1\" > hw_lcd_debug to disable/enable write backlight enable\n");
 	buf_len -= len;
 	cur += len;
 
-	len = snprintf(cur, buf_len, "\teg. echo \"lcd_esd_debug_bl_set:0/1\" > hw_lcd_debug to disable/enable write backlight\n");
+	len = snprintf_s(cur, buf_len, buf_len - 1, "\teg. echo \"lcd_esd_debug_bl_set:0/1\" > hw_lcd_debug to disable/enable write backlight\n");
 	buf_len -= len;
 	cur += len;
 
-	len = snprintf(cur, buf_len, "\teg. echo \"lcd_esd_debug_check_reg:0x0a,0x0b,...\" > hw_lcd_debug to set check reg\n");
+	len = snprintf_s(cur, buf_len, buf_len - 1, "\teg. echo \"lcd_esd_debug_check_reg:0x0a,0x0b,...\" > hw_lcd_debug to set check reg\n");
 	buf_len -= len;
 	cur += len;
 
-	len = snprintf(cur, buf_len, "\teg. echo \"lcd_esd_debug_check_value:0x9c,0x00,...\" > hw_lcd_debug to set reg value\n");
+	len = snprintf_s(cur, buf_len, buf_len - 1, "\teg. echo \"lcd_esd_debug_check_value:0x9c,0x00,...\" > hw_lcd_debug to set reg value\n");
 	buf_len -= len;
 	cur += len;
 
@@ -480,6 +481,7 @@ static ssize_t lcd_dbg_write(
 	int cmd_type = -1;
 	int cnt = 0, i;
 	int val;
+        unsigned long val_long;
 	int reg = 0;
 	char lcd_debug_buf[256];
 	int length = sizeof(g_cmd_list) / sizeof(lcd_dbg_cmds);
@@ -581,7 +583,7 @@ static ssize_t lcd_dbg_write(
 				goto err_handle;
 			}
 			if (val) {
-				memset(&g_esd_debug, 0, sizeof(struct esd_debug));
+				(void)memset_s(&g_esd_debug, sizeof(struct esd_debug), 0, sizeof(struct esd_debug));
 			}
 			HISI_FB_DEBUG("g_esd_debug reset\n");
 			break;
@@ -611,11 +613,12 @@ static ssize_t lcd_dbg_write(
 				ptr2++;
 			}
 			while (ptr1) {
-				ret = strict_strtoul(ptr1, 0, &val);
+				ret = strict_strtoul(ptr1, 0, &val_long);
 				if (ret) {
 					HISI_FB_ERR("strict_strtoul error, buf=%s", ptr1);
 					return ret;
 				}
+                                val = (int)val_long;
 				if (g_esd_debug.check_count >= 8) {
 					HISI_FB_ERR("check reg is too much.\n");
 					break;
@@ -640,11 +643,12 @@ static ssize_t lcd_dbg_write(
 				ptr2++;
 			}
 			while (ptr1) {
-				ret = strict_strtoul(ptr1, 0, &val);
+				ret = strict_strtoul(ptr1, 0, &val_long);
 				if (ret) {
 					HISI_FB_ERR("strict_strtoul error, buf=%s", ptr1);
 					return ret;
 				}
+				val = (int)val_long;
 				if (cnt >= 8) {
 					HISI_FB_ERR("check reg is too much.\n");
 					break;

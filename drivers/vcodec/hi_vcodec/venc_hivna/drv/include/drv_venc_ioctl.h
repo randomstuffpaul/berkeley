@@ -30,6 +30,23 @@ typedef struct
 
 typedef struct
 {
+	HI_U32 recLumaSize;
+	HI_U32 recChromaSize;
+	HI_U32 recLumaHeadSize;
+	HI_U32 recChromaHeadSize;
+	HI_U32 qpgldSize;
+	HI_U32 nbiSize;
+	HI_U32 pmeSize;
+	HI_U32 pmeInfoSize;
+	HI_U32 veduSrcYLength;
+	HI_U32 veduSrcCLength;
+	HI_U32 veduSrcVLength;
+	HI_U32 veduSrcYHLength;
+	HI_U32 veduSrcCHLength;
+}VENC_BUFFER_ALLOC_INFO;
+
+typedef struct
+{
 	CMD_TYPE cmd;
 
 	HI_BOOL bResetReg;
@@ -40,6 +57,7 @@ typedef struct
 	S_HEVC_AVC_REGS_TYPE_CFG all_reg;
 	VENC_CLK_TYPE clk_type;
 	VENC_MEM_INFO_S mem_info;
+	VENC_BUFFER_ALLOC_INFO venc_inter_buffer;
 }VENC_REG_INFO_S;
 
 #define CMD_VENC_START_ENCODE          _IOWR(IOC_TYPE_VENC, 0x32, VENC_REG_INFO_S)

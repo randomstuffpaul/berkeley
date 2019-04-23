@@ -4983,7 +4983,7 @@ static int rgb_cal_result_write_file(char *filename, char *param)
 	if (IS_ERR_OR_NULL(fop)) {
 		set_fs(old_fs);
 		hwlog_err
-		    ("Create file error!! Path = %s IS_ERR_OR_NULL(fop) = %d fop = %Kp\n",
+		    ("Create file error!! Path = %s IS_ERR_OR_NULL(fop) = %d fop = %pK\n",
 		     filename, IS_ERR_OR_NULL(fop), fop);
 		return -1;
 	}
@@ -7711,6 +7711,10 @@ int mcu_sys_ready_callback(const pkt_header_t *head)
 		ret = sensor_set_fw_load();
 		if (ret < 0) {
 			hwlog_err("sensor fw dload err ret=%d\n", ret);
+		}
+		ret = motion_set_cfg_data();
+		if (ret < 0) {
+			hwlog_err("motion set cfg data err ret=%d\n", ret);
 		}
 		unregister_mcu_event_notifier(TAG_SYS, CMD_SYS_STATUSCHANGE_REQ,
 					      mcu_sys_ready_callback);

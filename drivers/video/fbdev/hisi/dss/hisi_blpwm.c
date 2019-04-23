@@ -151,7 +151,7 @@ extern struct mutex g_rgbw_lock;
 #define BL_LVL_MAP_SIZE	(2047)
 #define BL_MAX_11BIT (2047)
 #define BL_MAX_12BIT (4095)
-static int bl_lvl_map(int level)
+int bl_lvl_map(int level)
 {
 	int ret = 0;
 	int idx = 0;
@@ -192,6 +192,11 @@ static void init_bl_info(struct hisi_panel_info *pinfo)
 	g_bl_info.bl_min = pinfo->bl_min;
 	g_bl_info.ap_brightness = 0;
 	g_bl_info.last_ap_brightness = 0;
+
+	if(pinfo == NULL){
+		HISI_FB_ERR("pinfo is null pointer\n");
+		return;
+	}
 
 	if (pinfo->blpwm_input_precision == 0)
 		pinfo->blpwm_input_precision = PWM_IN_PRECISION_DEFAULT;
@@ -361,6 +366,11 @@ static void get_ap_dimming_to_update_backlight(struct hisi_fb_data_type *hisifd)
 	int32_t delta_cabc_pwm = 0;
 	int32_t pwm_duty = 0;
 	int32_t backlight = 0;
+
+	if(hisifd == NULL){
+		HISI_FB_ERR("hisifd is null pointer\n");
+		return;
+	}
 
 	HISI_FB_DEBUG("cabc3:jump while\n");
     if (g_bl_info.index_cabc_dimming > CABC_DIMMING_STEP_TOTAL_NUM) {
@@ -556,6 +566,11 @@ static int calc_backlight(struct hisi_fb_data_type *hisifd, int32_t pwm_duty) {
 	delta_pwm_duty = pwm_duty - last_pwm_duty;
 	delta_pwm_duty_abs = abs(delta_pwm_duty);
 
+	if(hisifd == NULL){
+		HISI_FB_ERR("hisifd is null pointer\n");
+		return -1;
+	}
+
 	if ((delta_pwm_duty_abs <= 1) || ((delta_pwm_duty_abs == 3) && (last_delta_pwm_duty_abs==1))) {
 		g_bl_info.cabc_pwm_in = last_pwm_duty;
 	} else {
@@ -707,7 +722,14 @@ static void get_rgbw_pwmduty_to_update_backlight(struct hisi_fb_data_type *hisif
 	int dimming_stop = 0;
 	int temp_current_pwm_duty = 0;
 	struct hisi_fb_panel_data *pdata = NULL;
-	struct hisi_panel_info *pinfo = &(hisifd->panel_info);
+	struct hisi_panel_info *pinfo = NULL;
+
+	if(hisifd == NULL){
+		HISI_FB_ERR("hisifd is null pointer\n");
+		return;
+	}
+
+	pinfo = &(hisifd->panel_info);
 
 	if ((g_bl_info.last_ap_brightness == 0 && g_bl_info.ap_brightness != 0)) {
 		reset_pwm_buf(0xffff);
@@ -794,7 +816,12 @@ static int cabc_pwm_thread(void *p)
 {
 
 	struct hisi_fb_data_type *hisifd = NULL;
+
 	hisifd = (struct hisi_fb_data_type *)p;
+	if(hisifd == NULL){
+		HISI_FB_ERR("hisifd is null pointer\n");
+		return -1;
+	}
 
 	while(!kthread_should_stop()) {
 		if (rgbw_lcd_support)
@@ -980,9 +1007,6 @@ int updateCabcPwm(struct hisi_fb_data_type *hisifd)
 	}
 
 err_out:
-	if (cabc_is_open == 0 && hiace_refresh) {
-		update_backlight(hisifd, g_bl_info.ap_brightness);
-	}
 
 	return ret;
 
@@ -1304,7 +1328,6 @@ static int hisi_blpwm_probe(struct platform_device *pdev)
 			ret = -ENXIO;
 			goto err_return;
 		}
-
 
 		dev_info(dev, "dss_blpwm_clk:[%lu]->[%lu].\n",
 				DEFAULT_PWM_CLK_RATE, clk_get_rate(g_dss_blpwm_clk));

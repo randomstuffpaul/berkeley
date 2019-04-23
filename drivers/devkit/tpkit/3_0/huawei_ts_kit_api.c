@@ -366,6 +366,22 @@ int ts_count_fingers(struct ts_fingers *fingers)
 
 	return count;
 }
+void ts_palm_report(struct ts_cmd_node* in_cmd, struct ts_cmd_node* out_cmd){
+	unsigned int key = 0;
+	struct input_dev *input_dev = g_ts_kit_platform_data.input_dev;
+
+	if(!input_dev || !in_cmd){
+		TS_LOG_ERR("The command node or input device is not exist!\n");
+		return;
+	}
+	key = in_cmd->cmd_param.pub_params.ts_key;
+	TS_LOG_INFO("%s is called, palm_button_key is %d\n", __func__, key);
+	input_report_key(input_dev, key, 1); /* 1 report key_event DOWN  */
+	input_sync(input_dev);
+	input_report_key(input_dev, key, 0); /* 0 report key_event UP */
+	input_sync (input_dev);
+	atomic_set(&g_ts_kit_data_report_over, 1);
+}
 
 void ts_report_input(struct ts_cmd_node *in_cmd, struct ts_cmd_node *out_cmd)
 {
@@ -447,27 +463,13 @@ static void send_up_msg_in_resume(void)
 	TS_LOG_DEBUG("send_up_msg_in_resume\n");
 	return;
 }
-#ifdef CONFIG_HUAWEI_DEVKIT_MTK_3_0
- enum kit_ts_pm_type
- {
- 	TS_BEFORE_SUSPEND = 0,
- 	TS_SUSPEND_DEVICE,
- 	TS_RESUME_DEVICE,
- 	TS_AFTER_RESUME,
- 	TS_EARLY_SUSPEND,
- 	TS_IC_SHUT_DOWN,
- };
-#endif
 
 int ts_power_off_control_mode(int irq_id,
 		     struct ts_cmd_node *in_cmd, struct ts_cmd_node *out_cmd)
 {
 	int error = NO_ERR;
-#ifndef CONFIG_HUAWEI_DEVKIT_MTK_3_0
 	enum lcd_kit_ts_pm_type pm_type = in_cmd->cmd_param.pub_params.pm_type;
-#else
-	int pm_type = in_cmd->cmd_param.pub_params.pm_type;
-#endif
+
 	struct ts_kit_device_data *dev = g_ts_kit_platform_data.chip_data;
 
 	switch (pm_type) {
@@ -573,11 +575,8 @@ int ts_power_off_no_config(int irq_id,
 		     struct ts_cmd_node *in_cmd, struct ts_cmd_node *out_cmd)
 {
 	int error = NO_ERR;
-#ifndef CONFIG_HUAWEI_DEVKIT_MTK_3_0
 	enum lcd_kit_ts_pm_type pm_type = in_cmd->cmd_param.pub_params.pm_type;
-#else
-	int pm_type = in_cmd->cmd_param.pub_params.pm_type;
-#endif
+
 	struct ts_kit_device_data *dev = g_ts_kit_platform_data.chip_data;
 
 	switch (pm_type) {
@@ -617,11 +616,7 @@ int ts_power_off_easy_wakeup_mode(int irq_id,
 		     struct ts_cmd_node *in_cmd, struct ts_cmd_node *out_cmd)
 {
 	int error = NO_ERR;
-#ifndef CONFIG_HUAWEI_DEVKIT_MTK_3_0
 	enum lcd_kit_ts_pm_type pm_type = in_cmd->cmd_param.pub_params.pm_type;
-#else
-	int pm_type = in_cmd->cmd_param.pub_params.pm_type;
-#endif
 	struct ts_kit_device_data *dev = g_ts_kit_platform_data.chip_data;
 
 	switch (pm_type) {
@@ -837,11 +832,8 @@ bool ts_cmd_need_process(struct ts_cmd_node * cmd)
 {
 	bool is_need_process = true;
 	struct ts_cmd_sync *sync = cmd->sync;
-#ifndef CONFIG_HUAWEI_DEVKIT_MTK_3_0
 	enum lcd_kit_ts_pm_type pm_type = cmd->cmd_param.pub_params.pm_type;
-#else
-	int pm_type = cmd->cmd_param.pub_params.pm_type;
-#endif
+
 	if (unlikely((atomic_read(&g_ts_kit_platform_data.state) == TS_SLEEP)
 		     || (atomic_read(&g_ts_kit_platform_data.state) ==
 			 TS_WORK_IN_SLEEP))) {
@@ -933,11 +925,8 @@ int ts_kit_power_notify_callback(struct notifier_block *self,
 		    notify_pm_type, timeout);
 	return ts_kit_power_control_notify(notify_pm_type, timeout);
 }
-#ifndef CONFIG_HUAWEI_DEVKIT_MTK_3_0
-int ts_kit_power_control_notify(int pm_type, int timeout)
-#else
-int ts_kit_power_control_notify(int pm_type, int timeout)
-#endif
+
+int ts_kit_power_control_notify(enum lcd_kit_ts_pm_type pm_type, int timeout)
 {
 	int error = 0;
 	struct ts_cmd_node cmd;
@@ -1258,37 +1247,6 @@ int ts_oem_info_switch(struct ts_cmd_node *in_cmd,
 
 	return error;
 }
-int ts_gamma_info_switch(struct ts_cmd_node *in_cmd,
-		       struct ts_cmd_node *out_cmd, struct ts_cmd_sync *sync)
-{
-	int error = NO_ERR;
-	struct ts_kit_device_data *dev = g_ts_kit_platform_data.chip_data;
-	struct ts_oem_info_param *info = (struct ts_oem_info_param *)in_cmd->cmd_param.prv_params;
-
-	TS_LOG_INFO("ts chip data switch called\n");
-	if (!info) {
-		TS_LOG_ERR("%s, info is NULL, exit\n", __func__);
-		return RESULT_ERR;
-	}
-
-	if (dev->ops->gamma_info_switch)
-		error = dev->ops->gamma_info_switch(info);
-
-	if ((sync != NULL) && (atomic_read(&sync->timeout_flag) == TS_TIMEOUT)) {
-		TS_LOG_ERR("ts_oem_info_switch_timeout\n");
-		if (info) {
-			kfree(info);
-		}
-		return error;
-	}
-
-	if (error)
-		info->status = TS_ACTION_FAILED;
-	else
-		info->status = TS_ACTION_SUCCESS;
-
-	return error;
-}
 
 int ts_get_chip_info(struct ts_cmd_node *in_cmd, struct ts_cmd_node *out_cmd)
 {
@@ -1526,7 +1484,7 @@ int ts_chip_detect(struct ts_cmd_node *in_cmd, struct ts_cmd_node *out_cmd)
 		atomic_set(&g_ts_kit_platform_data.register_flag, TS_REGISTER_DONE);
 		atomic_set(&g_ts_kit_platform_data.state, TS_WORK);
 		wake_up_process(g_ts_kit_platform_data.ts_init_task);
-#ifdef CONFIG_HUAWEI_HW_DEV_DCT
+#if defined(CONFIG_HUAWEI_DEV_SELFCHECK) || defined(CONFIG_HUAWEI_HW_DEV_DCT)
 		/* detect current device successful, set the flag as present */
 		set_tp_dev_flag();
 #endif

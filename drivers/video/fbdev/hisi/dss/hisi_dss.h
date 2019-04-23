@@ -79,6 +79,7 @@
 #define HISIFB_DISPLAY_ENGINE_PARAM_SET _IOW(HISIFB_IOCTL_MAGIC, 0x73, struct display_engine_param)
 
 #define HISIFB_DPTX_GET_COLOR_BIT_MODE _IOW(HISIFB_IOCTL_MAGIC, 0x80, int)
+#define HISIFB_DPTX_GET_SOURCE_MODE _IOW(HISIFB_IOCTL_MAGIC, 0x81, int)
 
 #ifndef BIT
 #define BIT(x)	(1<<(x))
@@ -487,6 +488,7 @@ enum {
 
 typedef struct mdc_ch_info {
 	uint32_t hold_flag;
+	uint32_t is_drm;
 	uint32_t rch_need_cap;
 	uint32_t wch_need_cap;
 	int32_t rch_idx;

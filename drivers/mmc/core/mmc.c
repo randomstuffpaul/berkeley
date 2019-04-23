@@ -2200,12 +2200,21 @@ static int _mmc_suspend(struct mmc_host *host, bool is_suspend)
 	if (mmc_can_sleep(host->card)){
 		if (mmc_can_poweroff_notify(host->card) &&
 			((host->caps2 & MMC_CAP2_FULL_PWR_CYCLE && mmc_can_sleep_notify(host->card)) || !is_suspend)) {
-			err = mmc_poweroff_notify(host->card, notify_type);
-			if (err)
-				goto out;
+			if (is_suspend || !(host->card->quirks & MMC_QUIRK_DISABLE_PON)) {
+				err = mmc_poweroff_notify(host->card, notify_type);
+				if (err)
+					goto out;
+			} else {
+				pr_err("ignore pon for micron 3D \n");
+			}
 		}
 #ifdef CONFIG_HISI_MMC
-		err = mmc_card_sleep(host);
+		if (!((host->card->quirks & MMC_QUIRK_CANCEL_CMD7_CMD5_IN_SR) &&
+			is_suspend))
+			err = mmc_card_sleep(host);
+		else
+			pr_debug("do not send cmd7/cmd5 in suspend\n");
+
 		/*if sleep(send cmd5 failed),we reinit the card
 		 *we don't need to reinit when shut down
 		 */
@@ -2286,6 +2295,16 @@ static int _mmc_resume(struct mmc_host *host)
 					break;
 				}
 			}
+			/*repower again for mmc resume cmd1 timeout issue*/
+			if(err)
+			{
+				hisi_mmc_power_off(host);
+				mdelay(200);
+				hisi_mmc_power_up(host);
+				mdelay(100);
+				err = mmc_init_card(host, host->card->ocr, host->card);
+				pr_err("%s invoke mmc_init_card() again after power_cycle err = %d\n", __func__, err);
+			}
 			mmc_card_clr_suspended(host->card);
 			goto out;
 		}
@@ -2299,7 +2318,11 @@ static int _mmc_resume(struct mmc_host *host)
 		&& mmc_can_sleep_notify(host->card))
 		host->card->ext_csd.power_off_notification = EXT_CSD_POWER_ON;
 #ifdef CONFIG_HISI_MMC
-	err = mmc_card_awake(host);/*according to K3 modify*/
+	if (!(host->card->quirks & MMC_QUIRK_CANCEL_CMD7_CMD5_IN_SR))
+		err = mmc_card_awake(host);
+	else
+		pr_debug("do not send cmd7/cmd5 in resume\n");
+
 	if (err) {
 		pr_err("%s awake failed err=%d\n", __func__, err);
 		mmc_power_off(host);

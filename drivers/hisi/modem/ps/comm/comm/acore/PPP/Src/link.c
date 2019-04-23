@@ -55,9 +55,9 @@
 /*****************************************************************************
    1 协议栈打印打点方式下的.C文件宏定义
 *****************************************************************************/
-/*lint -e767  修改人: z57034; 检视人: g45205 原因简述: 打点日志文件宏ID定义 */
+/*lint -e767  原因简述: 打点日志文件宏ID定义 */
 #define    THIS_FILE_ID        PS_FILE_ID_LINK_C
-/*lint +e767  修改人: z57034; 检视人: g45205 */
+/*lint +e767   */
 
 
 /******************************************************************************
@@ -82,7 +82,14 @@ void ParentLayerFinish (void *p, struct fsm *fsm);
 *****************************************************************************/
 struct link*            pgPppLink = VOS_NULL_PTR;
 
-PPP_HDLC_CONFIG_STRU    g_astHdlcConfig[PPP_MAX_ID_NUM] = {{0, 0, 0, 0}};
+PPP_HDLC_CONFIG_STRU    g_astHdlcConfig[PPP_MAX_ID_NUM] = {
+    [0] = {
+            .pFunProcData = VOS_NULL_PTR,
+            .pFunProcProtocolPacket = VOS_NULL_PTR,
+            .pFunDisable = VOS_NULL_PTR,
+            .pFunProcAsFrmData = VOS_NULL_PTR
+    }
+};
 
 PPP_HDLC_CONFIG_STRU    *g_pstHdlcConfig = &g_astHdlcConfig[0];
 
@@ -395,7 +402,7 @@ VOS_UINT32 PPP_SendPulledData(VOS_UINT16 usPppId,  PPP_ZC_STRU *pstImmZc)
     VOS_UINT32                         ulResult;
 
 
-    /*Add by y45445*/
+ 
     /* 通过usPppId，寻找到usRabId */
     if ( !PPP_PPPID_TO_RAB(usPppId, &ucRabId) )
     {
@@ -407,7 +414,7 @@ VOS_UINT32 PPP_SendPulledData(VOS_UINT16 usPppId,  PPP_ZC_STRU *pstImmZc)
 
         return PS_FAIL;
     }
-    /*Add by y45445*/
+
 
     /* 数据发送给ADS，如果失败则释放内存 */
     ulResult = ADS_UL_SendPacket(pstImmZc, ucRabId);

@@ -473,9 +473,38 @@ static int fan54151_config_sovp_threshold(int sovp_threshold)
 	return ret;
 }
 
+/**********************************************************
+*  Function:        fan54151_charge_status
+*  Discription:     return the status of cur module
+*  Parameters:    void
+*  return value:   0-sucess or others-fail
+**********************************************************/
+static int fan54151_charge_status(void)
+{
+	struct fan54151_device_info *di = g_fan54151_dev;
+	if (NULL == di)
+	{
+		hwlog_err("%s: di is NULL\n", __func__);
+		return -1;
+	}
+
+	if (di->chip_already_init == 1)
+		return 0;
+
+	hwlog_err("%s = %d\n", __func__, di->chip_already_init);
+	return -1;
+}
+
 static int fan54151_charge_init(void)
 {
 	int ret = 0;
+	struct fan54151_device_info *di = g_fan54151_dev;
+	if (NULL == di)
+	{
+		hwlog_err("%s: di is NULL\n", __func__);
+		return -1;
+	}
+
 	ret = fan54151_write_byte(FAN54151_PROTECT_ENABLE , 0);
 	if (ret)
 	{
@@ -485,12 +514,23 @@ static int fan54151_charge_init(void)
 	ret |= fan54151_config_ocp_threshold(6200);
 	ret |= fan54151_config_sovp_threshold(4575);
 
+	if (!ret)
+		di->chip_already_init = 1;
+
 	return ret;
 }
 static int fan54151_charge_exit(void)
 {
 	int ret = 0;
+	struct fan54151_device_info *di = g_fan54151_dev;
+	if (NULL == di)
+	{
+		hwlog_err("%s: di is NULL\n", __func__);
+		return -1;
+	}
+
 	/*do nothing, cause in main loadswitch , reset pin has already been pull high*/
+	di->chip_already_init = 0;
 	return ret;
 }
 static int fan54151_enable(int enable)
@@ -520,6 +560,7 @@ static struct loadswitch_ops fan54151_aux_ops = {
 	.ls_init = fan54151_charge_init,
 	.ls_exit = fan54151_charge_exit,
 	.ls_enable = fan54151_enable,
+	.ls_status = fan54151_charge_status,
 };
 
 /**********************************************************
@@ -587,6 +628,7 @@ static int fan54151_probe(struct i2c_client *client, const struct i2c_device_id 
 		return -ENOMEM;
 	}
 	g_fan54151_dev = di;
+	di->chip_already_init = 0;
 	di->dev = &client->dev;
 	np = di->dev->of_node;
 	di->client = client;

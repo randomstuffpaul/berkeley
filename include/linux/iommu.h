@@ -37,6 +37,8 @@
 #define IOMMU_EXEC      (1 << 9)
 #endif
 
+#define IOMMU_NO_LB_MAP	(1 << 10)
+
 struct iommu_ops;
 struct iommu_group;
 struct bus_type;
@@ -227,14 +229,6 @@ struct iommu_ops {
 	u32 (*domain_get_windows)(struct iommu_domain *domain);
 
 	int (*of_xlate)(struct device *dev, struct of_phandle_args *args);
-
-#ifdef CONFIG_HISI_IOMMU
-	int (*map_tile)(struct iommu_domain *domain, unsigned long iova,
-			struct scatterlist *sg, size_t size, int prot,
-			struct tile_format *format);
-	size_t (*unmap_tile)(struct iommu_domain *domain, unsigned long iova,
-			     size_t size);
-#endif
 
 	unsigned long pgsize_bitmap;
 };

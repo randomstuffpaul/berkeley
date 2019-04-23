@@ -220,10 +220,15 @@ static struct devfreq_pm_qos_data ddr_devfreq_up_th_pm_qos_data = {
 	.freq = 0,
 };
 
-
+#ifdef CONFIG_DDR_HW_VOTE_15BITS
+#define VOTE_MAX_VALUE	(0x7FFF)
+#define VOTE_QUOTIENT(vote)	(vote)
+#define VOTE_REMAINDER(vote)	(0)
+#else
 #define VOTE_MAX_VALUE	(0xFF)
 #define VOTE_QUOTIENT(vote)	((vote) >> 4)
 #define VOTE_REMAINDER(vote)	((vote) & 0xF)
+#endif
 #define FREQ_HZ	(1000000)
 
 static unsigned long calc_vote_value_hw(struct devfreq *devfreq, unsigned long freq)

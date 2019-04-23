@@ -5,8 +5,8 @@
 			identify_type = "id_volt";
 			id_identify_min = <751>;
 			id_identify_max = <1235>;
-			id_voltage_min = <949>;
-			id_voltage_max = <1051>;
+			id_voltage_min = <939>;
+			id_voltage_max = <1059>;
 			vbat_max = <4400>;
 			temp_para = 
 						"-32767","0","-1","0","4100","0",

@@ -156,6 +156,12 @@ static int __secsg_pgtable_init(struct ion_secsg_heap *secsg_heap)
 static int __secsg_heap_input_check(struct ion_secsg_heap *secsg_heap,
 				    unsigned long size, unsigned long flag)
 {
+	if (secsg_heap->alloc_size + size <= secsg_heap->alloc_size) {
+		pr_err("size overflow! alloc_size = 0x%lx, size = 0x%lx,\n",
+			secsg_heap->alloc_size, size);
+		return -EINVAL;
+	}
+
 	if ((secsg_heap->alloc_size + size) > secsg_heap->heap_size) {
 		pr_err("alloc size = 0x%lx, size = 0x%lx, heap size = 0x%lx\n",
 			secsg_heap->alloc_size, size, secsg_heap->heap_size);
@@ -369,8 +375,6 @@ static int ion_secsg_heap_allocate(struct ion_heap *heap,
 	}
 
 	if (secsg_alloc(secsg_heap, buffer, size)) {/*lint !e838*/
-		pr_err("[%s] secsg_alloc failed, size = 0x%lx.\n",
-			__func__, secsg_heap->alloc_size);
 		ret = -ENOMEM;
 		goto out;
 	}
@@ -383,6 +387,10 @@ out:
 	pr_err("heap[%d] alloc fail, size 0x%lx, heap all alloc_size 0x%lx\n",
 	       heap->id, size, secsg_heap->alloc_size);
 	mutex_unlock(&secsg_heap->mutex);
+
+	if (ret == -ENOMEM)
+		hisi_ion_memory_info(true);
+
 	return ret;
 }/*lint !e715*/
 

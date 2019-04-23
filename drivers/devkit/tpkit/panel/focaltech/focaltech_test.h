@@ -34,7 +34,7 @@
 #define FTS_LCD_NOISE_TEST_FRAME_COUNT	50
 
 #define FTS_LCD_PRE_FRAME_TIME		16
-#define FTS_MAX_CAP_TEST_NUM		6
+#define FTS_MAX_CAP_TEST_NUM		7
 #define FTS_8201_MAX_CAP_TEST_NUM	7
 #define FTS_LCD_NOISE_TEST_DELAY_TIME	50
 #define FTS_ENTER_FACTORY_DELAY_TIME	100
@@ -106,6 +106,8 @@ struct focal_test_threshold {
 	int cb_uniformity_y;
 	int cb_increase_level;
 	int cb_increase_min;
+	int panel_differ_min_array[TX_NUM_MAX*RX_NUM_MAX];
+	int panel_differ_max_array[TX_NUM_MAX*RX_NUM_MAX];
 	int raw_data_min_array[TX_NUM_MAX*RX_NUM_MAX];
 	int raw_data_max_array[TX_NUM_MAX*RX_NUM_MAX];
 	int cb_test_min_array[TX_NUM_MAX*RX_NUM_MAX];

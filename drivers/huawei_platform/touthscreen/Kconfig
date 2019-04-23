@@ -16,7 +16,6 @@ config HUAWEI_TS_TEST
 
 if HUAWEI_TS
 source "drivers/huawei_platform/touthscreen/panel/Kconfig"
-source "drivers/huawei_platform/touthscreen/panel/cyttsp5/Kconfig"
 endif #HUAWEI_TS
 
 #sensor unification for differ platform

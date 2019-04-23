@@ -1195,9 +1195,7 @@ static int mipi_dsi_on_sub1(struct hisi_fb_data_type *hisifd, char __iomem *mipi
 	mipi_init(hisifd, mipi_dsi_base);
 
 	/* dsi memory init */
-	if (g_dss_version_tag == FB_ACCEL_KIRIN970) {
-		outp32(mipi_dsi_base + DSI_MEM_CTRL, 0x02600008);
-	}
+	outp32(mipi_dsi_base + DSI_MEM_CTRL, 0x02600008);
 
 	/* switch to cmd mode */
 	set_reg(mipi_dsi_base + MIPIDSI_MODE_CFG_OFFSET, 0x1, 1, 0);
@@ -2224,12 +2222,6 @@ int mipi_dsi_bit_clk_upt_isr_handler(struct hisi_fb_data_type *hisifd)
 				mipi_dsi_set_cdphy_bit_clk_upt_video(hisifd, hisifd->mipi_dsi1_base, &phy_ctrl);
 			}
 		}
-
-		//clear dsi
-		udelay(10);
-		set_reg(hisifd->mipi_dsi0_base + MIPIDSI_PWR_UP_OFFSET, 0x0, 1, 0);
-		udelay(5);
-		set_reg(hisifd->mipi_dsi0_base + MIPIDSI_PWR_UP_OFFSET, 0x1, 1, 0);
 
 		pinfo->esd_enable = esd_enable;
 		enable_ldi(hisifd);

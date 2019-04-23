@@ -126,7 +126,9 @@ hwsensor_subdev_get_info(
         strlen(hwsensor_intf_get_name(s->intf))+1);
     info->vcm_enable= sensor->board_info->vcm_enable;
 
-    memset_s(info->vcm_name, DEVICE_NAME_SIZE, 0, DEVICE_NAME_SIZE);
+    memset(info->extend_name, 0, DEVICE_NAME_SIZE);
+
+    memset(info->vcm_name, 0, DEVICE_NAME_SIZE);
     if(info->vcm_enable) {
         strncpy_s(info->vcm_name, DEVICE_NAME_SIZE -1,sensor->board_info->vcm_name, strlen(sensor->board_info->vcm_name)+1);
     } else {

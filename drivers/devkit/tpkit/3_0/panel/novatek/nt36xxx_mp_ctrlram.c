@@ -187,38 +187,6 @@ typedef enum rawdata_type {
 	E_RawdataType_Last
 } rawdata_type_e;
 
-static void goto_next_line(char **ptr)
-{
-	do {
-		*ptr = *ptr + 1;
-	} while (**ptr != '\n');
-	*ptr = *ptr + 1;
-}
-
-static void copy_this_line(char *dest, char *src)
-{
-	char *copy_from;
-	char *copy_to;
-
-	copy_from = src;
-	copy_to = dest;
-	do {
-		*copy_to = *copy_from;
-		copy_from++;
-		copy_to++;
-	} while((*copy_from != '\n') && (*copy_from != '\r'));
-	*copy_to = '\0';
-}
-
-static void str_low(char *str)
-{
-	int i;
-
-	for (i = 0; i < strlen(str); i++)
-		if ((str[i] >= 65) && (str[i] <= 90))
-			str[i] += 32;
-}
-
 /*******************************************************
 Description:
 	Novatek touchscreen check ASR error function.
@@ -2234,6 +2202,10 @@ int32_t nvt_kit_selftest(struct ts_rawdata_info *info)
 	char test_4_result[4]={0};
 	int32_t noise_ret = NO_ERR;
 	int32_t open_ret = NO_ERR;
+	uint32_t bytes_of_array=0;
+	uint32_t start_p=0;
+	unsigned long timer_start=0;
+	unsigned long timer_end=0;
 
 	if (NULL == info || NULL == nvt_ts) {
 		TS_LOG_ERR("%s: param error\n", __FUNCTION__);
@@ -2251,7 +2223,6 @@ int32_t nvt_kit_selftest(struct ts_rawdata_info *info)
 		return -ERESTARTSYS;
 	}
 	//---For Debug : Test Time, Mallon 20160907---
-	unsigned long timer_start=0,timer_end=0;
 	timer_start=jiffies;
 	//---print criteria ,mallon 20161012-----
 	if(nvt_ts->print_criteria == true) {
@@ -2408,7 +2379,7 @@ int32_t nvt_kit_selftest(struct ts_rawdata_info *info)
 		nvt_kit_fw_update_boot_spi(nvt_ts->fw_name);
 	}
 
-	uint32_t bytes_of_array;
+
 	//---Copy Data to info->buff---
 	if(nvt_ts->criteria_threshold_flag){
 
@@ -2423,7 +2394,7 @@ int32_t nvt_kit_selftest(struct ts_rawdata_info *info)
 			bytes_of_array = X_Channel*Y_Channel*sizeof(int);
 			memcpy(&info->buff[CHANNEL_NUM], RawData_FWMutual, bytes_of_array);
 
-			uint32_t start_p = X_Channel * Y_Channel + CHANNEL_NUM;
+			start_p = X_Channel * Y_Channel + CHANNEL_NUM;
 			memcpy(&info->buff[start_p], RawData_Diff, bytes_of_array);
 
 			start_p = X_Channel * Y_Channel*2 + CHANNEL_NUM;
@@ -2446,7 +2417,7 @@ int32_t nvt_kit_selftest(struct ts_rawdata_info *info)
 			bytes_of_array = (X_Channel*(uint64_t)Y_Channel*sizeof(int));
 			memcpy(&info->buff[CHANNEL_NUM], RawData_FWMutual, bytes_of_array);
 
-			uint32_t start_p = X_Channel * Y_Channel + CHANNEL_NUM;
+			start_p = X_Channel * Y_Channel + CHANNEL_NUM;
 			memcpy(&info->buff[start_p], RawData_Diff, bytes_of_array);
 
 			start_p = X_Channel * Y_Channel*2 + CHANNEL_NUM;

@@ -151,6 +151,18 @@
 #define HISEE_LCS_DM_BIT    	(13)
 
 
+#define SMX_PROCESS_0    (0x5A5AA5A5)
+#define SMX_PROCESS_1    (0xA5A55A5A)
+
+/* check ret is ok or otherwise goto err_process*/
+#define check_result_and_goto(ret, lable) \
+do { \
+	if (HISEE_OK != (ret)) { \
+		pr_err("hisee:%s() run failed,line=%d.\n", __func__, __LINE__);\
+		goto lable; \
+	} \
+} while (0)
+
 #define check_and_print_result()  \
 do {\
 	if (ret != HISEE_OK)\
@@ -199,6 +211,8 @@ typedef struct _HISEE_DRIVER_FUNCTION {
 	int (*function_ptr)(void *buf, int para); /* function cmd process */
 } hisee_driver_function;
 
+#define SE_HISEE_MISC_NO_UPRGADE (0xCCAAAACC)
+
 typedef enum _HISEE_STATE {
 	HISEE_STATE_POWER_DOWN = 0,
 	HISEE_STATE_POWER_UP   = 1,
@@ -206,12 +220,14 @@ typedef enum _HISEE_STATE {
 	HISEE_STATE_COS_READY  = 3,
 	HISEE_STATE_POWER_DOWN_DOING = 4,
 	HISEE_STATE_POWER_UP_DOING   = 5,
+#ifdef CONFIG_HISEE_SUPPORT_OVERSEA
+	HISEE_STATE_MISC_UPGRADE_DONE = 6,
+#endif
 	HISEE_STATE_MAX,
 } hisee_state;
 
 typedef enum  _HISEE_COS_IMGID_TYPE {
 	COS_IMG_ID_0 = 0,
-#ifdef CONFIG_HISEE_SUPPORT_MULTI_COS
 	COS_IMG_ID_1 = 1,
 	COS_IMG_ID_2 = 2,
 	COS_IMG_ID_3 = 3,
@@ -219,7 +235,6 @@ typedef enum  _HISEE_COS_IMGID_TYPE {
 	COS_IMG_ID_5 = 5,
 	COS_IMG_ID_6 = 6,
 	COS_IMG_ID_7 = 7,
-#endif
 	MAX_COS_IMG_ID,
 } hisee_cos_imgid_type;
 
@@ -278,6 +293,13 @@ typedef enum {
 #endif
 	CMD_HISEE_GET_EFUSE_VALUE = 0x40,
 	CMD_FORMAT_RPMB = 0x51,
+#ifdef CONFIG_HISEE_SUPPORT_OVERSEA
+	CMD_WRITE_COS_CFG = 0x60,
+	CMD_WRITE_SMX_CFG,
+	CMD_SEND_MISC_CNT,
+	CMD_GET_SMX_CFG,
+	CMD_COS_VERSION_CFG,
+#endif
 	CMD_END,
 } se_smc_cmd;
 
@@ -355,5 +377,7 @@ int cos_image_upgrade_by_self(void);
 #ifdef CONFIG_HISEE_NFC_IRQ_SWITCH
 void nfc_irq_cfg(hisee_nfc_irq_cfg_state flag);
 #endif
+
+void hisee_get_smx_cfg(unsigned int *p_smx_cfg);
 
 #endif

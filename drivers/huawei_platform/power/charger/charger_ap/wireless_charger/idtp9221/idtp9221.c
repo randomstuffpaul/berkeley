@@ -249,6 +249,7 @@ static int idtp9221_clear_interrupt(u16 itr)
 	return 0;
 
 }
+#if 0
 static int idtp9221_set_interrupt(u16 itr)
 {
 	int ret;
@@ -279,6 +280,8 @@ static int idtp9221_set_interrupt(u16 itr)
 	hwlog_info("%s:set interrupt success!\n", __func__);
 	return 0;
 }
+#endif
+
 static int idtp9221_send_msg(u8 cmd, u8 *data, int data_len)
 {
 	int ret;
@@ -445,6 +448,9 @@ static int idtp9221_send_ept(enum wireless_etp_type ept_type)
 	switch(ept_type) {
 	case WIRELESS_EPT_ERR_VRECT:
 		rx_ept_type = IDT9221_RX_ERR_VRECT;
+		break;
+	case WIRELESS_EPT_ERR_VOUT:
+		rx_ept_type = IDT9221_RX_ERR_VOUT;
 		break;
 	default:
 		hwlog_err("%s: err ept_type(0x%x)", __func__, ept_type);
@@ -2194,7 +2200,11 @@ static int idtp9221_send_fsk_msg(u8 cmd, u8 *data, int data_len)
 		return -1;
 	}
 
-	msg_byte_num = idtp9221_send_fsk_msg_len[data_len + 1];
+	if (IDT9221_CMD_ACK == cmd) {
+		msg_byte_num = IDT9221_CMD_ACK_HEAD;
+	} else {
+		msg_byte_num = idtp9221_send_fsk_msg_len[data_len + 1];
+	}
 
 	ret = idtp9221_write_byte(IDT9221_TX_TO_RX_HEADER_ADDR, msg_byte_num);
 	if (ret) {
@@ -2251,6 +2261,15 @@ static int idtp9221_send_fsk_msg_tx_cap(void)
 	ret = idtp9221_send_fsk_msg(IDT9221_CMD_GET_TX_CAP, &tx_cap_data[TX_CAP_TYPE], TX_CAP_TOTAL - TX_CAP_TYPE);
 	if (ret) {
 		hwlog_err("%s: send fsk message tx capacity failed!\n", __func__);
+		return -1;
+	}
+	return 0;
+}
+static int idtp9221_send_fsk_ack_msg(void)
+{
+	int ret = idtp9221_send_fsk_msg(IDT9221_CMD_ACK, NULL, 0);
+	if (ret) {
+		hwlog_err("%s: send tx ack to rx failed!\n", __func__);
 		return -1;
 	}
 	return 0;
@@ -2353,6 +2372,7 @@ static void idtp9221_handle_ask_packet(struct idtp9221_device_info *di)
 			hwlog_info("[%s] charge state 0x%x\n!", __func__, chrg_stage);
 			if (chrg_stage & WIRELESS_STATE_CHRG_DONE) {
 				hwlog_info("[%s] TX received RX charge-done event!!\n!", __func__);
+				idtp9221_send_fsk_ack_msg(); //tx ack to rx
 				blocking_notifier_call_chain(&tx_event_nh, WL_TX_EVENT_CHARGEDONE, NULL);
 			}
 			break;
@@ -2919,6 +2939,7 @@ static int idtp9221_probe(struct i2c_client *client, const struct i2c_device_id 
 	return 0;
 
 idt9221_fail_2:
+	wake_lock_destroy(&g_idtp9221_wakelock);
 	free_irq(di->irq_int, di);
 idt9221_fail_1:
 	gpio_free(di->gpio_en);

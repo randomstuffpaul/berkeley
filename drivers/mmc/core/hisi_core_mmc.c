@@ -8,6 +8,9 @@
 #include <linux/mmc/host.h>
 #include <linux/mmc/mmc.h>
 #include <linux/mfd/hisi_pmic_mntn.h>
+#include <linux/hisi/rdr_pub.h>
+#include <linux/reboot.h>
+#include <linux/hisi/mmc_trace.h>
 
 #include <linux/version.h>
 
@@ -24,6 +27,7 @@
 extern void mmc_set_ios(struct mmc_host *host);
 extern void mmc_bus_get(struct mmc_host *host);
 extern void mmc_bus_put(struct mmc_host *host);
+extern int mmc_blk_is_retryable(struct mmc_host *mmc);
 #ifdef CONFIG_MMC_CQ_HCI
 extern void mmc_blk_cmdq_dishalt(struct mmc_card *card);
 extern int cmdq_is_reset(struct mmc_host *host);
@@ -469,6 +473,8 @@ err_handle:
 int hisi_mmc_reset(struct mmc_host *host)
 {
 	int ret;
+	int retry = 3;
+	unsigned long timeout;
 	struct mmc_card *card = host->card;
 
 	pr_err("%s enter\n", __func__);
@@ -479,14 +485,35 @@ int hisi_mmc_reset(struct mmc_host *host)
 	if (!host->ops->hw_reset)
 		return -EOPNOTSUPP;
 
-	host->ops->hw_reset(host);
+	do {
+		if (host->is_coldboot_on_reset_fail) {
+			mmc_set_cold_reset(host);
+			timeout = jiffies + 10*60*HZ;
+			mod_timer(&host->err_handle_timer, timeout);
+		}
 
-	mmc_power_off(host);
-	mdelay(200);
-	mmc_power_up(host, host->card->ocr);
+		host->ops->hw_reset(host);
 
-	ret = host->bus_ops->power_restore(host);
-	pr_err("%s exit,ret=%d\n", __func__, ret);
+		mmc_power_off(host);
+		mdelay(200);
+		mmc_power_up(host, host->card->ocr);
+
+		ret = host->bus_ops->power_restore(host);
+	} while (--retry && ret);
+
+	if (ret) {
+		if (host->is_coldboot_on_reset_fail) {
+#ifdef CONFIG_HISI_BB
+			rdr_syserr_process_for_ap(RDR_MODID_MMC_COLDBOOT, 0, 0);
+#else
+			machine_restart("AP_S_EMMC_COLDBOOT");
+#endif
+		} else {
+			BUG_ON(1);
+		}
+	}
+
+	pr_err("%s exit\n", __func__);
 #ifdef CONFIG_EMMC_FAULT_INJECT
 	g_mmc_reset_status = false;
 #endif
@@ -767,8 +794,13 @@ static int mmc_do_sd_reset(struct mmc_host *host)
 	}
 #endif
 	/*reset card only once after init card*/
-	if (host->reset_count > 0)
-		return -EOPNOTSUPP;
+	if (mmc_blk_is_retryable(host)) {
+		if (host->reset_count > 3)
+			return -EOPNOTSUPP;
+	} else {
+		if (host->reset_count > 0)
+			return -EOPNOTSUPP;
+	}
 
 	host->reset_count ++;
 

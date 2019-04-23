@@ -109,6 +109,10 @@
 #define MMC1_SYSCTRL_PERRSTSTAT0	(0x318)
 #define  BIT_HRST_SDIO_CANCER	(0x1)
 #define  BIT_RST_SDIO_CANCER	(0x1 << 1)
+#define MMC0_CRG_SD_HRST 0x20
+#define MMC0_CRG_SD_HURST 0x24
+#define BIT_RST_SD_TAURUS (0x1 << 0)
+#define BIT_URST_SD_TAURUS (0x1 << 0)
 /* mmc1 sys ctrl end*/
 
 /* hsdt crg */
@@ -134,9 +138,12 @@
 #define BIT_VOLT_OFFSET         (0x314)
 #define BIT_VOLT_OFFSET_CANCER         (0x31c)
 #define BIT_VOLT_OFFSET_AUSTIN  (0x214)
+#define BIT_VOLT_OFFSET_TAURUS         (0x31c)
 #define BIT_VOLT_VALUE_18       (0x4)
 #define BIT_VOLT_VALUE_18_CANCER       (0x400040)
+#define BIT_VOLT_VALUE_18_TAURUS       (0x400040)
 #define BIT_VOLT_VALUE_18_MASK_CANCER       (0x400000)
+#define BIT_VOLT_VALUE_18_MASK_TAURUS       (0x400000)
 
 #define BIT_RST_EMMC            (1<<20)
 #define BIT_RST_SD              (1<<18)

@@ -36,7 +36,7 @@ uint get_setids_state(void)
 }
 
 /* uncomment this for force stop setXid */
-// #define CONFIG_CHECKROOT_FORCE_STOP
+/* #define CONFIG_CHECKROOT_FORCE_STOP */
 
 static int checkroot_risk_id(int curr_id, int flag)
 {
@@ -44,15 +44,18 @@ static int checkroot_risk_id(int curr_id, int flag)
 
 	now = current_cred();
 
-	if (curr_id <= ANDROID_THIRD_PART_APK_UID && curr_id != AID_SHELL) {
+	if (curr_id < ANDROID_THIRD_PART_APK_UID && curr_id != AID_SHELL) {
 		return 0;
 	}
 	pr_emerg("check_root: Uid %d, Gid %d, try to Privilege Escalate\n",
 			now->uid.val, now->gid.val);
 
 #ifdef CONFIG_CHECKROOT_FORCE_STOP
-	return 1;
-#else
+	if (curr_id >= ANDROID_THIRD_PART_APK_UID) {
+		force_sig(SIGKILL, current);
+		return -1;
+	}
+#endif
 	if (flag & CHECKROOT_SETUID_FLAG) {
 		checkroot_ref.setuid++;
 	}
@@ -66,7 +69,6 @@ static int checkroot_risk_id(int curr_id, int flag)
 		checkroot_ref.setresgid++;
 	}
 	return 0;
-#endif
 }
 
 int checkroot_setuid(uid_t uid)

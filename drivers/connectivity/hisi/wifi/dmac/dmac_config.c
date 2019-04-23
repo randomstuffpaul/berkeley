@@ -4832,74 +4832,7 @@ OAL_STATIC oal_uint32  dmac_config_get_ant(mac_vap_stru *pst_mac_vap, oal_uint8 
 
 
 #endif
-#ifdef _PRE_PLAT_FEATURE_CUSTOMIZE
 
-OAL_STATIC oal_bool_enum_uint8 is_county_code_in_array(oal_int8 *puc_country_code, OAL_CONST oal_int8 **ac_country_array)
-{
-    OAL_CONST oal_int8  **pp_country = ac_country_array;
-
-    while (*pp_country != OAL_PTR_NULL)
-    {
-        if (oal_memcmp(puc_country_code, *(pp_country++), WLAN_COUNTRY_STR_LEN) == 0)
-        {
-            return OAL_TRUE;
-        }
-    }
-    return OAL_FALSE;
-}
-
-
-OAL_STATIC hal_regdomain_enum dmac_config_get_regdomain_from_country_code(oal_int8 * pc_country_code)
-{
-    OAL_STATIC OAL_CONST oal_int8   *ac_fcc_country[] = {"AD", "AR", "AS", "AU",
-                                    "BB", "BM", "BS",
-                                    "CA", "CO",
-                                    "DO",
-                                    "GD", "GT", "GU",
-                                    "ID",
-                                    "JM",
-                                    "MN", "MO", "MP", "MX",
-                                    "NI", "NZ",
-                                    "OM",
-                                    "PA", "PH", "PR", "PS", "PY",
-                                    "RW",
-                                    "TW", "TZ",
-                                    "US", "UZ",
-                                    "VI",
-                                    OAL_PTR_NULL};
-
-    OAL_STATIC OAL_CONST oal_int8   *ac_ce_country[] = {"AL", "AT",
-                                    "BA", "BE", "BG",
-                                    "CH", "CY", "CZ",
-                                    "DE", "DK",
-                                    "EE", "ES",
-                                    "FI", "FR",
-                                    "GB", "GR",
-                                    "HR", "HU",
-                                    "IE", "IS", "IT",
-                                    "LT", "LU", "LV",
-                                    "ME", "MK", "MT",
-                                    "NL", "NO",
-                                    "PL", "PT",
-                                    "RO",
-                                    "SE", "SI", "SK",
-                                    "TR",
-                                    OAL_PTR_NULL};
-
-    if (is_county_code_in_array(pc_country_code, ac_fcc_country) == OAL_TRUE)
-    {
-        return HAL_REGDOMAIN_FCC;
-    }
-
-    if (is_county_code_in_array(pc_country_code, ac_ce_country) == OAL_TRUE)
-    {
-        return HAL_REGDOMAIN_ETSI;
-    }
-
-    return HAL_REGDOMAIN_COMMON;
-}
-
-#endif
 
 OAL_STATIC oal_uint32  dmac_config_set_country(mac_vap_stru *pst_mac_vap, oal_uint8 uc_len, oal_uint8 *puc_param)
 {
@@ -4941,7 +4874,7 @@ OAL_STATIC oal_uint32  dmac_config_set_country(mac_vap_stru *pst_mac_vap, oal_ui
     }
     pst_hal_device = pst_mac_device->pst_device_stru;
     /* 根据是否FCC认证要求国家，更新标志位 */
-    pst_hal_device->en_current_reg_domain = dmac_config_get_regdomain_from_country_code(pst_mac_regdom->ac_country);
+    pst_hal_device->en_current_reg_domain = (hal_regdomain_enum)pst_mac_regdom->uc_regdomain_type;
     OAM_WARNING_LOG3(0, OAM_SF_DFS, "{dmac_config_set_country::set country %c%c, reg_domain: %d}",
                 pst_mac_regdom->ac_country[0], pst_mac_regdom->ac_country[1], pst_hal_device->en_current_reg_domain);
 #endif
@@ -6691,8 +6624,14 @@ oal_uint32  dmac_config_vowifi_report(dmac_vap_stru *pst_dmac_vap)
     }
 
     /* 设备up，且使能了vowifi状态才能触发切换vowifi状态 */
-    if ((MAC_VAP_STATE_UP != pst_mac_vap->en_vap_state) ||
-        (VOWIFI_DISABLE_REPORT == pst_mac_vap->pst_vowifi_cfg_param->en_vowifi_mode))
+    if (MAC_VAP_STATE_UP != pst_mac_vap->en_vap_state)
+    {
+        return OAL_SUCC;
+    }
+
+    /*非主动上报模式*/
+    if (VOWIFI_LOW_THRES_REPORT != pst_mac_vap->pst_vowifi_cfg_param->en_vowifi_mode &&
+        VOWIFI_HIGH_THRES_REPORT != pst_mac_vap->pst_vowifi_cfg_param->en_vowifi_mode)
     {
         return OAL_SUCC;
     }
@@ -9684,11 +9623,15 @@ oal_uint32 dmac_config_set_cus_rf(mac_vap_stru *pst_mac_vap, oal_uint8 uc_len, o
                     g_st_customize.st_rf.c_delta_cca_ed_high_20th_5g,
                     g_st_customize.st_rf.c_delta_cca_ed_high_40th_5g);
 
-    OAM_WARNING_LOG4(pst_mac_vap->uc_vap_id, OAM_SF_CFG, "dmac_config_set_cus_rf::[CE HI BAND] tx power[%d], dbbscale [0x%X, 0x%X, 0x%X].",
+    OAM_WARNING_LOG_ALTER(pst_mac_vap->uc_vap_id, OAM_SF_CFG,
+                    "dmac_config_set_cus_rf::[CE HI BAND] tx power[%d], dbbscale [0x%X, 0x%X, 0x%X], mcs8_9 compensation [0x%X, 0x%X].",
+                    6,
                     g_st_customize.st_ce_5g_hi_band_params.uc_max_txpower,
                     g_st_customize.st_ce_5g_hi_band_params.uc_dbb_scale_11a_ht20_vht20,
                     g_st_customize.st_ce_5g_hi_band_params.uc_dbb_scale_ht40_vht40,
-                    g_st_customize.st_ce_5g_hi_band_params.uc_dbb_scale_vht80);
+                    g_st_customize.st_ce_5g_hi_band_params.uc_dbb_scale_vht80,
+                    g_st_customize.st_ce_5g_hi_band_params.uc_dbb_scale_ht40_vht40_mcs8_9_comp,
+                    g_st_customize.st_ce_5g_hi_band_params.uc_dbb_scale_vht80_mcs8_9_comp);
 
     /* 计算 2g power0 ref */
     for (uc_band_idx = 0; uc_band_idx < HAL_DEVICE_2G_BAND_NUM_FOR_LOSS; ++uc_band_idx)

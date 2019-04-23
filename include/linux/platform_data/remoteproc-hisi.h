@@ -233,6 +233,31 @@ enum hisi_soc_reg_type {
     HISP_MAX_REGTYPE
 };
 
+enum isp_msg_rdr_e {
+    RPMSG_RDR_LOW                   = 0,
+    /* RECV RPMSG INFO */
+    RPMSG_CAMERA_SEND_MSG           = 1,
+    RPMSG_SEND_MSG_TO_MAILBOX       = 2,
+    RPMSG_RECV_MAILBOX_FROM_ISPCPU  = 3,
+    RPMSG_ISP_THREAD_RECVED         = 4,
+    RPMSG_RECV_SINGLE_MSG           = 5,
+    RPMSG_SINGLE_MSG_TO_CAMERA      = 6,
+    RPMSG_CAMERA_MSG_RECVED         = 7,
+    RPMSG_RDR_MAX,
+};
+enum isp_msg_err_e {
+    RPMSG_SEND_ERR                  = 0,
+    RPMSG_SEND_MAILBOX_LOST,
+    RPMSG_RECV_MAILBOX_LOST,
+    RPMSG_THREAD_RECV_LOST,
+    RPMSG_RECV_SINGLE_LOST,
+    RPMSG_SINGLE_MSG_TO_CAMERA_LOST,
+    RPMSG_CAMERA_MSG_RECVED_LOST,
+    RPMSG_RECV_THRED_TIMEOUT,
+    RPMSG_CAMERA_GET_TIMEOUT,
+    RPMSG_ERR_MAX,
+};
+
 int rpmsg_sensor_ioctl(unsigned int cmd, int index, char* name);
 
 /**
@@ -328,7 +353,6 @@ int hisi_isp_rproc_case_set(enum hisi_isp_rproc_case_attr);
 enum hisi_isp_rproc_case_attr hisi_isp_rproc_case_get(void);
 int hisp_powerup(void);
 int hisp_powerdn(void);
-
 void *hisi_fstcma_alloc(dma_addr_t *dma_handle, size_t size, gfp_t flag);
 void hisi_fstcma_free(void *va, dma_addr_t dma_handle, size_t size);
 
@@ -357,13 +381,41 @@ int hisp_nsec_jpeg_powerup(void);
 int hisp_nsec_jpeg_powerdn(void);
 void set_rpmsg_status(int status);
 int is_ispcpu_powerup(void);
-void hisp_sendin(void);
+
+int hisp_rpmsg_rdr_init(void);
+int hisp_rpmsg_rdr_deinit(void);
+void hisp_sendin(void *data);
 void hisp_sendx(void);
-void hisp_recvin(void);
-void hisp_recvx(void);
+void hisp_recvtask(void);
+void hisp_recvthread(void);
+void hisp_recvin(void *data);
+void hisp_recvx(void *data);
+void hisp_recvdone(void *data);
 void hisp_rpmsgrefs_dump(void);
 void hisp_rpmsgrefs_reset(void);
-void hisp_recvtask(void);
+void hisp_dump_rpmsg_with_id(const unsigned int message_id);
+
+#ifdef DEBUG_HISI_ISP
+extern unsigned int hispdbg_get_test_message_id(void);
+extern void hispdbg_set_test_index(unsigned int dex, unsigned int type);
+ssize_t isprdr_store(struct device *pdev, struct device_attribute *attr, const char *buf, size_t count);
+ssize_t isprdr_show(struct device *pdev, struct device_attribute *attr, char *buf);
+ssize_t ispclk_show(struct device *pdev, struct device_attribute *attr, char *buf);
+ssize_t ispclk_store(struct device *pdev, struct device_attribute *attr, const char *buf, size_t count);
+ssize_t isppower_show(struct device *pdev, struct device_attribute *attr, char *buf);
+ssize_t isppower_store(struct device *pdev, struct device_attribute *attr, const char *buf, size_t count);
+ssize_t ispmsg_show(struct device *pdev, struct device_attribute *attr, char *buf);
+ssize_t ispmsg_store(struct device *pdev, struct device_attribute *attr, const char *buf, size_t count);
+ssize_t atfisp_show(struct device *pdev, struct device_attribute *attr, char *buf);
+ssize_t atfisp_store(struct device *pdev, struct device_attribute *attr, const char *buf, size_t count);
+ssize_t regs_show(struct device *pdev, struct device_attribute *attr, char *buf);
+ssize_t dump_show(struct device *pdev, struct device_attribute *attr, char *buf);
+ssize_t atfisp_test_show(struct device *pdev, struct device_attribute *attr, char *buf);
+ssize_t atfisp_test_store(struct device *pdev, struct device_attribute *attr, const char *buf, size_t count);
+ssize_t security_show(struct device *dev, struct device_attribute *attr, char *buf);
+ssize_t security_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count);
+ssize_t ispbinupdate_show(struct device *pdev, struct device_attribute *attr, char *buf);
+#endif
 int hisp_sec_jpeg_powerup(void);
 int hisp_sec_jpeg_powerdn(void);
 int hisp_jpeg_powerdn(void);
@@ -380,6 +432,7 @@ int set_power_updn(int bypass);
 void __iomem *get_regaddr_by_pa(unsigned int type);
 extern void hisi_isp_boot_stat_dump(void);
 void dump_media1_regs(void);
+void dump_smmu500_regs(void);
 extern u64 hisi_getcurtime(void);
 extern size_t print_time(u64 ts, char *buf);
 extern unsigned int get_slice_time(void);
@@ -439,9 +492,11 @@ extern void hisp_dynamic_mem_pool_clean(void);
 extern void rproc_fw_config_virtio(const struct firmware *fw, void *context);
 extern int hisp_mem_type_pa_init(unsigned int etype, unsigned long paddr);
 extern int sec_rproc_boot(struct rproc *rproc);
+int nonsec_rproc_boot(struct rproc *rproc);
 extern int hisp_rsctable_init(void);
-extern void sec_rscwork_func(struct work_struct *work);
+extern int hisi_firmware_load_func(struct rproc *rproc);
 extern void hisi_secisp_dump(void);
+extern void wakeup_secisp_kthread(void);
 extern int hw_is_fpga_board(void);
 extern unsigned long hisp_mem_pool_alloc_iova(unsigned int size, unsigned int pool_num);
 extern unsigned int hisp_mem_pool_free_iova(unsigned int pool_num, unsigned int va, unsigned int size);
@@ -493,10 +548,15 @@ extern u64 get_mdc_addr_pa(void);
 extern void set_shared_mdc_pa_addr(u64 mdc_pa_addr);
 extern unsigned int dynamic_memory_map(struct scatterlist *sgl,size_t addr,size_t size,unsigned int prot);
 extern int dynamic_memory_unmap(size_t addr, size_t size);
+int hisp_bsp_read_bin(const char *partion_name, unsigned int offset, unsigned int length, char *buffer);
+int hisp_bin_load_segments(struct rproc *rproc);
+void *hisp_get_rsctable(int *tablesz);
 
 #ifdef CONFIG_HISI_REMOTEPROC_DMAALLOC_DEBUG
 void *get_vring_dma_addr(u64 *dma_handle, size_t size, unsigned int index);
 #endif
+int get_media1_subsys_power_state(void);
+int get_isptop_power_state(void);
 extern unsigned int get_debug_isp_clk_enable(void);
 extern int set_debug_isp_clk_enable(int state);
 extern int set_debug_isp_clk_freq(unsigned int type, unsigned long value);
@@ -507,5 +567,6 @@ extern int get_ispcpu_idle_stat(unsigned int isppd_adb_flag);
 extern void dump_hisi_isp_boot(struct rproc *rproc,unsigned int size);
 unsigned int wait_share_excflag_timeout(unsigned int flag, unsigned int time);
 int hisp_ion_phys(struct ion_client *client, struct ion_handle *handle, dma_addr_t *addr);
+extern void free_secmem_rsctable(void);
 #endif /* _PLAT_REMOTEPROC_HISI_ISP_H */
 

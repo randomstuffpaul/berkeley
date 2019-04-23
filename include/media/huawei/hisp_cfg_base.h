@@ -75,7 +75,10 @@ struct hisp_cfg_data {
 	int cfgtype;
 	int mode;
 	int isSecure;
-	addr_param_t param;
+	union {
+		addr_param_t param;
+		uint32_t cfgdata[4];
+	};
 };
 
 enum hisp_config_type {
@@ -93,6 +96,7 @@ enum hisp_config_type {
     HISP_CONFIG_R8_TURBO,
     HISP_CONFIG_R8_NORMAL,
     HISP_CONFIG_R8_LOWPOWER,
+    HISP_CONFIG_PROC_TIMEOUT,
     HISP_CONFIG_MAX_INDEX
 };
 

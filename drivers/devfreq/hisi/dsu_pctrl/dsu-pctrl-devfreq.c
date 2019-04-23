@@ -651,6 +651,23 @@ err:
 }
 
 
+static ssize_t store_power_control(struct device *dev, struct device_attribute *attr,
+			      const char *buf, size_t count)
+{
+	unsigned long value = 0;
+	unsigned long portion_active = 0;
+	int ret = 0;
+
+	ret = sscanf(buf, "%lu", &value);	/* unsafe_function_ignore: sscanf */
+	if (ret != 1)
+		return -EINVAL;
+
+	portion_active = (1UL << value) - 1;
+	set_pwr_ctlr(portion_active);
+
+	return ret;
+}
+
 static ssize_t show_power_status(struct device *dev, struct device_attribute *attr,
 			     char *buf)
 {
@@ -660,7 +677,7 @@ static ssize_t show_power_status(struct device *dev, struct device_attribute *at
 
 	return snprintf(buf, PAGE_SIZE, "0x%lx\n", val);	/* unsafe_function_ignore: snprintf */
 }
-
+static DEVICE_ATTR(power, 0660, show_power_status, store_power_control);
 
 
 #define DSU_PCTRL_ATTR_RW(_name) \
@@ -676,7 +693,6 @@ DSU_PCTRL_ATTR_RW(static_leakage);
 DSU_PCTRL_ATTR_RW(dram_energy);
 DSU_PCTRL_ATTR_RO(max_threshold);
 DSU_PCTRL_ATTR_RW(down_interval);
-DSU_PCTRL_ATTR_RO(power_status);
 
 static struct attribute *dev_entries[] = {
 	&dev_attr_downsize_ratio.attr,
@@ -685,7 +701,7 @@ static struct attribute *dev_entries[] = {
 	&dev_attr_dram_energy.attr,
 	&dev_attr_max_threshold.attr,
 	&dev_attr_down_interval.attr,
-	&dev_attr_power_status.attr,
+	&dev_attr_power.attr,
 	NULL,
 };
 

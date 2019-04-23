@@ -300,6 +300,7 @@ FSC_BOOL platform_get_modal_operation_supported(void);
 FSC_BOOL platform_discover_mode_supported(void);
 FSC_BOOL platform_enter_mode_supported(void);
 FSC_BOOL platform_discover_svid_supported(void);
+FSC_U32 platform_sink_pdo_number(void);
 void platform_double_56k_cable(void);
 
 #endif  // _FSC_PLATFORM_H_

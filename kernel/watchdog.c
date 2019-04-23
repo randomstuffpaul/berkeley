@@ -383,8 +383,12 @@ static enum hrtimer_restart watchdog_timer_fn(struct hrtimer *hrtimer)
 		print_irqtrace_events(current);
 		if (regs)
 			show_regs(regs);
+#ifndef CONFIG_HISI_SP805_WATCHDOG
 		else
 			dump_stack();
+#else
+			dump_stack();
+#endif
 
 		if (softlockup_all_cpu_backtrace) {
 			/* Avoid generating two back traces for current

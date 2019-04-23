@@ -224,7 +224,7 @@ static void kbase_pm_gpu_poweroff_wait_wq(struct work_struct *data)
 
 	if (!backend->poweron_required) {
 #if !PLATFORM_POWER_DOWN_ONLY
-		unsigned long flags;
+		unsigned long flags;//lint !e578
 
 		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 		WARN_ON(kbdev->l2_available_bitmap ||

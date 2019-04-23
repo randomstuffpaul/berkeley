@@ -18,6 +18,14 @@
 #include "hi6403_hifi_config.h"
 #include "../soundtrigger/soundtrigger_dma_drv.h"
 
+static unsigned int hi6403_sc_fs_ctrls_h[] = {
+	HI64xx_SC_FS_S1_CTRL_H,
+	HI64xx_SC_FS_S2_CTRL_H,
+	HI64xx_SC_FS_S3_CTRL_H,
+	HI64xx_SC_FS_S4_CTRL_H,
+	HI64xx_SC_FS_MISC_CTRL,
+};
+
 static void hi6403_hifi_runstall_cfg(bool pull_down)
 {
 	IN_FUNCTION;
@@ -284,21 +292,21 @@ static void hi6403_dsp_if_set_bypass(unsigned int dsp_if_id, bool enable)
 
 	unsigned int i2s_id = dsp_if_id / 2;
 	unsigned int direct =
-		(dsp_if_id & 0x1) ? HI6402_HIFI_PCM_OUT : HI6402_HIFI_PCM_IN;
+		(dsp_if_id & 0x1) ? HI64XX_HIFI_PCM_OUT : HI64XX_HIFI_PCM_IN;
 
 	IN_FUNCTION;
 
 	BUG_ON(i2s_id >= ARRAY_SIZE(hi6403_sc_src_lr_ctrls_m));
 	addr = hi6403_sc_src_lr_ctrls_m[i2s_id];
 
-	if(HI6402_HIFI_DSP_IF_PORT_8 > dsp_if_id) {
-		bit = (direct == HI6402_HIFI_PCM_IN) ? 6 : 7;
+	if(HI64XX_HIFI_DSP_IF_PORT_8 > dsp_if_id) {
+		bit = (direct == HI64XX_HIFI_PCM_IN) ? 6 : 7;
 		if (enable) {
 			hi64xx_hifi_reg_set_bit(addr, bit);
 		} else {
 			hi64xx_hifi_reg_clr_bit(addr, bit);
 		}
-	} else if (HI6402_HIFI_DSP_IF_PORT_8 == dsp_if_id){
+	} else if (HI64XX_HIFI_DSP_IF_PORT_8 == dsp_if_id){
 		if (enable) {
 			hi64xx_hifi_reg_set_bit(addr, 7);
 			hi64xx_hifi_reg_set_bit(addr, 3);
@@ -360,13 +368,21 @@ static void hi6403_set_dsp_div(enum pll_state pll_state)
 	switch(pll_state){
 	case PLL_HIGH_FREQ:
 		hi6403_disable_mad_auto_clk();
+		/* disable hifi_div_clk_en */
+		hi64xx_hifi_reg_clr_bit(HI6403_DSP_CLK_CFG, HI6403_HIFI_DIV_CLK_EN_BIT);
 		hi64xx_hifi_reg_clr_bit(HI6403_12M288_CLK_SEL_REG, HI6403_DSP_CLK_SW_BIT);
 		hi64xx_hifi_reg_write_bits(HI6403_DSP_CLK_CFG,0x1,0xF);
+		/* enable hifi_div_clk_en */
+		hi64xx_hifi_reg_set_bit(HI6403_DSP_CLK_CFG, HI6403_HIFI_DIV_CLK_EN_BIT);
 		break;
 	case PLL_LOW_FREQ:
 		hi6403_enable_mad_auto_clk();
+		/* disable hifi_div_clk_en */
+		hi64xx_hifi_reg_clr_bit(HI6403_DSP_CLK_CFG, HI6403_HIFI_DIV_CLK_EN_BIT);
 		hi64xx_hifi_reg_set_bit(HI6403_12M288_CLK_SEL_REG, HI6403_DSP_CLK_SW_BIT);
 		hi64xx_hifi_reg_write_bits(HI6403_DSP_CLK_CFG,0x3,0xF);
+		/* enable hifi_div_clk_en */
+		hi64xx_hifi_reg_set_bit(HI6403_DSP_CLK_CFG, HI6403_HIFI_DIV_CLK_EN_BIT);
 		break;
 	default:
 		break;
@@ -386,6 +402,74 @@ static void hi6403_ir_study_path_clean(void)
 	hi64xx_hifi_reg_write_bits(HI6403_ADC1L_R_REG, 0x0, 0x1);
 
 	return;
+}
+
+static bool hi6403_check_dp_clk(void)
+{
+	unsigned int count = 1000;
+	while(--count) {
+		if(1 == hi64xx_hifi_read_reg(HI64xx_CODEC_DP_CLK_EN)) {
+			return true;
+		} else {
+			usleep_range(100, 110);
+		}
+	}
+
+	return false;
+}
+
+static bool hi6403_check_i2s2_clk(void)
+{
+	unsigned int s2_ctrl = 0;
+
+	s2_ctrl = hi64xx_hifi_read_reg(HI6403_DSP_S2_CTRL_L);
+	if (s2_ctrl & (1 << HI6403_DSP_S2_CLK_EN_BIT))
+		return true;
+
+	return false;
+}
+
+static int hi6403_dsp_if_set_sample_rate(unsigned int dsp_if_id,
+						unsigned int sample_rate_in, unsigned int sample_rate_out)
+{
+	unsigned int addr = 0;
+	unsigned char mask = 0;
+	unsigned char sample_rate_index = 0;
+
+	unsigned int i2s_id = dsp_if_id / 2;
+	unsigned int direct =
+		(dsp_if_id & 0x1) ? HI64XX_HIFI_PCM_OUT : HI64XX_HIFI_PCM_IN;
+
+	IN_FUNCTION;
+
+	WARN_ON(i2s_id >= ARRAY_SIZE(hi6403_sc_fs_ctrls_h));
+	addr = hi6403_sc_fs_ctrls_h[i2s_id];
+
+	if (!hi64xx_get_sample_rate_index(sample_rate_in, &sample_rate_index)) {
+		HI64XX_DSP_ERROR("sample_rate_in is invalid %d!! \n", sample_rate_in);
+		return 0;
+	}
+
+	if (HI64XX_HIFI_DSP_IF_PORT_8 != dsp_if_id) {
+		mask = (direct == HI64XX_HIFI_PCM_IN) ? 0xf : 0xf0;
+		sample_rate_index = (direct == HI64XX_HIFI_PCM_IN)
+							? sample_rate_index : sample_rate_index << 4;
+	} else {
+		mask = (direct == HI64XX_HIFI_PCM_IN) ? 0xe0 : 0x1c;
+		if (HI64XX_HIFI_PCM_SAMPLE_RATE_48K > sample_rate_index) {
+			HI64XX_DSP_ERROR("unsupport sample_rate_in %d!! \n", sample_rate_in);
+			return 0;
+		}
+		sample_rate_index = sample_rate_index - HI64XX_HIFI_PCM_SAMPLE_RATE_48K;
+		sample_rate_index = (direct == HI64XX_HIFI_PCM_IN)
+							? sample_rate_index << 5 : sample_rate_index << 2;
+	}
+
+	hi64xx_hifi_reg_write_bits(addr, sample_rate_index, mask);
+
+	OUT_FUNCTION;
+
+	return 0;
 }
 
 int hi6403_hifi_config_init(struct snd_soc_codec *codec,
@@ -429,6 +513,8 @@ int hi6403_hifi_config_init(struct snd_soc_codec *codec,
 	dsp_config.dtcm_size = HI6403_DTCM_SIZE;
 	dsp_config.msg_state_addr = HI6403_DSP_MSG_STATE_ADDR;
 	dsp_config.bus_sel = bus_sel;
+	dsp_config.mlib_to_ap_msg_addr = HI6403_MLIB_TO_AP_MSG_ADDR;
+	dsp_config.mlib_to_ap_msg_size = HI6403_MLIB_TO_AP_MSG_SIZE;
 
 	dsp_config.dsp_ops.init = hi6403_hifi_init;
 	dsp_config.dsp_ops.deinit = hi6403_hifi_deinit;
@@ -445,6 +531,10 @@ int hi6403_hifi_config_init(struct snd_soc_codec *codec,
 	dsp_config.dsp_ops.mad_disable = hi6403_mad_disable;
 	dsp_config.dsp_ops.set_dsp_div = hi6403_set_dsp_div;
 	dsp_config.dsp_ops.ir_path_clean = hi6403_ir_study_path_clean;
+	dsp_config.dsp_ops.check_dp_clk = hi6403_check_dp_clk;
+	dsp_config.dsp_ops.check_i2s2_clk = hi6403_check_i2s2_clk;
+	dsp_config.dsp_ops.set_sample_rate = hi6403_dsp_if_set_sample_rate;
+	dsp_config.dsp_ops.config_usb_low_power = NULL;
 
 	dl_config.dspif_clk_en_addr = HI6403_DSP_I2S_DSPIF_CLK_EN;
 
@@ -454,7 +544,7 @@ int hi6403_hifi_config_init(struct snd_soc_codec *codec,
 
 	ret += hi64xx_hifi_img_dl_init(irqmgr, &dl_config);
 
-	ret += hi64xx_hifi_om_init(irqmgr);
+	ret += hi64xx_hifi_om_init(irqmgr, HI64XX_CODEC_TYPE_6403);
 
 	HI64XX_DSP_INFO("%s--\n", __FUNCTION__);
 

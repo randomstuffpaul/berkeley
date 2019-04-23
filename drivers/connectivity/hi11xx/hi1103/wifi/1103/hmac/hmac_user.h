@@ -472,6 +472,8 @@ typedef struct
     oal_uint32                      ul_rx_rate_max;
     oal_uint32                      aul_drop_num[WLAN_WME_AC_BUTT];
     oal_uint32                      aul_tx_delay[3];                    /*0 1 2分别为最大发送延时,最小发送延时,平均发送延时*/
+    mac_ap_type_enum_uint16         en_user_ap_type;                    /* 用户的AP类型，兼容性问题使用 */
+    oal_uint8                       auc_resv6[2];
 
 #ifdef _PRE_WLAN_FEATURE_CAR
     hmac_car_limit_stru             st_car_user_cfg[HMAC_CAR_BUTT];    /* user限速结构体,0-up 1-down */
@@ -570,7 +572,6 @@ extern oal_void hmac_tid_clear_etc(mac_vap_stru *pst_mac_vap, hmac_user_stru *ps
 extern hmac_user_stru*  mac_res_get_hmac_user_alloc_etc(oal_uint16 us_idx);
 extern hmac_user_stru*  mac_res_get_hmac_user_etc(oal_uint16 us_idx);
 extern hmac_user_stru  *mac_vap_get_hmac_user_by_addr_etc(mac_vap_stru *pst_mac_vap, oal_uint8  *puc_mac_addr);
-
 
 #ifdef _PRE_WLAN_FEATURE_WAPI
 extern hmac_wapi_stru *hmac_user_get_wapi_ptr_etc(mac_vap_stru *pst_mac_vap, oal_bool_enum_uint8 en_pairwise, oal_uint16 us_pairwise_idx);

@@ -18,3 +18,6 @@ obj-$(CONFIG_QCOM_WCNSS_PIL)		+= qcom_wcnss_pil.o
 qcom_wcnss_pil-y			+= qcom_wcnss.o
 qcom_wcnss_pil-y			+= qcom_wcnss_iris.o
 obj-$(CONFIG_ST_REMOTEPROC)		+= st_remoteproc.o
+ifeq ($(CONFIG_HISI_ISP_DEBUG), y)
+	subdir-ccflags-y += -DDEBUG_HISI_ISP
+endif

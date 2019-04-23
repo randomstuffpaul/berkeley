@@ -1040,13 +1040,13 @@ VOS_UINT32 AT_GetLteFeatureInfo(AT_FEATURE_SUPPORT_ST*pstFeATure)
     VOS_UINT32 ulRst  = 0;
 
     VOS_UINT8 ucBandStr[64] = {0};
-    VOS_UINT8 ucBandNv = 0;
     VOS_UINT8 ucBandFlag = 0;
 
     VOS_UINT32 ulStrlen1=0;
     VOS_UINT32 i =0;
 
-    VOS_UINT8  ucBandNum[65]={0};
+    VOS_UINT32  ulBandNv = 0;
+    VOS_UINT32  ulBandNum[AT_FEATURE_LTE_MAX_SUPPORT_BAND + 1]={0};
     LRRC_NV_UE_EUTRA_CAP_STRU *pstEutraCap = NULL;
 
     pstEutraCap = VOS_MemAlloc(WUEPS_PID_AT, (DYNAMIC_MEM_PT), sizeof(LRRC_NV_UE_EUTRA_CAP_STRU));
@@ -1072,10 +1072,10 @@ VOS_UINT32 AT_GetLteFeatureInfo(AT_FEATURE_SUPPORT_ST*pstFeATure)
     {
         if( pstEutraCap->stRfPara.astSuppEutraBandList[i].ucEutraBand > 0 )
         {
-            ucBandNv=pstEutraCap->stRfPara.astSuppEutraBandList[i].ucEutraBand;
-            if( ucBandNv < (RRC_MAX_NUM_OF_BANDS+1) )
+            ulBandNv=pstEutraCap->stRfPara.astSuppEutraBandList[i].ucEutraBand;
+            if( ulBandNv < (AT_FEATURE_LTE_MAX_SUPPORT_BAND + 1) )
             {
-                ucBandNum[ucBandNv]=1;
+                ulBandNum[ulBandNv]=1;
                 ucBandFlag++;
             }
         }
@@ -1095,9 +1095,9 @@ VOS_UINT32 AT_GetLteFeatureInfo(AT_FEATURE_SUPPORT_ST*pstFeATure)
         return ERR_MSP_FAILURE;
     }
 
-    for( i = 1 ; i < 65; i++ )
+    for( i = 1 ; i < AT_FEATURE_LTE_MAX_SUPPORT_BAND + 1; i++ )
     {
-        if( ucBandNum[i] == 1 )
+        if( ulBandNum[i] == 1 )
         {
             ulStrlen1 +=(VOS_UINT32) At_sprintf(64,(VOS_CHAR* )ucBandStr,(VOS_CHAR* )(ucBandStr+ulStrlen1),"B%d,",i);
             /*ucBandNum[i]=2;

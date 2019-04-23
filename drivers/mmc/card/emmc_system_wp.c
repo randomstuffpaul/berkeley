@@ -33,7 +33,6 @@
 /* get write protection block info */
 static int do_get_write_protection(struct gendisk *disk, struct hd_struct *part)
 {
-	struct mmc_blk_data *md;
 	struct mmc_card *card;
 	struct mmc_request mrq = {NULL};
 	struct mmc_command cmd = {0};

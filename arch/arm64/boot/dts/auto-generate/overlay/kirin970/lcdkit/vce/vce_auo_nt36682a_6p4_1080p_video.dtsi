@@ -21,8 +21,8 @@
 		hw,lcdkit-panel-name = "AUO_NT36682A 6.4' VIDEO TFT 1080 x 2310";
 		hw,lcdkit-panel-model = "VNCE_170 203 0 6.4' 1080 x 2310";
 		hw,lcdkit-mipi-clk-config-high = <600>;
-		hw,lcdkit-mipi-clk-config-low = <548>;
-		hw,lcdkit-mipi-clk-config-normal = <548>;
+		hw,lcdkit-mipi-clk-config-low = <552>;
+		hw,lcdkit-mipi-clk-config-normal = <552>;
 		hw,lcdkit-panel-type = <0x01>;
 		hw,lcdkit-panel-xres = <1080>;
 		hw,lcdkit-panel-yres = <2310>;
@@ -57,7 +57,7 @@
 			0x29 0x01 0x00 0x00 0x0a 0x00 0x02 0xFF 0x10
 			0x29 0x01 0x00 0x00 0x0a 0x00 0x02 0xFB 0x01
 			0x05 0x01 0x00 0x00 0x0a 0x01 0x02 0x11 0x00
-			0x05 0x01 0x00 0x00 0x64 0x01 0x02 0x29 0x00>;
+			0x05 0x01 0x00 0x00 0x0a 0x00 0x02 0x29 0x00>;
 		hw,lcdkit-panel-on-command-state = "dsi_lp_mode";
 		hw,lcdkit-panel-off-command = <0x1000005 0x01 0x00 0x00 0x14 0x01 0x02 0x28 0x00
 			0x1000005 0x01 0x00 0x00 0x40 0x01 0x02 0x10 0x00>;
@@ -124,10 +124,10 @@
 		hw,lcdkit-panel-fps-func-switch = <0>;
 		hw,lcdkit-panel-check-reg-on-support = <1>;
 		hw,lcdkit-panel-fps-tscall-support = <0>;
-		hw,lcdkit-panel-dis-on-cmds-delay-margin-support = <0>;
+		hw,lcdkit-panel-dis-on-cmds-delay-margin-support = <1>;
 		hw,lcdkit-panel-snd-cmd-before-frame-support = <0>;
 		hw,lcdkit-panel-ts-resume-ctrl-mode = <2>;
-		hw,lcdkit-panel-dis-on-cmds-delay-margin-time = <0>;
+		hw,lcdkit-panel-dis-on-cmds-delay-margin-time = <100>;
 		hw,lcdkit-panel-lptohs-mipi-check-support = <0>;
 		hw,lcdkit-panel-acl-ctrl-support = <0>;
 		hw,lcdkit-panel-hbm-ctrl-support = <0>;
@@ -146,12 +146,12 @@
 		hw,lcdkit-panel-bpp = <0>;
 		hw,lcdkit-panel-bgrfmt = <0>;
 		hw,lcdkit-panel-bl-type = <4>;
-		hw,lcdkit-panel-blmin = <100>;
-		hw,lcdkit-panel-blmax = <9260>;
+		hw,lcdkit-panel-blmin = <25>;
+		hw,lcdkit-panel-blmax = <7350>;
 		hw,lcdkit-mask-delay-time-before-fp = <16666>;
 		hw,lcdkit-mask-delay-time-after-fp = <16666>;
 		hw,lcdkit-panel-bl-def = <4000>;
-		hw,lcdkit-panel-bl-maxnit = <450>;
+		hw,lcdkit-panel-bl-maxnit = <500>;
 		hw,lcdkit-panel-getblmaxnit-type = <1>;
 		hw,lcdkit-panel-cmd-type = <8>;
 		hw,lcdkit-panel-ifbctype = <0>;
@@ -166,7 +166,7 @@
 		hw,lcdkit-panel-dirt-updt-support = <0>;
 		hw,lcdkit-is-hostprocessing = <1>;
 		hw,lcdkit-host-info-all-in-ddic = <1>;
-		hw,lcdkit-panel-dsi-upt-support = <0>;
+		hw,lcdkit-panel-dsi-upt-support = <1>;
 		hw,mipiclk-updt-support-new = <1>;
 		hw,lcdkit-panel-vsyn-ctr-type = <0>;
 		hw,lcdkit-panel-bl-pwm-preci-no-convert = <0>;
@@ -200,7 +200,7 @@
 		hw,lcdkit-mipi-lane-nums = <3>;
 		hw,lcdkit-mipi-color-mode = <5>;
 		hw,lcdkit-mipi-vc = <0>;
-		hw,lcdkit-mipi-dsi-bit-clk = <548>;
+		hw,lcdkit-mipi-dsi-bit-clk = <552>;
 		hw,lcdkit-mipi-burst-mode = <2>;
 		hw,lcdkit-mipi-max-esc-clk = <10>;
 		hw,lcdkit-mipi-dsi-bit-clk-val-a = <562>;
@@ -208,7 +208,7 @@
 		hw,lcdkit-mipi-dsi-bit-clk-val-c = <0>;
 		hw,lcdkit-mipi-dsi-bit-clk-val-d = <0>;
 		hw,lcdkit-mipi-dsi-bit-clk-val-e = <0>;
-		hw,lcdkit-mipi-dsi-bit-clk-upt = <548>;
+		hw,lcdkit-mipi-dsi-bit-clk-upt = <552>;
 		hw,lcdkit-mipi-rg-vcm-adjust = <0>;
 		hw,lcdkit-mipi-non-continue-enable = <0>;
 		hw,lcdkit-mipi-clk-post-adjust = <215>;
@@ -350,7 +350,9 @@
 		hw,lcdkit-delay-af-vsn-on = <12>;
 		hw,lcdkit-delay-af-lp11 = <10>;
 		hw,lcdkit-delay-af-tp-reset = <0>;
+		hw,lcdkit-delay-af-tp-before-suspend = <20>;
 		hw,lcdkit-tp-reset-before-lcd-reset = <0>;
+		hw,lcdkit-tp-before-lcd-sleep = <1>;
 		hw,lcdkit-delay-af-vsn-off = <5>;
 		hw,lcdkit-delay-af-vsp-off = <5>;
 		hw,lcdkit-delay-af-bias-off = <0>;
@@ -410,5 +412,8 @@
 		hw_lm36274,lcdkit-bl-ic-bl-enhance-cur-ramp-cmd = <0x01 0x03 0xad 0xff>;
 		hw_lm36274,lcdkit-bl-ic-bl-enhance-boost-cur-cmd = <0x01 0x11 0x36 0xff>;
 		hw_lm36274,lcdkit-bl-ic-bl-enhance-sink-cmd = <0x01 0x08 0x17 0xff>;
+		hw_lm36274,lcdkit-bl-ovp-bit = <0>;
+		hw_lm36274,lcdkit-bl-ocp-bit = <0>;
+		hw_lm36274,lcdkit-bl-tsd-bit = <0>;
     };
 };

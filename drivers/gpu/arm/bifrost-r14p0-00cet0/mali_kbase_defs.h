@@ -40,6 +40,7 @@
 #include <mali_kbase_instr_defs.h>
 #include <mali_kbase_pm.h>
 #include <mali_kbase_gpuprops_types.h>
+#include <mali_kbase_hisilicon.h>
 #include <protected_mode_switcher.h>
 
 
@@ -1163,6 +1164,8 @@ struct kbase_pm_device_data {
  * @max_size:     Maximum number of free pages in the pool
  * @order:        order = 0 refers to a pool of 4 KB pages
  *                order = 9 refers to a pool of 2 MB pages (2^9 * 4KB = 2 MB)
+ * @pool_entry:   The entry in the memory pool list.
+ * @lb_policy_id: The cache policy id of last buffer.
  * @pool_lock:    Lock protecting the pool - must be held when modifying
  *                @cur_size and @page_list
  * @page_list:    List of free pages in the pool
@@ -1180,6 +1183,8 @@ struct kbase_mem_pool {
 	size_t              cur_size;
 	size_t              max_size;
 	size_t		    order;
+	struct list_head    pool_entry;
+	unsigned int        lb_policy_id;
 	spinlock_t          pool_lock;
 	struct list_head    page_list;
 	struct shrinker     reclaim;
@@ -1247,9 +1252,9 @@ struct kbase_mmu_mode {
 	phys_addr_t (*pte_to_phy_addr)(u64 entry);
 	int (*ate_is_valid)(u64 ate, unsigned int level);
 	int (*pte_is_valid)(u64 pte, unsigned int level);
-	void (*entry_set_ate)(u64 *entry, struct tagged_addr phy,
+	void (*entry_set_ate)(struct kbase_device *kbdev, u64 *entry, struct tagged_addr phy,
 			unsigned long flags, unsigned int level);
-	void (*entry_set_ate_scramble_bit)(u64 *entry, struct tagged_addr phy,
+	void (*entry_set_ate_scramble_bit)(struct kbase_device *kbdev, u64 *entry, struct tagged_addr phy,
 			unsigned long flags, unsigned int level);
 	void (*entry_set_pte)(u64 *entry, phys_addr_t phy);
 	void (*entry_invalidate)(u64 *entry);
@@ -1521,9 +1526,7 @@ struct kbase_device {
 	void __iomem *crgreg;
 	void __iomem *pmctrlreg;
 	void __iomem *pctrlreg;
-#ifdef CONFIG_MALI_TRYM
-	void __iomem *sctrlreg;
-#endif/*CONFIG_MALI_TRYM*/
+
 	struct {
 		int irq;
 		int flags;
@@ -1803,7 +1806,8 @@ struct kbase_device {
 #endif
 
 	/* MALI_HISI_INTEGRATION */
-	struct kbase_hisi_callbacks *hisi_callbacks;
+	struct kbase_hisi_device_data hisi_dev_data;
+
 #ifdef CONFIG_MALI_JOB_DUMP
 	u8 backup_serialize_jobs;
 #endif
@@ -2207,6 +2211,8 @@ struct kbase_context {
 
 	struct kbase_mem_pool mem_pool;
 	struct kbase_mem_pool lp_mem_pool;
+
+	struct kbase_hisi_ctx_data hisi_ctx_data;
 
 	struct shrinker         reclaim;
 	struct list_head        evict_list;

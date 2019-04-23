@@ -59,7 +59,7 @@ int bfr_get_full_path_of_rrecord_part(char **path_buf)
 
     if (unlikely(NULL == path_buf))
     {
-        BFMR_PRINT_INVALID_PARAMS("path_buf: %p\n", path_buf);
+        BFMR_PRINT_INVALID_PARAMS("path_buf.\n");
         return -1;
     }
 

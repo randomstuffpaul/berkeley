@@ -46,6 +46,7 @@ HWLOG_REGIST();
   Return:        0: success
                 -1: fail
 ***************************************************************************/
+#if 0
 static int moisture_detection_enable(void)
 {
 	int ret;
@@ -88,7 +89,7 @@ static int moisture_detection_enable(void)
 				return 0;
 			} else {
 				return -1;
-			} 
+			}
 		} else {
 			return -1;
 		}
@@ -96,6 +97,7 @@ static int moisture_detection_enable(void)
 	hwlog_info("vbus and cc_state not ready for moisture_detection\n", __func__);
 	return -1;
 }
+#endif
 void moisture_detection_complete(void)
 {
 	int ret;
@@ -139,9 +141,10 @@ void moisture_detection_complete(void)
 			send_water_intrused_event(false);
 			moisture_detected_already_reported = 0;
 		}
-	}	
+	}
 }
 
+#if 0
 static void monitor_work(struct work_struct *work)
 {
 	int ret;
@@ -155,6 +158,7 @@ static void monitor_work(struct work_struct *work)
 	}
 	/*schedule_delayed_work(&m_work, msecs_to_jiffies(1000));*/
 }
+#endif
 void moisture_detection_init(void)
 {
     /*hwlog_info(" %s++!\n", __func__);

@@ -146,7 +146,7 @@ static unsigned int hw_usb_get_usb_speed(void)
 
 static ssize_t hw_usb_speed_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	switch(hw_usb_get_usb_speed()) {
+	switch (hw_usb_get_usb_speed()) {
 		case USB_SPEED_UNKNOWN:
 			return scnprintf(buf, PAGE_SIZE, "%s", "unknown");
 		break;
@@ -200,7 +200,7 @@ static unsigned int usb_host_get_abnormal_event(void)
 
 static ssize_t hw_usb_host_abnormal_event_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	switch(usb_host_get_abnormal_event()) {
+	switch (usb_host_get_abnormal_event()) {
 		case USB_HOST_EVENT_NORMAL:
 			return scnprintf(buf, PAGE_SIZE, "%s", "normal");
 		break;

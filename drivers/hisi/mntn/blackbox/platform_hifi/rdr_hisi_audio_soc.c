@@ -76,7 +76,6 @@
 #define WATCHDOG_DTS_COMP_NAME "hisilicon,sochifi-watchdog"
 #endif
 
-#define DRV_WATCHDOG_BASE_ADDR          (0xe804d000U)
 #define DRV_WATCHDOG_CONTROL            (DRV_WATCHDOG_BASE_ADDR + 0x008)
 #define DRV_WATCHDOG_INTCLR             (DRV_WATCHDOG_BASE_ADDR + 0x00C)
 #define DRV_WATCHDOG_LOCK               (DRV_WATCHDOG_BASE_ADDR + 0xC00)
@@ -94,7 +93,7 @@
 #define CFG_DSP_NMI                     (0x3C)               /*DSP NMI ,bit0-bit15*/
 #define CFG_MMBUF_REMAP_EN              (0x130)              /*mmbuf remap enable£¬9bit*/
 #define CFG_OCRAM_REMAP_EN              (0x13C)              /*ocram remap enable£¬9bit*/
-#define ASP_CFG_BASE                    (0xE804E000UL)
+#define ASP_CFG_BASE                    (SOC_ACPU_ASP_CFG_BASE_ADDR)
 
 struct rdr_soc_des_s {
 	uint32_t modid;

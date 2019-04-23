@@ -287,12 +287,8 @@ static int do_read_inode(struct inode *inode)
 	int err;
 
 	/* Check if ino is within scope */
-	if (check_nid_range(sbi, inode->i_ino)) {
-		f2fs_msg(inode->i_sb, KERN_ERR, "bad inode number: %lu",
-			 (unsigned long) inode->i_ino);
-		WARN_ON(1);
+	if (check_nid_range(sbi, inode->i_ino))
 		return -EINVAL;
-	}
 
 	node_page = get_node_page(sbi, inode->i_ino);
 	if (IS_ERR(node_page))
@@ -566,7 +562,6 @@ retry:
 			f2fs_stop_checkpoint(sbi, false);
 			f2fs_msg(sbi->sb, KERN_ERR,
 				"f2fs inode page read error! erro_num = %d\n", err);
-			WARN_ON(1);
 #ifdef CONFIG_HUAWEI_F2FS_DSM
 			if (f2fs_dclient && !dsm_client_ocuppy(f2fs_dclient)) {
 				dsm_client_record(f2fs_dclient, "F2FS reboot: %s:%d [%d]\n",
@@ -574,7 +569,7 @@ retry:
 				dsm_client_notify(f2fs_dclient, DSM_F2FS_NEED_FSCK);
 			}
 #endif
-			f2fs_add_restart_wq();
+			f2fs_restart(); /* force restarting */
 		}
 		return;
 	}
@@ -645,7 +640,11 @@ void f2fs_evict_inode(struct inode *inode)
 	if (inode->i_nlink || is_bad_inode(inode))
 		goto no_delete;
 
-	dquot_initialize(inode);
+	err = dquot_initialize(inode);
+	if (err) {
+		err = 0;
+		set_sbi_flag(sbi, SBI_QUOTA_NEED_REPAIR);
+	}
 
 	remove_ino_entry(sbi, inode->i_ino, APPEND_INO);
 	remove_ino_entry(sbi, inode->i_ino, UPDATE_INO);
@@ -678,9 +677,10 @@ retry:
 		goto retry;
 	}
 
-	if (err)
+	if (err) {
 		update_inode_page(inode);
-	dquot_free_inode(inode);
+		set_sbi_flag(sbi, SBI_QUOTA_NEED_REPAIR);
+	}
 
 	if (unlikely(is_inode_flag_set(inode, FI_DIRTY_INODE))) {
 		f2fs_inode_synced(inode);
@@ -730,8 +730,11 @@ no_delete:
 		alloc_nid_failed(sbi, inode->i_ino);
 		clear_inode_flag(inode, FI_FREE_NID);
 	} else {
-		f2fs_bug_on(sbi, err &&
-			!exist_written_data(sbi, inode->i_ino, ORPHAN_INO));
+		/*
+		 * If xattr nid is corrupted, we can reach out error condition,
+		 * err & !exist_written_data(sbi, inode->i_ino, ORPHAN_INO)).
+		 * In that case, check_nid_range() is enough to give a clue.
+		 */
 	}
 out_clear:
 	fscrypt_put_encryption_info(inode, NULL);

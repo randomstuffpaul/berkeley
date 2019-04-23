@@ -117,6 +117,9 @@ extern int set_hmp_boostpulse(int duration);
 extern int get_hmp_boost(void);
 #endif
 
+extern unsigned int cpu_nr_runnings(struct cpumask *mask);
+extern struct cpufreq_frequency_table *cpufreq_frequency_get_table(unsigned int cpu);
+
 /*********************************************************************
  *                          SYSFS INTERFACE                          *
  *********************************************************************/

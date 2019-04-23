@@ -310,6 +310,32 @@ static int focal_get_lcd_panel_info(void)
 	return 0;
 }
 
+static void focal_parse_get_debug_info_config_from_dts(
+	struct device_node *np,
+	struct focal_platform_data *focal_pdata)
+{
+	u32 value = 0;
+	focal_of_property_read_u32_default(np, FTS_SUPPORT_GET_DEBUG_INFO_FROM_IC,
+									&focal_pdata->support_get_debug_info_from_ic, 0);
+	TS_LOG_INFO("%s, support_get_debug_info_from_ic:%d\n", __func__, focal_pdata->support_get_debug_info_from_ic);
+
+	if (focal_pdata->support_get_debug_info_from_ic) {
+		focal_of_property_read_u32_default(np, FTS_GET_DEBUG_INFO_REG_ADDR,
+									&value, 0);
+		if (value == 0 || value > 0xFF) {
+			focal_pdata->get_debug_info_reg_addr = 0;
+			TS_LOG_ERR("%s, get_debug_info_reg_addr use default value or value invalid, please check dts config\n",
+					__func__);
+		} else {
+			focal_pdata->get_debug_info_reg_addr = (u8)value;
+		}
+		TS_LOG_INFO("%s, get_debug_info_reg_addr:0x%02x\n", __func__, focal_pdata->get_debug_info_reg_addr);
+	}
+
+	return;
+}
+
+
 int focal_parse_dts(
 	struct device_node *np,
 	struct focal_platform_data *focal_pdata)
@@ -377,7 +403,7 @@ int focal_parse_dts(
 			__func__, ret);
 		str_value = FTS_TEST_TYPE_DEFAULT;
 	}
-	strncpy(dev_data->tp_test_type, str_value, TS_CAP_TEST_TYPE_LEN);
+	strncpy(dev_data->tp_test_type, str_value, TS_CAP_TEST_TYPE_LEN - 1);
 
 	ret = of_property_read_u32(np, FTS_IS_IN_CELL, &focal_pdata->focal_device_data->is_in_cell);
 	if (ret) {
@@ -409,6 +435,12 @@ int focal_parse_dts(
 		TS_LOG_INFO("%s:get check_status_watchdog_timeout from dts failed ,use default FT8716 value\n", __func__);
 	}
 
+	ret = of_property_read_u32(np, "rawdata_get_timeout", &dev_data->rawdata_get_timeout);
+	if (ret) {
+		dev_data->rawdata_get_timeout = 0;
+		TS_LOG_INFO("%s:get rawdata_get_timeout from dts failed ,use default value\n", __func__);
+	}
+	TS_LOG_INFO("%s, rawdata_get_timeout :%d\n", __func__, dev_data->rawdata_get_timeout);
 
 	ret = of_property_read_u32(np, FTS_OPEN_ONCE_THRESHOLD, &focal_pdata->only_open_once_captest_threshold);
 	if (ret) {
@@ -466,7 +498,6 @@ int focal_parse_dts(
 		focal_pdata->palm_iron_support = 0;
 		TS_LOG_INFO("%s: get palm_iron_support from dts failed, use default(0)\n", __func__);
 	}
-
 
 	ret = of_property_read_u32(np, FTS_FW_ONLY_DEPEND_ON_LCD, &focal_pdata->fw_only_depend_on_lcd);
 	if (ret) {
@@ -532,7 +563,11 @@ int focal_parse_dts(
 		TS_LOG_INFO("%s get fts_use_pinctrl from dts failed, use default(0).\n", __func__);
 		focal_pdata->fts_use_pinctrl = 0;
 	}
-
+	ret = of_property_read_u32(np, "use_dma_download_firmware", &focal_pdata->use_dma_download_firmware);
+	if (ret) {
+		TS_LOG_INFO("%s use_dma_download_firmware not use, use default(0).\n", __func__);
+		focal_pdata->use_dma_download_firmware = 0;
+	}
 	ret = of_property_read_u32(np, FTS_FW_UPDATE_DURATION_CHECK, &focal_pdata->fw_update_duration_check);
 	if (ret) {
 		TS_LOG_INFO("%s get fw_update_duration_check from dts unsucceed, use default(0).\n", __func__);
@@ -570,7 +605,7 @@ int focal_parse_dts(
 		charger_info->charger_switch_addr = (u16)tmpval;
 	}
 #endif
-
+	focal_parse_get_debug_info_config_from_dts(np, focal_pdata);
 	/*
 	 * 0 is cover without glass,
 	 * 1 is cover with glass that need glove mode

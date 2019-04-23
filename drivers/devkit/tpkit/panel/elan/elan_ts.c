@@ -692,7 +692,6 @@ static void parse_pen_point(struct ts_pens *pointinfo,u8 *pbuf, struct ts_cmd_no
 		pointinfo->tool.y = y;
 		pointinfo->tool.pressure = p;
 		pointinfo->tool.pen_inrange_status=pen_down&0x1;
-		TS_LOG_DEBUG("[elan]:report pen coord: x = %d, y = %d, pressure = %d, pen_inrange_status = %d\n", lcm_max_x - x, y, p, pen_down&0x1);
 		if(!elan_ts->pen_detected){
 			TS_LOG_INFO("[elan]:pen is detected!\n");
 			elan_ts->pen_detected = true;

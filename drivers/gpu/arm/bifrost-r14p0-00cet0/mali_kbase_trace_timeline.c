@@ -78,7 +78,7 @@ static void *kbasep_trace_timeline_seq_next(struct seq_file *s, void *data, loff
 {
 	(*pos)++;
 
-	if (*pos == KBASE_NR_TRACE_CODES)
+	if (*pos >= KBASE_NR_TRACE_CODES)
 		return NULL;
 
 	return &kbase_trace_timeline_desc_table[*pos];

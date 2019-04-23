@@ -62,6 +62,7 @@ struct ion_iommu_map {
  *			handle, used for debugging
 */
 struct ion_buffer {
+	u64 magic;
 	struct kref ref;
 	union {
 		struct rb_node node;
@@ -87,6 +88,10 @@ struct ion_buffer {
 	struct ion_iommu_map *iommu_map;
 #ifdef CONFIG_ION_HISI_SECSG
 	unsigned int id;
+#endif
+
+#ifdef CONFIG_HISI_LB
+	unsigned int plc_id;
 #endif
 };
 void ion_buffer_destroy(struct ion_buffer *buffer);

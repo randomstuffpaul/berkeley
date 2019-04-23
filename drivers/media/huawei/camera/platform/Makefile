@@ -29,3 +29,9 @@ ifeq ($(CONFIG_HISI_CAMERA_HISTAR_ISPV250), y)
 ccflags-y += -Idrivers/media/huawei/camera/platform/$(TARGET_BOARD_PLATFORM)
 obj-y += $(TARGET_BOARD_PLATFORM)/
 endif
+
+ifeq ($(CONFIG_HISI_CAMERA_HISTAR_ISPV210), y)
+ccflags-y += -Idrivers/media/huawei/camera/platform/$(TARGET_BOARD_PLATFORM)
+obj-y += $(TARGET_BOARD_PLATFORM)/
+endif
+

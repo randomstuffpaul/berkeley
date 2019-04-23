@@ -33,6 +33,13 @@
 #define HISI_COUL_LOCK()    do {} while (0)
 #define HISI_COUL_UNLOCK()  do {} while (0)
 
+static int hisi_coul_drv_init = 0;
+static struct mutex hisi_coul_drv_lock;
+#define HISI_COUL_DRV_LOCK()    do {if(!hisi_coul_drv_init) \
+                                        return; \
+                                    mutex_lock(&hisi_coul_drv_lock);} while (0)
+#define HISI_COUL_DRV_UNLOCK()  do {mutex_unlock(&hisi_coul_drv_lock);} while (0)
+
 static struct hisi_coul_ops *g_hisi_coul_ops;
 static enum HISI_COULOMETER_TYPE g_hisi_coul_type = COUL_UNKNOW;
 /*lint -e773*/
@@ -802,9 +809,11 @@ void hisi_coul_charger_event_rcv(unsigned int event)
 {
 
 	extern struct blocking_notifier_head notifier_list;
-
 	/*declare the local variable of struct hisi_coul_ops */
 	LOCAL_HISI_COUL_OPS();
+
+	HISI_COUL_DRV_LOCK();
+
 	if (NULL != g_hisi_coul_test_info) {
 		if (g_hisi_coul_test_info->test_start_flag & 0x0080) {
 			coul_drv_info("input event is %d\n", g_hisi_coul_test_info->input_event);
@@ -818,6 +827,8 @@ void hisi_coul_charger_event_rcv(unsigned int event)
 	}
 
 	blocking_notifier_call_chain(&notifier_list, event, NULL);
+
+	HISI_COUL_DRV_UNLOCK();
 }
 
 /****************************************************************************
@@ -1076,6 +1087,8 @@ int hisi_coul_ops_unregister(struct hisi_coul_ops *coul_ops)
 
 int __init hisi_coul_init(void)
 {
+	mutex_init(&hisi_coul_drv_lock);
+
 #ifdef CONFIG_HUAWEI_HW_DEV_DCT
 	/* detect coul device successful, set the flag as present */
 	if (NULL != g_hisi_coul_ops && NULL != g_hisi_coul_ops->dev_check) {
@@ -1089,7 +1102,7 @@ int __init hisi_coul_init(void)
 		coul_drv_err("ops dev_check is null.\n");
 	}
 #endif
-
+	hisi_coul_drv_init = 1; //here 1 present init seccess
 	coul_drv_info("hisi_coul_init\n");
 	return 0;
 }

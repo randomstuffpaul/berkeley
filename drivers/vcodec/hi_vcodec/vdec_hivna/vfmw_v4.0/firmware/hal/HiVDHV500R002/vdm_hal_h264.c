@@ -19,7 +19,7 @@
 #include "vdm_hal_h264.h"
 
 #ifdef MSG_POOL_ADDR_CHECK
-static SINT32 H264HAL_CheckHeadMsg(MEM_BUFFER_S* pVdhMemMap,UINT32 PicMsgSlotPhy)
+static SINT32 H264HAL_CheckHeadMsg(MEM_BUFFER_S* pVdhMemMap,UADDR PicMsgSlotPhy)
 {
 	UINT32 *pSlot = NULL, *pSlot_base = NULL;
 	UINT32 tmp, i, offset;

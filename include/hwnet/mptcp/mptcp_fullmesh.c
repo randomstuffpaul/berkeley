@@ -8,6 +8,7 @@
 #include <net/mptcp_v6.h>
 #include <net/addrconf.h>
 #endif
+#include <linux/inet.h>
 
 enum {
 	MPTCP_EVENT_ADD = 1,
@@ -25,6 +26,7 @@ enum {
 struct fullmesh_rem4 {
 	u8		rem4_id;
 	u8		bitfield;
+	u8		forbid_bitfield;
 	u8		retry_bitfield;
 	__be16		port;
 	struct in_addr	addr;
@@ -46,6 +48,7 @@ struct mptcp_loc_addr {
 	struct mptcp_loc6 locaddr6[MPTCP_MAX_ADDR];
 	u8 loc6_bits;
 	u8 next_v6_index;
+	struct rcu_head rcu;
 };
 
 struct mptcp_addr_event {
@@ -77,7 +80,7 @@ struct fullmesh_priv {
 
 	u8 rem4_bits;
 	u8 rem6_bits;
-
+	u8 mptcp_rem_locid;
 	/* Are we established the additional subflows for primary pair? */
 	u8 first_pair:1;
 };
@@ -113,6 +116,11 @@ static struct fullmesh_priv *fullmesh_get_priv(const struct mptcp_cb *mpcb)
 	return (struct fullmesh_priv *)&mpcb->mptcp_pm[0];
 }
 
+u8	fullmesh_get_rem_locid(const struct mptcp_cb *mpcb)
+{
+	return ++fullmesh_get_priv(mpcb)->mptcp_rem_locid;
+}
+
 /* Find the first free index in the bitfield */
 static int __mptcp_find_free_index(u8 bitfield, u8 base)
 {
@@ -140,6 +148,87 @@ static int mptcp_find_free_index(u8 bitfield)
 	return __mptcp_find_free_index(bitfield, 0);
 }
 
+/* fixme: if both interface are to same operator we connect using same local interface */
+static void full_mesh_update_forbid_path(struct fullmesh_rem4 *remaddr4, struct sock *meta_sk)
+{
+	int r_carrier_id;
+	int l_carrier_id;
+	int l_carrier_bit = 0;
+	int i;
+	struct net *net = sock_net(meta_sk);
+	char ifname[IFNAMSIZ] = {0};
+	struct mptcp_loc_addr *mptcp_local;
+	const struct mptcp_fm_ns *fm_ns = fm_get_ns(net);
+
+	if (tcp_sk(meta_sk)->mptcp_cap_flag != MPTCP_CAP_UID_DIP_DPORT)
+		return;
+	r_carrier_id = mptcp_get_raddr_carrier_info(sock_i_uid(meta_sk).val, remaddr4->addr.s_addr);
+	/* No forbid list */
+	if (-1 == r_carrier_id)
+		return;
+
+	mptcp_debug("%s: r_carrier_id: %d\n", __func__, r_carrier_id);
+	/* We need a local (stable) copy of the address-list. Really, it is not
+	 * such a big deal, if the address-list is not 100% up-to-date.
+	 */
+	rcu_read_lock_bh();
+	mptcp_local = rcu_dereference_bh(fm_ns->local);
+	mptcp_local = kmemdup(mptcp_local, sizeof(*mptcp_local), GFP_ATOMIC);
+	rcu_read_unlock_bh();
+
+	if (!mptcp_local)
+		return;
+
+	/* if already connected then just update and skip, this may be case of new interface added */
+	if (remaddr4->bitfield && (remaddr4->addr.s_addr != meta_sk->sk_daddr)) {
+		remaddr4->forbid_bitfield = 0;
+		remaddr4->forbid_bitfield |= mptcp_local->loc4_bits;
+		remaddr4->forbid_bitfield &= ~remaddr4->bitfield;
+		kfree(mptcp_local);
+		return;
+	}
+
+	/* get local interface for carrier */
+	mptcp_for_each_bit_set(mptcp_local->loc4_bits, i) {
+		(void)netdev_get_name(net, ifname, mptcp_local->locaddr4[i].if_idx);
+		l_carrier_id = mptcp_hw_get_carrier_info_of_iface(ifname);
+		mptcp_debug("%s: r_carrier_id: %d, l_carrier_id: %d\n", __func__, r_carrier_id, l_carrier_id);
+		if (l_carrier_id == r_carrier_id ||
+		    (l_carrier_id == MPTCP_HW_EXT_CARRIER_INVALID &&
+		     remaddr4->addr.s_addr == meta_sk->sk_daddr)) {
+			/* For MPTCP_HW_EXT_CARRIER_INVALID, make sure it can
+			 * start a subflow with the dst ip address of master flow
+			 */
+			l_carrier_bit |= (1 << i);
+			mptcp_debug("%s: l_carrier_bit: %x, \n", __func__, l_carrier_bit);
+		}
+	}
+
+	remaddr4->forbid_bitfield = 0;
+	remaddr4->forbid_bitfield |= mptcp_local->loc4_bits;
+	remaddr4->forbid_bitfield &= ~l_carrier_bit;
+	mptcp_info("%s: new set connected: %x, prohibit: %x, mptcp_local->loc4_bits: %x, l_carrier_bit: %x\n", __func__, remaddr4->bitfield, remaddr4->forbid_bitfield, mptcp_local->loc4_bits, l_carrier_bit);
+	kfree(mptcp_local);
+	return;
+}
+
+/* fixme: if both interface are to same operator we connect using same local interface */
+static void full_mesh_add_interface_update_forbid_path(struct sock *meta_sk)
+{
+	int i;
+	struct mptcp_cb *mpcb = tcp_sk(meta_sk)->mpcb;
+	struct fullmesh_priv *fmp = fullmesh_get_priv(mpcb);
+
+	if (tcp_sk(meta_sk)->mptcp_cap_flag != MPTCP_CAP_UID_DIP_DPORT)
+		return;
+
+	mptcp_debug("%s: remote addr: %x\n", __func__, fmp->rem4_bits);
+	mptcp_for_each_bit_set(fmp->rem4_bits, i)
+		full_mesh_update_forbid_path(&fmp->remaddr4[i], meta_sk);
+
+	return;
+}
+
 static void mptcp_addv4_raddr(struct mptcp_cb *mpcb,
 			      const struct in_addr *addr,
 			      __be16 port, u8 id)
@@ -147,6 +236,8 @@ static void mptcp_addv4_raddr(struct mptcp_cb *mpcb,
 	int i;
 	struct fullmesh_rem4 *rem4;
 	struct fullmesh_priv *fmp = fullmesh_get_priv(mpcb);
+	char src_ip_str[INET_ADDRSTRLEN];
+	char dst_ip_str[INET_ADDRSTRLEN];
 
 	mptcp_for_each_bit_set(fmp->rem4_bits, i) {
 		rem4 = &fmp->remaddr4[i];
@@ -164,12 +255,15 @@ static void mptcp_addv4_raddr(struct mptcp_cb *mpcb,
 		 */
 		if (rem4->rem4_id == id && rem4->addr.s_addr != addr->s_addr) {
 			/* update the address */
-			mptcp_debug("%s: updating old addr:%pI4 to addr %pI4 with id:%d\n",
-				    __func__, &rem4->addr.s_addr,
-				    &addr->s_addr, id);
+			mptcp_debug("%s: updating old addr:%s to addr %s with id:%d\n",
+				    __func__,
+				    anonymousIPv4addr(rem4->addr.s_addr, src_ip_str, INET_ADDRSTRLEN),
+				    anonymousIPv4addr(addr->s_addr, dst_ip_str, INET_ADDRSTRLEN),
+				    id);
 			rem4->addr.s_addr = addr->s_addr;
 			rem4->port = port;
 			mpcb->list_rcvd = 1;
+			full_mesh_update_forbid_path(rem4, mpcb->meta_sk);
 			return;
 		}
 	}
@@ -177,10 +271,14 @@ static void mptcp_addv4_raddr(struct mptcp_cb *mpcb,
 	i = mptcp_find_free_index(fmp->rem4_bits);
 	/* Do we have already the maximum number of local/remote addresses? */
 	if (i < 0) {
-		mptcp_debug("%s: At max num of remote addresses: %d --- not adding address: %pI4\n",
-			    __func__, MPTCP_MAX_ADDR, &addr->s_addr);
+		mptcp_debug("%s: At max num of remote addresses: %d --- not adding address: %s\n",
+			    __func__, MPTCP_MAX_ADDR,
+				anonymousIPv4addr(addr->s_addr, dst_ip_str, INET_ADDRSTRLEN));
 		return;
 	}
+
+	mptcp_debug("%s: add remote addresses id: %d address: %s\n",
+		__func__, id, anonymousIPv4addr(addr->s_addr, dst_ip_str, INET_ADDRSTRLEN));
 
 	rem4 = &fmp->remaddr4[i];
 
@@ -188,11 +286,13 @@ static void mptcp_addv4_raddr(struct mptcp_cb *mpcb,
 	rem4->addr.s_addr = addr->s_addr;
 	rem4->port = port;
 	rem4->bitfield = 0;
+	rem4->forbid_bitfield = 0;
 	rem4->retry_bitfield = 0;
 	rem4->rem4_id = id;
 	mpcb->list_rcvd = 1;
 	fmp->rem4_bits |= (1 << i);
 
+	full_mesh_update_forbid_path(rem4, mpcb->meta_sk);
 	return;
 }
 
@@ -508,8 +608,8 @@ next_subflow:
 		u8 remaining_bits;
 
 		rem = &fmp->remaddr4[i];
-		remaining_bits = ~(rem->bitfield) & mptcp_local->loc4_bits;
-
+		remaining_bits = ~(rem->bitfield | rem->forbid_bitfield) & mptcp_local->loc4_bits;
+		mptcp_debug("%s: remaining: %x, connected: %x, prohibit: %x, mptcp_local->loc4_bits: %x\n", __func__, remaining_bits, rem->bitfield, rem->forbid_bitfield, mptcp_local->loc4_bits);
 		/* Are there still combinations to handle? */
 		if (remaining_bits) {
 			int i = mptcp_find_free_index(~remaining_bits);
@@ -669,6 +769,70 @@ static int mptcp_find_address(const struct mptcp_loc_addr *mptcp_local,
 	return i;
 }
 
+static int mptcp_find_address_transp(const struct mptcp_loc_addr *mptcp_local,
+				     sa_family_t family, int if_idx)
+{
+	bool found = false;
+	u8 loc_bits;
+	int i;
+
+	if (family == AF_INET)
+		loc_bits = mptcp_local->loc4_bits;
+	else
+		loc_bits = mptcp_local->loc6_bits;
+
+	mptcp_for_each_bit_set(loc_bits, i) {
+		if (family == AF_INET &&
+		    (!if_idx || mptcp_local->locaddr4[i].if_idx == if_idx)) {
+			found = true;
+			break;
+		}
+		if (family == AF_INET6 &&
+		    (!if_idx || mptcp_local->locaddr6[i].if_idx == if_idx)) {
+			found = true;
+			break;
+		}
+	}
+
+	if (!found)
+		return -1;
+
+	return i;
+}
+
+static bool mptcp_is_sock_closed_for_prim_iface_on(struct sock *meta_sk, int if_idx)
+{
+	struct tcp_sock *meta_tp = tcp_sk(meta_sk);
+	struct mptcp_cb *mpcb;
+
+	mpcb = meta_tp->mpcb;
+
+	if (!meta_tp->user_switch) {
+		struct net_device *net_dev;
+		struct sock *sk, *tmpsk;
+
+		net_dev = dev_get_by_name(sock_net(meta_sk), meta_tp->prim_iface);
+		if (net_dev) {
+			if (if_idx == net_dev->ifindex) {
+				/* prim iface is up, so close the subflows on the secondry iface,
+				 * if all subflow is closed , the meta_sk alos will be closed.
+				 * it is ok, for the user app will create a new socket on prim iface.
+				 */
+				mptcp_for_each_sk_safe(mpcb, sk, tmpsk) {
+					mptcp_sub_force_close(sk);
+				}
+				mptcp_info("%s: close the secondry subflow for prim_iface is up\n", __func__);
+				dev_put(net_dev);
+				return true;
+			}
+			dev_put(net_dev);
+		} else
+			mptcp_info("%s: can't find the net_dev\n", __func__);
+	}
+
+	return false;
+}
+
 static void mptcp_address_worker(struct work_struct *work)
 {
 	const struct delayed_work *delayed_work = container_of(work,
@@ -725,7 +889,7 @@ next_event:
 			mptcp_local->loc6_bits &= ~(1 << id);
 
 		rcu_assign_pointer(fm_ns->local, mptcp_local);
-		kfree(old);
+		kfree_rcu(old, rcu);
 	} else {
 		int i = mptcp_find_address(mptcp_local, event->family,
 					   &event->addr, event->if_idx);
@@ -787,7 +951,7 @@ next_event:
 		}
 
 		rcu_assign_pointer(fm_ns->local, mptcp_local);
-		kfree(old);
+		kfree_rcu(old, rcu);
 	}
 	success = true;
 
@@ -806,10 +970,9 @@ duno:
 		rcu_read_lock_bh();
 		hlist_nulls_for_each_entry_rcu(meta_tp, node, &tk_hashtable[i],
 					       tk_table) {
-			struct mptcp_cb *mpcb = meta_tp->mpcb;
 			struct sock *meta_sk = (struct sock *)meta_tp, *sk;
-			struct fullmesh_priv *fmp = fullmesh_get_priv(mpcb);
 			bool meta_v4 = meta_sk->sk_family == AF_INET;
+			struct mptcp_cb *mpcb;
 
 			if (sock_net(meta_sk) != net)
 				continue;
@@ -818,15 +981,19 @@ duno:
 				/* skip IPv6 events if meta is IPv4 */
 				if (event->family == AF_INET6)
 					continue;
-			}
-			/* skip IPv4 events if IPV6_V6ONLY is set */
-			else if (event->family == AF_INET && meta_sk->sk_ipv6only)
+			} else if (event->family == AF_INET && meta_sk->sk_ipv6only) {
+				/* skip IPv4 events if IPV6_V6ONLY is set */
 				continue;
+			}
 
 			if (unlikely(!atomic_inc_not_zero(&meta_sk->sk_refcnt)))
 				continue;
 
 			bh_lock_sock(meta_sk);
+
+			mpcb = meta_tp->mpcb;
+			if (!mpcb)
+				goto next;
 
 			if (!mptcp(meta_tp) || !is_meta_sk(meta_sk) ||
 			    mpcb->infinite_mapping_snd ||
@@ -847,6 +1014,11 @@ duno:
 			}
 
 			if (event->code == MPTCP_EVENT_ADD) {
+				struct fullmesh_priv *fmp = fullmesh_get_priv(mpcb);
+
+				if (mptcp_is_sock_closed_for_prim_iface_on(meta_sk, event->if_idx))
+					goto next;
+
 				fmp->add_addr++;
 				mpcb->addr_signal = 1;
 
@@ -854,6 +1026,9 @@ duno:
 				if (sk)
 					tcp_send_ack(sk);
 
+				mptcp_add_rem_addr_for_sk(meta_sk);
+
+				full_mesh_add_interface_update_forbid_path(meta_sk);
 				full_mesh_create_subflows(meta_sk);
 			}
 
@@ -911,8 +1086,11 @@ duno:
 				 * because the client never created a subflow.
 				 * So, we have to finally remove it here.
 				 */
-				if (id > 0)
-					announce_remove_addr(id, meta_sk);
+				if (id >= 0) {
+					u8 loc_id = id
+						+ (event->family == AF_INET ? 1 : MPTCP_MAX_ADDR);
+					announce_remove_addr(loc_id, meta_sk);
+				}
 			}
 
 			if (event->code == MPTCP_EVENT_MOD) {
@@ -961,6 +1139,8 @@ static struct mptcp_addr_event *lookup_similar_event(const struct net *net,
 
 	list_for_each_entry(eventq, &fm_ns->events, list) {
 		if (eventq->family != event->family)
+			continue;
+		if (eventq->if_idx != event->if_idx)
 			continue;
 		if (event->family == AF_INET) {
 			if (eventq->addr.in.s_addr == event->addr.in.s_addr)
@@ -1038,8 +1218,8 @@ static void addr4_event_handler(const struct in_ifaddr *ifa, unsigned long event
 	else if (event == NETDEV_CHANGE)
 		mpevent.code = MPTCP_EVENT_MOD;
 
-	mptcp_debug("%s created event for %pI4, code %u prio %u\n", __func__,
-		    &ifa->ifa_local, mpevent.code, mpevent.low_prio);
+	mptcp_debug("%s created event for %pI4, code %u prio %u idx %u\n", __func__,
+		    &ifa->ifa_local, mpevent.code, mpevent.low_prio, mpevent.if_idx);
 	add_pm_event(net, &mpevent);
 
 	spin_unlock_bh(&fm_ns->local_lock);
@@ -1076,7 +1256,7 @@ struct mptcp_dad_data {
 
 static void dad_callback(unsigned long arg);
 static int inet6_addr_event(struct notifier_block *this,
-			    unsigned long event, void *ptr);
+				     unsigned long event, void *ptr);
 
 static bool ipv6_dad_finished(const struct inet6_ifaddr *ifa)
 {
@@ -1090,15 +1270,20 @@ static void dad_init_timer(struct mptcp_dad_data *data,
 	data->ifa = ifa;
 	data->timer.data = (unsigned long)data;
 	data->timer.function = dad_callback;
-	if (ifa->idev->cnf.rtr_solicit_delay)
+	if (ifa->idev->cnf.rtr_solicit_delay &&
+	    (ifa->idev->cnf.rtr_solicit_delay < (HZ/100)))
 		data->timer.expires = jiffies + ifa->idev->cnf.rtr_solicit_delay;
 	else
-		data->timer.expires = jiffies + (HZ / 10);
+		data->timer.expires = jiffies + (HZ/100);
 }
 
 static void dad_callback(unsigned long arg)
 {
 	struct mptcp_dad_data *data = (struct mptcp_dad_data *)arg;
+
+	if (data->ifa->idev && data->ifa->idev->dev &&
+	    data->ifa->idev->dev->reg_state != NETREG_REGISTERED)
+		goto exit;
 
 	/* DAD failed or IP brought down? */
 	if (data->ifa->state == INET6_IFADDR_STATE_ERRDAD ||
@@ -1181,7 +1366,8 @@ static int inet6_addr_event(struct notifier_block *this, unsigned long event,
 	      event == NETDEV_CHANGE))
 		return NOTIFY_DONE;
 
-	if (!ipv6_dad_finished(ifa6))
+	if ((ifa6->idev->dev->reg_state == NETREG_REGISTERED) &&
+	    !ipv6_dad_finished(ifa6))
 		dad_setup_timer(ifa6);
 	else
 		addr6_event_handler(ifa6, event, net);
@@ -1253,9 +1439,9 @@ static void full_mesh_new_session(const struct sock *meta_sk)
 	struct fullmesh_priv *fmp = fullmesh_get_priv(mpcb);
 	const struct mptcp_fm_ns *fm_ns = fm_get_ns(sock_net(meta_sk));
 	struct tcp_sock *master_tp = tcp_sk(mpcb->master_sk);
-	int i, index, if_idx;
+	int i, index, if_idx = 0;
 	union inet_addr saddr, daddr;
-	sa_family_t family;
+	sa_family_t family = AF_INET;
 	bool meta_v4 = meta_sk->sk_family == AF_INET;
 
 	/* Init local variables necessary for the rest */
@@ -1273,17 +1459,27 @@ static void full_mesh_new_session(const struct sock *meta_sk)
 #endif
 	}
 
-	rcu_read_lock();
+	if (inet_sk(meta_sk)->transparent)
+		if_idx = inet_sk(meta_sk)->rx_dst_ifindex;
+
+	rcu_read_lock_bh();
 	mptcp_local = rcu_dereference(fm_ns->local);
 
-	index = mptcp_find_address(mptcp_local, family, &saddr, if_idx);
+	if (inet_sk(meta_sk)->transparent)
+		index = mptcp_find_address_transp(mptcp_local, family, if_idx);
+	else
+		index = mptcp_find_address(mptcp_local, family, &saddr, if_idx);
 	if (index < 0)
 		goto fallback;
 
-	if (family == AF_INET)
-		master_tp->mptcp->low_prio = mptcp_local->locaddr4[index].low_prio;
-	else
-		master_tp->mptcp->low_prio = mptcp_local->locaddr6[index].low_prio;
+	if (family == AF_INET) {
+		if (mptcp_local->locaddr4[index].low_prio)
+			master_tp->mptcp->low_prio = mptcp_local->locaddr4[index].low_prio;
+	} else {
+		if (mptcp_local->locaddr6[index].low_prio)
+			master_tp->mptcp->low_prio = mptcp_local->locaddr6[index].low_prio;
+	}
+	mptcp_debug("%s master_tp->mptcp->low_prio:%u\n", __func__, master_tp->mptcp->low_prio);
 	master_tp->mptcp->send_mp_prio = master_tp->mptcp->low_prio;
 
 	full_mesh_add_raddr(mpcb, &daddr, family, 0, 0);
@@ -1333,7 +1529,7 @@ skip_ipv4:
 skip_ipv6:
 #endif
 
-	rcu_read_unlock();
+	rcu_read_unlock_bh();
 
 	if (family == AF_INET)
 		fmp->announced_addrs_v4 |= (1 << index);
@@ -1349,7 +1545,7 @@ skip_ipv6:
 	return;
 
 fallback:
-	rcu_read_unlock();
+	rcu_read_unlock_bh();
 	mptcp_fallback_default(mpcb);
 	return;
 }
@@ -1367,6 +1563,11 @@ static void full_mesh_create_subflows(struct sock *meta_sk)
 	if (mpcb->master_sk &&
 	    !tcp_sk(mpcb->master_sk)->mptcp->fully_established)
 		return;
+
+	if (!tcp_sk(meta_sk)->user_switch) {
+		mptcp_info("%s: user_switch is off\n", __func__);
+		return;
+	}
 
 	if (!work_pending(&fmp->subflow_work)) {
 		sock_hold(meta_sk);
@@ -1405,11 +1606,13 @@ static void full_mesh_release_sock(struct sock *meta_sk)
 	bool meta_v4 = meta_sk->sk_family == AF_INET;
 	int i;
 
-	rcu_read_lock();
+	rcu_read_lock_bh();
 	mptcp_local = rcu_dereference(fm_ns->local);
 
 	if (!meta_v4 && meta_sk->sk_ipv6only)
 		goto skip_ipv4;
+
+	mptcp_debug("%s: before remote addr: %x\n", __func__, fmp->rem4_bits);
 
 	/* First, detect modifications or additions */
 	mptcp_for_each_bit_set(mptcp_local->loc4_bits, i) {
@@ -1527,8 +1730,9 @@ removal:
 
 	/* Just call it optimistically. It actually cannot do any harm */
 	update_addr_bitfields(meta_sk, mptcp_local);
+	mptcp_debug("%s: after remote addr: %x\n", __func__, fmp->rem4_bits);
 
-	rcu_read_unlock();
+	rcu_read_unlock_bh();
 }
 
 static int full_mesh_get_local_id(sa_family_t family, union inet_addr *addr,
@@ -1539,7 +1743,7 @@ static int full_mesh_get_local_id(sa_family_t family, union inet_addr *addr,
 	int index, id = -1;
 
 	/* Handle the backup-flows */
-	rcu_read_lock();
+	rcu_read_lock_bh();
 	mptcp_local = rcu_dereference(fm_ns->local);
 
 	index = mptcp_find_address(mptcp_local, family, addr, 0);
@@ -1554,7 +1758,8 @@ static int full_mesh_get_local_id(sa_family_t family, union inet_addr *addr,
 		}
 	}
 
-	rcu_read_unlock();
+
+	rcu_read_unlock_bh();
 
 	return id;
 }
@@ -1578,7 +1783,7 @@ static void full_mesh_addr_signal(struct sock *sk, unsigned *size,
 	if (likely(!fmp->add_addr))
 		goto remove_addr;
 
-	rcu_read_lock();
+	rcu_read_lock_bh();
 	mptcp_local = rcu_dereference(fm_ns->local);
 
 	if (!meta_v4 && meta_sk->sk_ipv6only)
@@ -1592,6 +1797,7 @@ static void full_mesh_addr_signal(struct sock *sk, unsigned *size,
 	    (mpcb->mptcp_ver >= MPTCP_VERSION_1 &&
 	    MAX_TCP_OPTION_SPACE - *size >= MPTCP_SUB_LEN_ADD_ADDR4_ALIGN_VER1))) {
 		int ind = mptcp_find_free_index(~unannouncedv4);
+
 		opts->options |= OPTION_MPTCP;
 		opts->mptcp_options |= OPTION_ADD_ADDR;
 		opts->add_addr4.addr_id = mptcp_local->locaddr4[ind].loc4_id;
@@ -1634,6 +1840,7 @@ skip_ipv4:
 	    (mpcb->mptcp_ver >= MPTCP_VERSION_1 &&
 	    MAX_TCP_OPTION_SPACE - *size >= MPTCP_SUB_LEN_ADD_ADDR6_ALIGN_VER1))) {
 		int ind = mptcp_find_free_index(~unannouncedv6);
+
 		opts->options |= OPTION_MPTCP;
 		opts->mptcp_options |= OPTION_ADD_ADDR;
 		opts->add_addr6.addr_id = mptcp_local->locaddr6[ind].loc6_id;
@@ -1663,7 +1870,7 @@ skip_ipv4:
 	}
 
 skip_ipv6:
-	rcu_read_unlock();
+	rcu_read_unlock_bh();
 
 	if (!unannouncedv4 && !unannouncedv6 && skb)
 		fmp->add_addr--;
@@ -1675,6 +1882,7 @@ remove_addr:
 	remove_addr_len = mptcp_sub_len_remove_addr_align(fmp->remove_addrs);
 	if (MAX_TCP_OPTION_SPACE - *size < remove_addr_len)
 		goto exit;
+
 	opts->options |= OPTION_MPTCP;
 	opts->mptcp_options |= OPTION_REMOVE_ADDR;
 	opts->remove_addrs = fmp->remove_addrs;
@@ -1707,11 +1915,12 @@ static void full_mesh_delete_subflow(struct sock *sk)
 
 	if (sk->sk_family == AF_INET || mptcp_v6_is_v4_mapped(sk)) {
 		union inet_addr saddr;
+		u32 mptcp_cap_flag = tcp_sk(mptcp_meta_sk(sk))->mptcp_cap_flag;
 
 		saddr.ip = inet_sk(sk)->inet_saddr;
 		index = mptcp_find_address(mptcp_local, AF_INET, &saddr,
 					   sk->sk_bound_dev_if);
-		if (index < 0)
+		if (index < 0 && mptcp_cap_flag != MPTCP_CAP_UID_DIP_DPORT)
 			goto out;
 
 		mptcp_for_each_bit_set(fmp->rem4_bits, i) {
@@ -1723,7 +1932,15 @@ static void full_mesh_delete_subflow(struct sock *sk)
 			if (rem4->port && rem4->port != inet_sk(sk)->inet_dport)
 				continue;
 
-			rem4->bitfield &= ~(1 << index);
+			if (index < 0) {
+				rem4->bitfield = rem4->bitfield & mptcp_local->loc4_bits;
+				if (!rem4->bitfield)
+					fmp->rem4_bits &= ~(1 << i);
+			} else
+				rem4->bitfield &= ~(1 << index);
+
+			mptcp_debug("%s: rem4->bitfield:%u, index:%d, fmp->rem4_bits:%u \n",
+							__func__, rem4->bitfield, i, fmp->rem4_bits);
 		}
 #if IS_ENABLED(CONFIG_IPV6)
 	} else {
@@ -1751,6 +1968,96 @@ static void full_mesh_delete_subflow(struct sock *sk)
 
 out:
 	rcu_read_unlock_bh();
+}
+
+static void full_mesh_user_switch(struct sock *meta_sk, bool on, const char *iface)
+{
+	struct mptcp_cb *mpcb;
+	struct tcp_sock *meta_tp = tcp_sk(meta_sk);
+
+	if (sock_flag(meta_sk, SOCK_DEAD) ||
+	    meta_sk->sk_state != TCP_ESTABLISHED) {
+		mptcp_debug("%s: meta_sk is not in TCP_ESTABLISHED\n", __func__);
+		return;
+	}
+
+	mpcb = meta_tp->mpcb;
+	if (!mptcp(meta_tp) || !is_meta_sk(meta_sk) ||
+	    mpcb->infinite_mapping_snd ||
+	    mpcb->infinite_mapping_rcv ||
+	    mpcb->send_infinite_mapping)
+		return;
+
+	meta_tp->user_switch = on;
+
+	if (on) {
+		mptcp_add_rem_addr_for_sk(meta_sk);
+
+		full_mesh_create_subflows(meta_sk);
+		mptcp_debug("%s: try full_mesh_create_subflows\n", __func__);
+	} else {
+		struct sock *sk, *tmpsk;
+		struct sock *sk_keep = NULL;
+		struct net_device *net_dev;
+		bool is_prim_iface_on = false;
+
+		if (iface && (iface != meta_tp->prim_iface)) {
+			(void)strncpy(meta_tp->prim_iface, iface, IFNAMSIZ);
+			meta_tp->prim_iface[IFNAMSIZ - 1] = '\0';
+		}
+		net_dev = dev_get_by_name(sock_net(meta_sk), meta_tp->prim_iface);
+		if (net_dev) {
+			unsigned int flags = dev_get_flags(net_dev);
+			if (flags & IFF_RUNNING)
+				is_prim_iface_on = true;
+			dev_put(net_dev);
+		}
+
+		if (mpcb->cnt_subflows < 2 && !is_prim_iface_on) {
+			mptcp_debug("%s: cnt_subflows %d is less than 2 and prim_iface is off\n",
+				__func__, mpcb->cnt_subflows);
+			return;
+		}
+		/* Look for the socket and remove him */
+		mptcp_for_each_sk_safe(mpcb, sk, tmpsk) {
+			struct dst_entry *dst;
+			bool is_prim = false;
+
+			dst = sk_dst_get(sk);
+			if (dst) {
+				is_prim = !strncmp(meta_tp->prim_iface, dst->dev->name, IFNAMSIZ);
+				dst_release(dst);
+			}
+
+			tcp_sk(sk)->mptcp_sched_prim_intf = is_prim;
+
+			if (is_prim) {
+				/* Reinject, so that pf = 1 and so we
+				 * won't select this one as the
+				 * ack-sock.
+				 */
+				if (sk_keep) {
+					mptcp_reinject_data(sk_keep, 0);
+					tcp_sk(sk_keep)->ops->send_active_reset(sk_keep, GFP_ATOMIC);
+					mptcp_sub_force_close(sk_keep);
+				}
+				sk_keep = sk;
+				continue;
+			} else if (!sk_keep && !is_prim_iface_on) {
+				sk_keep = sk;
+				continue;
+			}
+
+			mptcp_debug("%s: close subflows\n", __func__);
+			/* Reinject, so that pf = 1 and so we
+			 * won't select this one as the
+			 * ack-sock.
+			 */
+			mptcp_reinject_data(sk, 0);
+			tcp_sk(sk)->ops->send_active_reset(sk, GFP_ATOMIC);
+			mptcp_sub_force_close(sk);
+		}
+	}
 }
 
 /* Output /proc/net/mptcp_fullmesh */
@@ -1852,7 +2159,7 @@ static void mptcp_fm_exit_net(struct net *net)
 	rcu_read_lock_bh();
 
 	mptcp_local = rcu_dereference_bh(fm_ns->local);
-	kfree(mptcp_local);
+	kfree_rcu(mptcp_local, rcu);
 
 	spin_lock(&fm_ns->local_lock);
 	list_for_each_entry_safe(eventq, tmp, &fm_ns->events, list) {
@@ -1884,6 +2191,7 @@ static struct mptcp_pm_ops full_mesh __read_mostly = {
 	.add_raddr = full_mesh_add_raddr,
 	.rem_raddr = full_mesh_rem_raddr,
 	.delete_subflow = full_mesh_delete_subflow,
+	.user_switch = full_mesh_user_switch,
 	.name = "fullmesh",
 	.owner = THIS_MODULE,
 };
@@ -1918,6 +2226,7 @@ static int __init full_mesh_register(void)
 
 out:
 	return ret;
+
 
 err_reg_pm:
 #if IS_ENABLED(CONFIG_IPV6)

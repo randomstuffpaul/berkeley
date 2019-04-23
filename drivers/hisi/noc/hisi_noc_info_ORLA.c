@@ -40,10 +40,10 @@
 
 static char *cfg_initflow_array[] = {
 	"Audio(noc_asp_mst)",                 /*0 */
-	"ACPU(noc_cci2sysbus)",               /*1 */
+	"ACPU(noc_cpu2sysbus)",               /*1 */
 	"DJTAG(noc_djtag_mst)",               /*2 */
-	"DMA-Controller(noc_dmac_mst)",       /*3 */
-	"DPCTRL(noc_dpctrl)",                 /*4 */
+	"DMAC(noc_dmac_mst_rd)",              /*3 */
+	"DMAC(noc_dmac_mst_wr)",              /*4 */
 	"EMMC(noc_emmc_mst)",                 /*5 */
 	"IOMCU(noc_iomcu_ahb_mst)",           /*6 */
 	"IOMCU-DMA(noc_iomcu_dma_mst)",       /*7 */
@@ -52,7 +52,7 @@ static char *cfg_initflow_array[] = {
 	"LPM3(noc_lpmcu_mst)",                /*A */
 	"MEDIA-CFG(noc_media2cfg)",           /*B */
 	"MODEM(noc_modem_mst)",               /*C */
-	"PCIE(noc_pcie)",                     /*D */
+	"NPU2CFG(noc_npu2cfg_mst)",           /*D */
 	"PERF_STAT_DEBUG(noc_perf_stat)",     /*E */
 	"SD3(noc_sd3)",                       /*F */
 	"SDIO(noc_sdio)",                     /*10 */
@@ -433,7 +433,8 @@ struct noc_mid_info noc_mid_ORLA[] = {
 	{0, 0x0E, 0x003f, 0x03, "PERF_STAT"},
 	{0, 0x09, 0x003f, 0x04, "IPF"},
 	{0, 0x02, 0x003f, 0x05, "DJTAG_M"},
-	{0, 0x07, 0x003f, 0x06, "IOMCU_DMA"},
+	{0, 0x07, 0x003f, 0x06, "IOMCU_DMA"},/*noc_iomcu_dma_mst*/
+	{0, 0x07, 0x003f, 0x01, "IOMCU_M7"}, /*noc_iomcu_dma_mst*/
 	{0, 0x14, 0x003f, 0x07, "UFS"},
 	{0, 0x0F, 0x003f, 0x08, "SD"},
 	{0, 0x10, 0x003f, 0x09, "SDIO"},
@@ -587,10 +588,10 @@ struct noc_dump_reg noc_dump_reg_list_ORLA[] = {
  */
 const struct noc_busid_initflow hisi_filter_initflow_ORLA[] = {
 	/* Bus ID, init_flow, coreid*/
-	{0, 8, RDR_CP},	/*ipf*/
-	{0, 17, RDR_CP},	/*socp*/
-	{0, 5, RDR_IOM3},  /* iomcu core */
-	{0, 6, RDR_IOM3},  /* iomcu dma */
+	{0, 9, RDR_CP},	/*ipf*/
+	{0, 18, RDR_CP},	/*socp*/
+	{0, 6, RDR_IOM3},  /* iomcu core */
+	{0, 7, RDR_IOM3},  /* iomcu dma */
 	{ARRAY_END_FLAG, 0, RDR_AP},	/*end*/
 };
 

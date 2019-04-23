@@ -65,6 +65,7 @@ endif
 if MALI_SIGURD
 #source "drivers/gpu/arm/bifrost-r7p0-00cet0/Kconfig"
 #source "drivers/gpu/arm/bifrost-r8p0-01rel0/Kconfig"
+source "drivers/gpu/arm/bifrost-r14p0-00cet0/Kconfig"
 endif
 
 if MALI_NORR
@@ -79,6 +80,7 @@ source "drivers/gpu/arm/bifrost-r14p0-00cet0/Kconfig"
 endif
 
 if MALI_GONDUL
+source "drivers/gpu/arm/bifrost-r14p0-00cet0/Kconfig"
 endif
 
 endmenu

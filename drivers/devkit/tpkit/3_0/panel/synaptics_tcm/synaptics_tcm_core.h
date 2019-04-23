@@ -51,6 +51,7 @@
 #define SYNAPTICS_TCM_ID_PRODUCT (1 << 0)
 #define SYNAPTICS_TCM_ID_VERSION 0x0009
 #define SYNAPTICS_TCM_ID_SUBVERSION 1
+#define SPI_DEFLAUT_SPEED		10000000
 
 #define PLATFORM_DRIVER_NAME "synaptics_tcm"
 #define TOUCH_INPUT_NAME "synaptics_tcm_touch"
@@ -185,7 +186,10 @@ enum boot_status {
 	BOOT_STATUS_BAD_APP_FIRMWARE = 0xfe,
 	BOOT_STATUS_WARM_BOOT = 0xff,
 };
-
+enum report_status {
+	NOT_NEED_REPORT = 0,
+	NEED_REPORT = 1,
+};
 enum app_status {
 	APP_STATUS_OK = 0x00,
 	APP_STATUS_BOOTING = 0x01,
@@ -248,6 +252,58 @@ enum command {
 	CMD_GET_TOUCH_INFO = 0x2e,
 	CMD_GET_DATA_LOCATION = 0x2f,
 	CMD_DOWNLOAD_CONFIG = 0x30,
+	CMD_GET_TP_ABNORMAL_STATE = 0xc5,
+};
+
+struct syna_tcm_abnormal_info {
+	union {
+		struct {
+			unsigned char gnd_connection:1;
+			unsigned char tx_sns_ch:1;
+			unsigned char rx_sns_ch:1;
+			unsigned char pixel_sns:1;
+			unsigned char display_noise:1;
+			unsigned char charge_noise:1;
+			unsigned char charge_noise_hop:1;
+			unsigned char charge_noise_ex:1;
+			unsigned char self_cap_noise:1;
+			unsigned char mutual_cap_noise:1;
+			unsigned char high_temp:1;
+			unsigned char low_temp:1;
+			unsigned char large_bending:1;
+			unsigned char reserved:3;
+		}__packed;
+		unsigned char data[2];
+	};
+};
+
+enum {
+	BIT0_GND_CONNECTION = 0,
+	BIT1_TX_SNS_CH,
+	BIT2_RX_SNS_CH,
+	BIT3_PIXEL_SNS,
+	BIT4_DISPLAY_NOISE,
+	BIT5_CHARGER_NOISE,
+	BIT6_CHARGER_NOISE_HOP,
+	BIT7_CHARGER_NOISE_EX,
+	BIT8_SELF_CAP_NOISE,
+	BIT9_MUTUAL_CAP_NOISE,
+	BIT10_HIGH_TEMP,
+	BIT11_LOW_TEMP,
+	BIT12_LARGE_BENDING,
+	BIT13_RESERVED,
+	BIT14_RESERVED,
+	BIT15_RESERVED,
+	BIT_MAX,
+};
+struct dmd_report_charger_status{
+	int charge_CHARGER_NOISE_HOP;
+	int charge_CHARGER_NOISE_EX;
+};
+
+struct tp_status_and_count{
+	int bit_status;
+	unsigned int bit_count;
 };
 
 enum status_code {
@@ -458,6 +514,13 @@ struct syna_tcm_hcd {
 	unsigned int rd_chunk_size;
 	unsigned int wr_chunk_size;
 	unsigned int app_status;
+	unsigned int device_status;
+	unsigned int tp_status_report_support;
+	bool checking_abnormal_state;
+	bool in_before_suspend;
+	bool device_status_check;
+	bool in_suspend_charge;
+	struct syna_tcm_abnormal_info ab_device_status;
 	struct platform_device *pdev;
 	struct regulator *pwr_reg;
 	struct regulator *bus_reg;
@@ -483,6 +546,11 @@ struct syna_tcm_hcd {
 	struct syna_tcm_helper helper;
 	struct syna_tcm_watchdog watchdog;
 	struct syna_tcm_board_data *bdata;
+	unsigned int esd_report_status;
+	unsigned int use_esd_report;
+	unsigned int use_dma_download_firmware;
+	unsigned int downmload_firmware_frequency;
+	unsigned int spi_comnunicate_frequency;
 	const struct syna_tcm_hw_interface *hw_if;
 	char fw_name[MAX_STR_LEN * 4];
 	unsigned int aft_wxy_enable;
@@ -691,7 +759,7 @@ static inline unsigned int ceil_div(unsigned int dividend, unsigned divisor)
 extern int zeroflash_init(struct syna_tcm_hcd *tcm_hcd);
 extern int zeroflash_get_fw_image(char *file_name);
 extern int zeroflash_remove(struct syna_tcm_hcd *tcm_hcd);
-extern int zeroflash_download(char *file_name);
+extern int zeroflash_download(char *file_name,struct syna_tcm_hcd *tcm_hcd);
 extern int touch_init(struct syna_tcm_hcd *tcm_hcd);
 extern void touch_report(struct ts_fingers *info);
 extern int debug_device_init(struct syna_tcm_hcd *tcm_hcd);

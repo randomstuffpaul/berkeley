@@ -39,13 +39,20 @@
 #define AIRPRESS_CALIDATA_NV_SIZE_WITH_AIRTOUCH  100
 #define CAP_PROX_CALIDATA_NV_NUM  310
 #define CAP_PROX_CALIDATA_NV_SIZE  28
+#define ALS_TP_CALIDATA_NV1_NUM  403
+#define ALS_TP_CALIDATA_NV1_SIZE  104
+#define ALS_TP_CALIDATA_NV2_NUM  404
+#define ALS_TP_CALIDATA_NV2_SIZE  104
+#define ALS_TP_CALIDATA_NV3_NUM  405
+#define ALS_TP_CALIDATA_NV3_SIZE  104
 #define pinhole_para_size (10)
 #define TMD2745_PARA_SIZE (10)
 #define RPR531_PARA_SIZE (16)
 #define APDS9999_PARA_SIZE (24)
 #define TMD3702_PARA_SIZE (29)
+#define TCS3701_PARA_SIZE (29)
 #define VCNL36658_PARA_SIZE (31)
-#define TSL2591_PARA_SIZE (14)
+#define TSL2591_PARA_SIZE (15)
 #define BH1726_PARA_SIZE (16)
 #define ACC_OFFSET_NV_NUM	307
 #define ACC_OFFSET_NV_SIZE	(60)
@@ -56,6 +63,7 @@
 #define VIB_CALIDATA_NV_SIZE 3
 #define VIB_CALIDATA_NV_NAME "VIBCAL"
 #define SAR_SEMTECH_USE_PH_NUM (2)
+#define ALS_UNDER_TP_CALDATA_LEN 59
 
 enum ALS_SENSNAME{
 	APDS9922 = 1,
@@ -116,6 +124,16 @@ struct press_alg_result {
 struct airpress_touch_calibrate_data {
 	struct press_alg_result cResult;  //calibrated result
 	struct press_alg_result tResult;  //tested result
+};
+
+struct als_under_tp_calidata
+{
+	uint16_t x;  //left_up x-aix
+	uint16_t y;  //left_up y-aix
+	uint16_t width;
+	uint16_t length;
+	unsigned int a[25];   //area para.
+	int b[30];    //algrothm para,
 };
 
 typedef struct _BH1745_ALS_PARA_TABLE {
@@ -190,6 +208,14 @@ typedef struct _TMD3702_ALS_PARA_TABLE {
 	uint8_t tp_color;
 	s16 tmd3702_para[TMD3702_PARA_SIZE];/*give to tmd3702 rgb sensor use,output lux and cct will use these par*/
 } TMD3702_ALS_PARA_TABLE;/*the tmd3702_para size must small SENSOR_PLATFORM_EXTEND_DATA_SIZE*/
+
+typedef struct _TCS3701_ALS_PARA_TABLE {
+	uint8_t phone_type;
+	uint8_t phone_version;
+	uint8_t tp_lcd_manufacture;
+	uint8_t tp_color;
+	s16 tcs3701_para[TCS3701_PARA_SIZE];/*give to tcs3701 rgb sensor use,output lux and cct will use these par*/
+} TCS3701_ALS_PARA_TABLE;/*the tcs3701_para size must small SENSOR_PLATFORM_EXTEND_DATA_SIZE*/
 
 typedef struct _VCNL36658_ALS_PARA_TABLE {
 	uint8_t phone_type;

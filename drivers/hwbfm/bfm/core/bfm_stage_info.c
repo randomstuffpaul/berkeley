@@ -57,6 +57,7 @@ typedef struct
 static char *bfm_get_boot_stage_no_desc(bfmr_boot_stage_e boot_stage);
 static size_t bfm_format_stages_info(char *bs_data, unsigned int bs_data_buffer_len);
 
+static DEFINE_MUTEX(s_record_stage_mutex);
 /*----local variables------------------------------------------------------------------*/
 
 /*if you need bootstage description before native stage, modify this array*/
@@ -163,15 +164,19 @@ static size_t bfm_format_stages_info(char *bs_data, unsigned int bs_data_buffer_
     bfm_stage_info_t *pre_stage_node = NULL;
     bfm_stage_info_t *cur_stage_node = NULL;
 
+    mutex_lock(&s_record_stage_mutex);
+
     if(NULL == s_stages_info)
     {
         BFMR_PRINT_ERR("stage info not initialized!\n");
+        mutex_unlock(&s_record_stage_mutex);
         return 0;
     }
 
     if(0 == s_stages_info->stage_count)
     {
         BFMR_PRINT_ERR("not record bootup stage info\n");
+        mutex_unlock(&s_record_stage_mutex);
         return 0;
     }
 
@@ -209,6 +214,7 @@ static size_t bfm_format_stages_info(char *bs_data, unsigned int bs_data_buffer_
         bs_data_size += bytes_record;
     }
 
+    mutex_unlock(&s_record_stage_mutex);
     return bs_data_size;
 }
 
@@ -226,15 +232,19 @@ void bfm_add_stage_info(bfm_stage_info_t *pStage)
 {
     int cur_stage_index = 0;
 
+    mutex_lock(&s_record_stage_mutex);
+
     if (NULL == pStage)
     {
         BFMR_PRINT_ERR("pStage is null!\n");
+        mutex_unlock(&s_record_stage_mutex);
         return;
     }
 
     if (NULL == s_stages_info)
     {
         BFMR_PRINT_ERR("s_stages_info is null!\n");
+        mutex_unlock(&s_record_stage_mutex);
         return;
     }
 
@@ -252,6 +262,8 @@ void bfm_add_stage_info(bfm_stage_info_t *pStage)
     {
         BFMR_PRINT_KEY_INFO("the stages info stack is full\n");
     }
+
+    mutex_unlock(&s_record_stage_mutex);
 }
 EXPORT_SYMBOL(bfm_add_stage_info);
 
@@ -267,19 +279,23 @@ EXPORT_SYMBOL(bfm_add_stage_info);
 */
 int bfm_init_stage_info(void)
 {
+    mutex_lock(&s_record_stage_mutex);
+
     if (NULL == s_stages_info)
     {
         s_stages_info = (bfm_stages_t *)bfmr_malloc(sizeof(bfm_stages_t));
         if (NULL == s_stages_info)
         {
             BFMR_PRINT_KEY_INFO("malloc s_stages_info failed\n");
+            mutex_unlock(&s_record_stage_mutex);
             return -1;
         }
 
         memset((void *)s_stages_info, 0, sizeof(bfm_stages_t));
     }
 
-   return 0;
+    mutex_unlock(&s_record_stage_mutex);
+    return 0;
 }
 EXPORT_SYMBOL(bfm_init_stage_info);
 
@@ -295,11 +311,14 @@ EXPORT_SYMBOL(bfm_init_stage_info);
 */
 void bfm_deinit_stage_info(void)
 {
+  mutex_lock(&s_record_stage_mutex);
 
   if (NULL != s_stages_info)
   {
       bfmr_free(s_stages_info);
       s_stages_info = NULL;
   }
+
+  mutex_unlock(&s_record_stage_mutex);
 }
 EXPORT_SYMBOL(bfm_deinit_stage_info);

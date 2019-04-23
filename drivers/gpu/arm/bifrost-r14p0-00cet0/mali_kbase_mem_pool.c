@@ -29,6 +29,7 @@
 #include <linux/atomic.h>
 #include <linux/version.h>
 #include <linux/delay.h>
+#include <mali_kbase_mgm.h>
 
 #define pool_dbg(pool, format, ...) \
 	dev_dbg(pool->kbdev->dev, "%s-mali_pool [%zu/%zu]: " format,	\
@@ -131,18 +132,17 @@ static void kbase_mem_pool_sync_page(struct kbase_mem_pool *pool,
 	dma_sync_single_for_device(dev, kbase_dma_addr(p),
 			(PAGE_SIZE << pool->order), DMA_BIDIRECTIONAL);
 }
-
+/*lint -e574*/
 static void kbase_mem_pool_zero_page(struct kbase_mem_pool *pool,
 		struct page *p)
 {
 	int i;
-
 	for (i = 0; i < (1U << pool->order); i++)
 		clear_highpage(p+i);
 
 	kbase_mem_pool_sync_page(pool, p);
 }
-
+/*lint +e574*/
 static void kbase_mem_pool_spill(struct kbase_mem_pool *next_pool,
 		struct page *p)
 {
@@ -151,7 +151,7 @@ static void kbase_mem_pool_spill(struct kbase_mem_pool *next_pool,
 
 	kbase_mem_pool_add(next_pool, p);
 }
-
+/*lint -e574*/
 struct page *kbase_mem_alloc_page(struct kbase_mem_pool *pool)
 {
 	struct page *p;
@@ -159,6 +159,7 @@ struct page *kbase_mem_alloc_page(struct kbase_mem_pool *pool)
 	struct device *dev = pool->kbdev->dev;
 	dma_addr_t dma_addr;
 	int i;
+	struct memory_group_manager_ops *mgm_ops = pool->kbdev->hisi_dev_data.mgm_ops;
 
 #if defined(CONFIG_ARM) && !defined(CONFIG_HAVE_DMA_ATTRS) && \
 	LINUX_VERSION_CODE < KERNEL_VERSION(3, 5, 0)
@@ -172,14 +173,17 @@ struct page *kbase_mem_alloc_page(struct kbase_mem_pool *pool)
 	if (pool->order)
 		gfp |= __GFP_NOWARN;
 
-	p = alloc_pages(gfp, pool->order);
+	p = mgm_ops->mgm_alloc_pages(pool->kbdev->hisi_dev_data.mgm_dev,
+	                         pool->lb_policy_id, gfp, pool->order);
 	if (!p)
 	{
+		dev_err(pool->kbdev->dev, "lb alloc pages failed. policy_id(%d)\n", pool->lb_policy_id);
 		if( current->flags & PF_KTHREAD )
 		{
 			/*Try to alloc page again after 500us as the system may reclaim some free pages*/
 			udelay(500);
-			p = alloc_pages(gfp, pool->order);
+			p = mgm_ops->mgm_alloc_pages(pool->kbdev->hisi_dev_data.mgm_dev,
+			                         pool->lb_policy_id, gfp, pool->order);
 			if(!p)
 			{
 				dev_err(pool->kbdev->dev, "realloc pages failed\n");
@@ -195,7 +199,11 @@ struct page *kbase_mem_alloc_page(struct kbase_mem_pool *pool)
 	dma_addr = dma_map_page(dev, p, 0, (PAGE_SIZE << pool->order),
 				DMA_BIDIRECTIONAL);
 	if (dma_mapping_error(dev, dma_addr)) {
-		__free_pages(p, pool->order);
+		dev_err(pool->kbdev->dev, "dma map page error, free it. policy_id(%d) page(%p) order(%zu)\n",
+			pool->lb_policy_id, p, pool->order);
+
+		mgm_ops->mgm_free_pages(pool->kbdev->hisi_dev_data.mgm_dev,
+		                    pool->lb_policy_id, p, pool->order);
 		return NULL;
 	}
 
@@ -212,16 +220,18 @@ static void kbase_mem_pool_free_page(struct kbase_mem_pool *pool,
 	struct device *dev = pool->kbdev->dev;
 	dma_addr_t dma_addr = kbase_dma_addr(p);
 	int i;
+	struct memory_group_manager_ops *mgm_ops = pool->kbdev->hisi_dev_data.mgm_ops;
 
 	dma_unmap_page(dev, dma_addr, (PAGE_SIZE << pool->order),
 		       DMA_BIDIRECTIONAL);
 	for (i = 0; i < (1u << pool->order); i++)
 		kbase_clear_dma_addr(p+i);
-	__free_pages(p, pool->order);
 
+	mgm_ops->mgm_free_pages(pool->kbdev->hisi_dev_data.mgm_dev,
+	                    pool->lb_policy_id, p, pool->order);
 	pool_dbg(pool, "freed page to kernel\n");
 }
-
+/*lint +e574*/
 static size_t kbase_mem_pool_shrink_locked(struct kbase_mem_pool *pool,
 		size_t nr_to_shrink)
 {
@@ -388,12 +398,14 @@ static int kbase_mem_pool_reclaim_shrink(struct shrinker *s,
 int kbase_mem_pool_init(struct kbase_mem_pool *pool,
 		size_t max_size,
 		size_t order,
+		unsigned int lb_policy_id,
 		struct kbase_device *kbdev,
 		struct kbase_mem_pool *next_pool)
 {
 	pool->cur_size = 0;
 	pool->max_size = max_size;
 	pool->order = order;
+	pool->lb_policy_id = lb_policy_id;
 	pool->kbdev = kbdev;
 	pool->next_pool = next_pool;
 	pool->dying = false;
@@ -427,7 +439,7 @@ void kbase_mem_pool_mark_dying(struct kbase_mem_pool *pool)
 	pool->dying = true;
 	kbase_mem_pool_unlock(pool);
 }
-
+/*lint -e574*/
 void kbase_mem_pool_term(struct kbase_mem_pool *pool)
 {
 	struct kbase_mem_pool *next_pool = pool->next_pool;
@@ -481,7 +493,7 @@ void kbase_mem_pool_term(struct kbase_mem_pool *pool)
 
 	pool_dbg(pool, "terminated\n");
 }
-
+/*lint +e574*/
 struct page *kbase_mem_pool_alloc(struct kbase_mem_pool *pool)
 {
 	struct page *p;
@@ -551,10 +563,12 @@ void kbase_mem_pool_free_locked(struct kbase_mem_pool *pool, struct page *p,
 		kbase_mem_pool_add_locked(pool, p);
 	} else {
 		/* Free page */
-		kbase_mem_pool_free_page(pool, p);
+		kbase_mem_pool_free_page(pool, p);//lint !e647
 	}
 }
-
+/*lint -e647*/
+/*lint -e574*/
+/*lint -e674*/
 int kbase_mem_pool_alloc_pages(struct kbase_mem_pool *pool, size_t nr_4k_pages,
 		struct tagged_addr *pages, bool partial_allowed)
 {
@@ -568,7 +582,6 @@ int kbase_mem_pool_alloc_pages(struct kbase_mem_pool *pool, size_t nr_4k_pages,
 
 	if (nr_pages_internal * (1u << pool->order) != nr_4k_pages)
 		return -EINVAL;
-
 	pool_dbg(pool, "alloc_pages(4k=%zu):\n", nr_4k_pages);
 	pool_dbg(pool, "alloc_pages(internal=%zu):\n", nr_pages_internal);
 
@@ -656,7 +669,6 @@ int kbase_mem_pool_alloc_pages_locked(struct kbase_mem_pool *pool,
 	pool_dbg(pool, "alloc_pages_locked(4k=%zu):\n", nr_4k_pages);
 	pool_dbg(pool, "alloc_pages_locked(internal=%zu):\n",
 			nr_pages_internal);
-
 	if (kbase_mem_pool_size(pool) < nr_pages_internal) {
 		pool_dbg(pool, "Failed alloc\n");
 		return -ENOMEM;
@@ -681,7 +693,9 @@ int kbase_mem_pool_alloc_pages_locked(struct kbase_mem_pool *pool,
 
 	return nr_4k_pages;
 }
-
+/*lint +e674*/
+/*lint +e574*/
+/*lint +e647*/
 static void kbase_mem_pool_add_array(struct kbase_mem_pool *pool,
 				     size_t nr_pages, struct tagged_addr *pages,
 				     bool zero, bool sync)

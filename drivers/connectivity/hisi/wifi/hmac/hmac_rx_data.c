@@ -1052,7 +1052,7 @@ OAL_STATIC oal_void  hmac_rx_transmit_msdu_to_lan(hmac_vap_stru *pst_vap, dmac_m
     OAM_STAT_VAP_INCR(pst_vap->st_vap_base_info.uc_vap_id, rx_bytes_to_lan, OAL_NETBUF_LEN(pst_netbuf)); /* 增加发送LAN的字节数 */
 
 #ifdef _PRE_WLAN_DFT_DUMP_FRAME
-    hmac_rx_report_eth_frame(&pst_vap->st_vap_base_info, pst_netbuf);
+    //hmac_rx_report_eth_frame(&pst_vap->st_vap_base_info, pst_netbuf);
 #endif
 
 #ifdef _PRE_WLAN_FEATURE_EDCA_OPT_AP

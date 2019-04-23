@@ -258,7 +258,7 @@ bool kbase_debug_job_fault_process(struct kbase_jd_atom *katom,
 	return false;
 
 }
-
+/*lint -e679*/
 static int debug_job_fault_show(struct seq_file *m, void *v)
 {
 	struct kbase_device *kbdev = m->private;
@@ -301,6 +301,7 @@ static int debug_job_fault_show(struct seq_file *m, void *v)
 
 	return 0;
 }
+/*lint +e679*/
 static void *debug_job_fault_next(struct seq_file *m, void *v, loff_t *pos)
 {
 	struct kbase_device *kbdev = m->private;

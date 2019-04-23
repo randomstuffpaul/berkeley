@@ -17,7 +17,7 @@ uint32_t checksum_start = LCDKIT_CHECKSUM_END;
 struct lcdkit_esd_error_info g_esd_error_info;
 extern int lcdkit_brightness_ddic_info;
 #define MIN_BL_RESUME_TIMMER 1
-char lcdkit_panel_name[128] = {0};
+char lcdkit_panel_name[LCDKIT_MAX_PANEL_NAME_LEN] = {0};
 /***********************************************************
   *function: LCD resoure init, include gpio,regulator,xml parse and so on.
   *input:
@@ -965,56 +965,69 @@ static ssize_t lcdkit_hkadc_debug_store(const char* buf)
     return ret;
 }
 
-
-static ssize_t lcdkit_pcd_errflag_check(char* buf )
+static ssize_t lcdkit_pcd_errflag_check(char* buf)
 {
-    int pcd_gpio = 0;
-    int errflag_gpio = 0;
-    ssize_t ret = 0;
-    u8 result_value = 0;
+	int pcd_gpio = 0;
+	int errflag_gpio = 0;
+	int rc = 0;
+	ssize_t ret = 0;
+	u8 result_value = 0;
 
-    if(lcdkit_info.panel_infos.gpio_pcd != 0)
-    {
-        gpio_request(lcdkit_info.panel_infos.gpio_pcd,GPIO_LCDKIT_PCD_NAME);
-        gpio_direction_input(lcdkit_info.panel_infos.gpio_pcd);
-        pcd_gpio = gpio_get_value(lcdkit_info.panel_infos.gpio_pcd);
-        gpio_free(lcdkit_info.panel_infos.gpio_pcd);
-    }
-
-    if(lcdkit_info.panel_infos.gpio_err_flag != 0)
-    {
-        gpio_request(lcdkit_info.panel_infos.gpio_err_flag,GPIO_LCDKIT_ERRFLAG_NAME);
-        gpio_direction_input(lcdkit_info.panel_infos.gpio_err_flag);
-        errflag_gpio = gpio_get_value(lcdkit_info.panel_infos.gpio_err_flag);
-        gpio_free(lcdkit_info.panel_infos.gpio_err_flag);
-    }
-
-    LCDKIT_INFO("pcd_gpio[%d]= %d, errflag_gpio[%d]= %d \n",lcdkit_info.panel_infos.gpio_pcd,pcd_gpio,lcdkit_info.panel_infos.gpio_err_flag,errflag_gpio);
-
-    if ((pcd_gpio == GPIO_LOW_PCDERRFLAG) && (errflag_gpio == GPIO_LOW_PCDERRFLAG))
-    {
-        result_value = PCD_ERR_FLAG_SUCCESS; // PCD_ERR_FLAG_SUCCESS
-    }
-    else if ((pcd_gpio == GPIO_HIGH_PCDERRFLAG) && (errflag_gpio == GPIO_LOW_PCDERRFLAG))
-    {
-        result_value = PCD_FAIL; //only  PCD_FAIL
-    }
-    else if ((pcd_gpio == GPIO_LOW_PCDERRFLAG) && (errflag_gpio == GPIO_HIGH_PCDERRFLAG))
-    {
-        result_value = ERRFLAG_FAIL; //only ERRFLAG FAIL
-    }
-    else if ((pcd_gpio == GPIO_HIGH_PCDERRFLAG) && (errflag_gpio == GPIO_HIGH_PCDERRFLAG))
-    {
-        result_value = PCD_ERRFLAG_FAIL; //PCD_ERR_FLAG_FAIL
-    }
-    else
-    {
-        result_value = PCD_ERR_FLAG_SUCCESS;
-    }
-
-    LCDKIT_INFO("The test cmd is pcd_errflag,and the result_value = %d\n",result_value);
-    ret = snprintf(buf, PAGE_SIZE, "%d\n", result_value);
-    return ret;
+	if (lcdkit_info.panel_infos.gpio_pcd != 0) {
+		rc = gpio_request(lcdkit_info.panel_infos.gpio_pcd,
+			GPIO_LCDKIT_PCD_NAME);
+		if (rc != 0) {
+			result_value = PCD_ERRFLAG_FAIL;
+			LCDKIT_ERR("gpio_pcd[%d] request failed\n",
+				lcdkit_info.panel_infos.gpio_pcd);
+			goto err_out;
+		}
+		rc = gpio_direction_input(lcdkit_info.panel_infos.gpio_pcd);
+		if (rc != 0) {
+			gpio_free(lcdkit_info.panel_infos.gpio_pcd);
+			result_value = PCD_ERRFLAG_FAIL;
+			LCDKIT_ERR("gpio_err_flag[%d] direction set fail!\n",
+				lcdkit_info.panel_infos.gpio_pcd);
+			goto err_out;
+		}
+		pcd_gpio = gpio_get_value(lcdkit_info.panel_infos.gpio_pcd);
+		gpio_free(lcdkit_info.panel_infos.gpio_pcd);
+	}
+	if (lcdkit_info.panel_infos.gpio_err_flag != 0) {
+		rc = gpio_request(lcdkit_info.panel_infos.gpio_err_flag,GPIO_LCDKIT_ERRFLAG_NAME);
+		if (rc != 0) {
+			result_value = PCD_ERRFLAG_FAIL;
+			LCDKIT_ERR("gpio_err_flag[%d] request fail!\n",lcdkit_info.panel_infos.gpio_err_flag);
+			goto err_out;
+		}
+		rc = gpio_direction_input(lcdkit_info.panel_infos.gpio_err_flag);
+		if (rc != 0) {
+			gpio_free(lcdkit_info.panel_infos.gpio_err_flag);
+			result_value = PCD_ERRFLAG_FAIL;
+			LCDKIT_ERR("gpio_err_flag[%d] direction set fail!\n",lcdkit_info.panel_infos.gpio_err_flag);
+			goto err_out;
+		}
+		errflag_gpio = gpio_get_value(lcdkit_info.panel_infos.gpio_err_flag);
+		gpio_free(lcdkit_info.panel_infos.gpio_err_flag);
+	}
+	LCDKIT_INFO("pcd_gpio[%d]= %d, errflag_gpio[%d]= %d \n",
+		lcdkit_info.panel_infos.gpio_pcd,pcd_gpio,
+		lcdkit_info.panel_infos.gpio_err_flag,errflag_gpio);
+	if ((pcd_gpio == GPIO_LOW_PCDERRFLAG) && (errflag_gpio == GPIO_LOW_PCDERRFLAG)) {
+		result_value = PCD_ERR_FLAG_SUCCESS; // PCD_ERR_FLAG_SUCCESS
+	} else if ((pcd_gpio == GPIO_HIGH_PCDERRFLAG) && (errflag_gpio == GPIO_LOW_PCDERRFLAG)) {
+		result_value = PCD_FAIL; //only  PCD_FAIL
+	} else if ((pcd_gpio == GPIO_LOW_PCDERRFLAG) && (errflag_gpio == GPIO_HIGH_PCDERRFLAG)) {
+		result_value = ERRFLAG_FAIL; //only ERRFLAG FAIL
+	} else if ((pcd_gpio == GPIO_HIGH_PCDERRFLAG) && (errflag_gpio == GPIO_HIGH_PCDERRFLAG)) {
+		result_value = PCD_ERRFLAG_FAIL; //PCD_ERR_FLAG_FAIL
+	} else {
+		result_value = PCD_ERR_FLAG_SUCCESS;
+	}
+err_out:
+	LCDKIT_INFO("The test cmd is pcd_errflag,and the result_value = %d\n",result_value);
+	ret = snprintf(buf, PAGE_SIZE, "%d\n", result_value);
+	return ret;
 }
 
 static ssize_t lcdkit_amoled_acl_ctrl_show(char* buf)
@@ -1380,16 +1393,22 @@ static ssize_t lcdkit_set_display_region(void* pdata, void* dirty)
     }
 
     dirty_region = (struct dirty_rect*) dirty;
+    if (((dirty_region->x == 0) && (dirty_region->w == 0)) ||
+        ((dirty_region->y == 0) && (dirty_region->h == 0))) {
+        LCDKIT_ERR("dirty region error:x/w/y/h=%d/%d/%d/%d!\n", dirty_region->x,
+            dirty_region->w,dirty_region->y,dirty_region->h);
+        return ret;
+    }
 
     lcdkit_dump_cmds(&lcdkit_info.panel_infos.display_region_cmds);
 
     lcdkit_info.panel_infos.display_region_cmds.cmds[0].payload[1] = ((uint32_t)(dirty_region->x) >> 8) & 0xff;
     lcdkit_info.panel_infos.display_region_cmds.cmds[0].payload[2] = ((uint32_t)(dirty_region->x)) & 0xff;
-    lcdkit_info.panel_infos.display_region_cmds.cmds[0].payload[3] = ((dirty_region->x + dirty_region->w - 1) >> 8) & 0xff;
+    lcdkit_info.panel_infos.display_region_cmds.cmds[0].payload[3] = ((uint32_t)(dirty_region->x + dirty_region->w - 1) >> 8) & 0xff;
     lcdkit_info.panel_infos.display_region_cmds.cmds[0].payload[4] = (dirty_region->x + dirty_region->w - 1) & 0xff;
     lcdkit_info.panel_infos.display_region_cmds.cmds[1].payload[1] = ((uint32_t)(dirty_region->y) >> 8) & 0xff;
     lcdkit_info.panel_infos.display_region_cmds.cmds[1].payload[2] = ((uint32_t)(dirty_region->y)) & 0xff;
-    lcdkit_info.panel_infos.display_region_cmds.cmds[1].payload[3] = ((dirty_region->y + dirty_region->h - 1) >> 8) & 0xff;
+    lcdkit_info.panel_infos.display_region_cmds.cmds[1].payload[3] = ((uint32_t)(dirty_region->y + dirty_region->h - 1) >> 8) & 0xff;
     lcdkit_info.panel_infos.display_region_cmds.cmds[1].payload[4] = (dirty_region->y + dirty_region->h - 1) & 0xff;
 
     lcdkit_dump_cmds(&lcdkit_info.panel_infos.display_region_cmds);

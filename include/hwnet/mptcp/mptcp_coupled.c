@@ -64,7 +64,7 @@ static inline void mptcp_set_alpha(const struct sock *meta_sk, u64 alpha)
 
 static inline u64 mptcp_ccc_scale(u32 val, int scale)
 {
-	return (u64)val << scale;
+	return (u64) val << scale;
 }
 
 static inline bool mptcp_get_forced(const struct sock *meta_sk)
@@ -110,8 +110,7 @@ static void mptcp_ccc_recalc_alpha(const struct sock *sk)
 		 * tmp will be in u64.
 		 */
 		tmp = div64_u64(mptcp_ccc_scale(sub_tp->snd_cwnd,
-						alpha_scale_num),
-				(u64)sub_tp->srtt_us * sub_tp->srtt_us);
+				alpha_scale_num), (u64)sub_tp->srtt_us * sub_tp->srtt_us);
 
 		if (tmp >= max_numerator) {
 			max_numerator = tmp;
@@ -142,7 +141,6 @@ static void mptcp_ccc_recalc_alpha(const struct sock *sk)
 		       __func__, mpcb->cnt_established);
 		mptcp_for_each_sk(mpcb, sub_sk) {
 			struct tcp_sock *sub_tp = tcp_sk(sub_sk);
-
 			pr_err("%s: pi:%d, state:%d\n, rtt:%u, cwnd: %u",
 			       __func__, sub_tp->mptcp->path_index,
 			       sub_sk->sk_state, sub_tp->srtt_us,
@@ -218,8 +216,8 @@ static void mptcp_ccc_cong_avoid(struct sock *sk, u32 ack, u32 acked)
 		if (unlikely(!alpha))
 			alpha = 1;
 
-		snd_cwnd = (int)div_u64((u64)mptcp_ccc_scale(1, alpha_scale),
-							     alpha);
+		snd_cwnd = (int) div_u64 ((u64) mptcp_ccc_scale(1, alpha_scale),
+						alpha);
 
 		/* snd_cwnd_cnt >= max (scale * tot_cwnd / alpha, cwnd)
 		 * Thus, we select here the max value.

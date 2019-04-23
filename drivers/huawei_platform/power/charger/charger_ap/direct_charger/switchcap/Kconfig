@@ -2,3 +2,6 @@ config BQ25970
 	bool "bq25970"
 	default n
 
+config LTC7820
+	bool "ltc7820"
+	default n

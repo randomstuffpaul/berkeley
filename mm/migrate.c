@@ -242,7 +242,11 @@ static int remove_migration_pte(struct page *new, struct vm_area_struct *vma,
 
 	/* Recheck VMA as permissions can change since migration started  */
 	if (is_write_migration_entry(entry))
+#ifdef CONFIG_SPECULATIVE_PAGE_FAULT	
+		pte = maybe_mkwrite(pte, vma->vm_flags);
+#else
 		pte = maybe_mkwrite(pte, vma);
+#endif
 
 #ifdef CONFIG_HUGETLB_PAGE
 	if (PageHuge(new)) {
@@ -1866,7 +1870,11 @@ bool pmd_trans_migrating(pmd_t pmd)
  * node. Caller is expected to have an elevated reference count on
  * the page that will be dropped by this function before returning.
  */
+#ifdef CONFIG_SPECULATIVE_PAGE_FAULT
+int migrate_misplaced_page(struct page *page, struct fault_env *vmf,
+#else
 int migrate_misplaced_page(struct page *page, struct vm_area_struct *vma,
+#endif
 			   int node)
 {
 	pg_data_t *pgdat = NODE_DATA(node);
@@ -1879,7 +1887,11 @@ int migrate_misplaced_page(struct page *page, struct vm_area_struct *vma,
 	 * with execute permissions as they are probably shared libraries.
 	 */
 	if (page_mapcount(page) != 1 && page_is_file_cache(page) &&
+#ifdef CONFIG_SPECULATIVE_PAGE_FAULT
+	    (vmf->vma_flags & VM_EXEC))
+#else
 	    (vma->vm_flags & VM_EXEC))
+#endif
 		goto out;
 
 	/*

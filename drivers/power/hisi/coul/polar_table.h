@@ -56,15 +56,15 @@
 #define POLAR_TEMP_OCV_UPDATE (10)
 #define COUL_DEFAULT_SAMPLE_INTERVAL (250)
 #define VBAT_LEARN_GAP_MV (100)
-#define VBAT_LEARN_COE_HIGH (9)
-#define VBAT_LEARN_COE_LOW (4)
-#define VBAT_LEARN_AVGCURR_HIGH (-2400)
+#define VBAT_LEARN_COE_HIGH (8)
+#define VBAT_LEARN_COE_LOW (6)
+#define VBAT_LEARN_AVGCURR_HIGH (-1500)
 #define VBAT_LEARN_AVGCURR_LOW (-500)
 #define POLAR_LEARN_TEMP_COLS (48)
-#define POLAR_LEARN_TEMP_RANGE (3)
+#define POLAR_LEARN_TEMP_RANGE (4)
 #define TENTH                 (10)
-#define TEMP_23_DEGREE        (23)
-
+#define TEMP_25_DEGREE        (25)
+#define SELF_LEARN_GAP        (30*60UL)//30min
 #ifndef TRUE
 #define TRUE (1)
 #endif
@@ -143,8 +143,8 @@ typedef struct POLAR_VECTOR_TABLE {
 } polar_x_y_z_tbl;
 
 typedef struct POLAR_LEARN_A {
-    long a_trained;
-    long polar_vol;
+    short a_trained;
+    short polar_vol_mv;
 } polar_learn;
 
 typedef struct POLAR_LEARN_TABLE {

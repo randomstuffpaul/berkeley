@@ -907,71 +907,68 @@ static int tid_smaps_open(struct inode *inode, struct file *file)
 
 static int proc_pid_smaps_simple_show(struct seq_file *m, void *v)
 {
-	struct pid *pid = (struct pid *)m->private;
-	struct task_struct *task;
-	struct mm_struct *mm;
-	struct vm_area_struct *vma;
-	struct mem_size_stats mss_total;
+	struct vm_area_struct *vma = v;
 	struct mem_size_stats mss;
-	int ret = 0;
+	struct mem_size_stats mss_total;
+	struct proc_maps_private *priv = m->private;
 
 	struct mm_walk smaps_walk = {
 		.pmd_entry = smaps_pte_range,
 		.private = &mss,
 	};
 
-	task = get_pid_task(pid, PIDTYPE_PID);
-	if (!task) {
-		ret = -1;
-		goto error_task;
-	}
-
-	mm = mm_access(task, PTRACE_MODE_READ);
-	if (!mm || IS_ERR(mm)) {
-		ret = -2;
-		goto error_mm;
-	}
-
 	memset(&mss_total, 0, sizeof mss_total);
-	down_read(&mm->mmap_sem);
-	vma = mm->mmap;
-	while (vma) {
-		memset(&mss, 0, sizeof mss);
-		smaps_walk.mm = vma->vm_mm;
 
+	unsigned long totalUss = 0;
+
+	while (vma) {
 		if (vma->vm_mm && !is_vm_hugetlb_page(vma)) {
-			walk_page_range(vma->vm_start, vma->vm_end, &smaps_walk);
+			memset(&mss, 0, sizeof mss);
+			smaps_walk.mm = vma->vm_mm;
+			walk_page_vma(vma, &smaps_walk);
 			mss_total.pss += mss.pss;
+			totalUss += (mss.private_clean + mss.private_dirty);
 			mss_total.swap_pss += mss.swap_pss;
 		}
-		vma = vma->vm_next;
+		vma = m_next_vma(priv, vma);
 	}
-	up_read(&mm->mmap_sem);
-	mmput(mm);
 
-	seq_printf(m,
-		   "Pss:            %8lu kB\n"
-		   "SwapPss:        %8lu kB\n",
-		   (unsigned long)(mss_total.pss >> (10 + PSS_SHIFT)),
-		   (unsigned long)(mss_total.swap_pss >> (10 + PSS_SHIFT)));
+	seq_printf(m, "Pss: %lu KB\n"
+			"Uss: %lu KB\n"
+			"SPP: %lu KB\n",
+			(unsigned long)(mss_total.pss >> (10 + PSS_SHIFT)),
+			totalUss >> 10,
+			(unsigned long)(mss_total.swap_pss >> (10 + PSS_SHIFT)));
 
-error_mm:
-	put_task_struct(task);
+	m->version = -1UL;//end flag
 
-error_task:
 	return 0;
 }
 
+static void *simple_next(struct seq_file *p,void *v, loff_t *pos)
+{
+    vma_stop(p->private);
+    return NULL;
+}
+
+static const struct seq_operations proc_smaps_simple_op = {
+	.start	= m_start,
+	.next	= simple_next,
+	.stop	= m_stop,
+	.show	= proc_pid_smaps_simple_show
+};
+
+
 static int proc_pid_smaps_simple_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, proc_pid_smaps_simple_show, proc_pid(inode));
+    return do_maps_open(inode, file, &proc_smaps_simple_op);
 }
 
 const struct file_operations proc_pid_smaps_simple_operations = {
 	.open		= proc_pid_smaps_simple_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
-	.release	= single_release,
+	.release	= proc_map_release,
 };
 
 const struct file_operations proc_pid_smaps_operations = {
@@ -1197,8 +1194,16 @@ static ssize_t clear_refs_write(struct file *file, const char __user *buf,
 					goto out_mm;
 				}
 				for (vma = mm->mmap; vma; vma = vma->vm_next) {
-					vma->vm_flags &= ~VM_SOFTDIRTY;
+#ifdef CONFIG_SPECULATIVE_PAGE_FAULT
+					vm_write_begin(vma);
+					WRITE_ONCE(vma->vm_flags,
+						   vma->vm_flags & ~VM_SOFTDIRTY);
 					vma_set_page_prot(vma);
+					vm_write_end(vma);
+#else
+					vma->vm_flags &= ~VM_SOFTDIRTY;				
+					vma_set_page_prot(vma);
+#endif
 				}
 				downgrade_write(&mm->mmap_sem);
 				break;

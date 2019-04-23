@@ -78,6 +78,7 @@
 /* LPMCU: 0xB4000000, A53: 0xF4000000, I2C: 0x0 */
 #define BASE_BUS_ADDR         ( 0x0)
 #define REG_SC_APB_IF         ( BASE_BUS_ADDR + 0x00023000)
+#define REG_SC_APB_IF_V200    ( BASE_BUS_ADDR + 0x00046000)
 #define SCNOCSTA              ( REG_SC_APB_IF + 0xa0)
 #define NOCSTA                ( BASE_BUS_ADDR + 0x00026000)
 #define SCPPLLCTRL0           ( REG_SC_APB_IF + 0x8)
@@ -343,6 +344,8 @@ enum {
 #define RX_CANNOT_DISABLE	UFS_BIT(11)
 #define DISABLE_UFS_PMRUNTIME	UFS_BIT(12)
 #define RX_VCO_VREF	 UFS_BIT(13)
+#define MPHY_BOARDID_V200     ( 0x18903205)
+bool IS_V200_MPHY(struct ufs_hba *hba);
 
 struct ufs_kirin_host {
 	struct ufs_hba *hba;
@@ -450,6 +453,8 @@ void ufs_kirin_pwr_change_pre_change(struct ufs_hba *hba);
 void hisi_mphy_updata_temp_sqvref(struct ufs_hba *hba,
 				struct ufs_kirin_host *host);
 void hisi_mphy_updata_vswing_fsm_ocs5(struct ufs_hba *hba,
+				struct ufs_kirin_host *host);
+void hisi_mphy_V200_updata(struct ufs_hba *hba,
 				struct ufs_kirin_host *host);
 
 int ufs_kirin_check_hibern8(struct ufs_hba *hba);

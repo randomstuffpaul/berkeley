@@ -15,7 +15,11 @@
 #elif defined(CONFIG_HISI_PARTITION_KIRIN970)
 #include "kirin970_partition.h"
 #elif defined(CONFIG_HISI_PARTITION_CANCER)
+#ifdef HISI_EXTERNAL_MODEM
+#include "cancer_a_plus_b_partition.h"
+#else
 #include "cancer_partition.h"
+#endif
 #elif defined(CONFIG_HISI_PARTITION_CAPRICORN)
 #include "capricorn_partition.h"
 #elif defined(CONFIG_HISI_PARTITION_TAURUS)

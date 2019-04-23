@@ -83,11 +83,7 @@ struct mmc_command {
 #define mmc_cmd_type(cmd)	((cmd)->flags & MMC_CMD_MASK)
 
 	unsigned int		retries;	/* max number of retries */
-#ifdef CONFIG_HISI_MMC
-	unsigned int		error;		/* command error */
-#else
 	int			error;		/* command error */
-#endif
 
 /*
  * Standard errno values are used for errors, but some have specific
@@ -118,11 +114,7 @@ struct mmc_data {
 	unsigned int		timeout_clks;	/* data timeout (in clocks) */
 	unsigned int		blksz;		/* data block size */
 	unsigned int		blocks;		/* number of blocks */
-#ifdef CONFIG_HISI_MMC
-	unsigned int		error;		/* data error */
-#else
 	int			error;		/* data error */
-#endif
 	unsigned int		flags;
 
 #define MMC_DATA_WRITE	(1 << 8)

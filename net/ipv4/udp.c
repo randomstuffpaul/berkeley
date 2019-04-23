@@ -130,6 +130,10 @@
 #include <huawei_platform/chr/chr_interface.h>
 #endif
 
+#ifdef CONFIG_WIFI_DELAY_STATISTIC
+#include <hwnet/ipv4/wifi_delayst.h>
+#endif
+
 #ifdef CONFIG_DOZE_FILTER
 #include <huawei_platform/power/wifi_filter/wifi_filter.h>
 #endif
@@ -897,7 +901,9 @@ int udp_push_pending_frames(struct sock *sk)
 	skb = ip_finish_skb(sk, fl4);
 	if (!skb)
 		goto out;
-
+#ifdef CONFIG_WIFI_DELAY_STATISTIC
+	delay_record_first_combine(sk,skb,TP_SKB_DIRECT_SND,TP_SKB_TYPE_UDP);
+#endif
 	err = udp_send_skb(skb, fl4);
 
 out:
@@ -1111,9 +1117,17 @@ back_from_confirm:
 		skb = ip_make_skb(sk, fl4, getfrag, msg, ulen,
 				  sizeof(struct udphdr), &ipc, &rt,
 				  msg->msg_flags);
+
 		err = PTR_ERR(skb);
 		if (!IS_ERR_OR_NULL(skb))
+#ifdef CONFIG_WIFI_DELAY_STATISTIC
+		{
+			delay_record_first_combine(sk,skb,TP_SKB_DIRECT_SND,TP_SKB_TYPE_UDP);
+#endif
 			err = udp_send_skb(skb, fl4);
+#ifdef CONFIG_WIFI_DELAY_STATISTIC
+		}
+#endif
 		goto out;
 	}
 
@@ -1401,7 +1415,9 @@ try_again:
 	err = copied;
 	if (flags & MSG_TRUNC)
 		err = ulen;
-
+#ifdef CONFIG_WIFI_DELAY_STATISTIC
+	delay_record_rcv_combine(skb,sk,TP_SKB_TYPE_UDP);
+#endif
 	__skb_free_datagram_locked(sk, skb, peeking ? -err : err);
 	return err;
 

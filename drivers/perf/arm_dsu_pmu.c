@@ -29,6 +29,7 @@
 #include <linux/smp.h>
 #include <linux/sysfs.h>
 #include <linux/types.h>
+#include <linux/cpu_pm.h>
 
 #include <asm/arm_dsu_pmu.h>
 #include <asm/local64.h>
@@ -122,6 +123,9 @@ struct dsu_pmu {
 	struct hlist_node		cpuhp_node;
 	s8				num_counters;
 	int				irq;
+	struct notifier_block	cpu_pm_nb;
+	bool fcm_idle;
+	spinlock_t fcm_idle_lock;
 	DECLARE_BITMAP(cpmceid_bitmap, DSU_PMU_MAX_COMMON_EVENTS);
 };
 
@@ -338,7 +342,6 @@ static inline void dsu_pmu_set_event(struct dsu_pmu *dsu_pmu,
 					struct perf_event *event)
 {
 	int idx = event->hw.idx;
-	unsigned long flags;
 
 	if (!dsu_pmu_counter_valid(dsu_pmu, idx)) {
 		dev_err(event->pmu->dev,
@@ -346,9 +349,7 @@ static inline void dsu_pmu_set_event(struct dsu_pmu *dsu_pmu,
 		return;
 	}
 
-	raw_spin_lock_irqsave(&dsu_pmu->pmu_lock, flags);
 	__dsu_pmu_set_event(idx, event->hw.config_base);
-	raw_spin_unlock_irqrestore(&dsu_pmu->pmu_lock, flags);
 }
 
 static void dsu_pmu_event_update(struct perf_event *event)
@@ -420,24 +421,34 @@ static irqreturn_t dsu_pmu_handle_irq(int irq_num, void *dev)
 static void dsu_pmu_start(struct perf_event *event, int pmu_flags)
 {
 	struct dsu_pmu *dsu_pmu = to_dsu_pmu(event->pmu);
+	unsigned long flags;
 
 	/* We always reprogram the counter */
 	if (pmu_flags & PERF_EF_RELOAD)
 		WARN_ON(!(event->hw.state & PERF_HES_UPTODATE));
+
 	dsu_pmu_set_event_period(event);
+	event->hw.state = 0;
+
+	raw_spin_lock_irqsave(&dsu_pmu->pmu_lock, flags);
 	if (event->hw.idx != DSU_PMU_IDX_CYCLE_COUNTER)
 		dsu_pmu_set_event(dsu_pmu, event);
-	event->hw.state = 0;
 	dsu_pmu_enable_counter(dsu_pmu, event->hw.idx);
+	raw_spin_unlock_irqrestore(&dsu_pmu->pmu_lock, flags);
 }
 
 static void dsu_pmu_stop(struct perf_event *event, int pmu_flags)
 {
 	struct dsu_pmu *dsu_pmu = to_dsu_pmu(event->pmu);
+	unsigned long flags;
 
 	if (event->hw.state & PERF_HES_STOPPED)
 		return;
+
+	raw_spin_lock_irqsave(&dsu_pmu->pmu_lock, flags);
 	dsu_pmu_disable_counter(dsu_pmu, event->hw.idx);
+	raw_spin_unlock_irqrestore(&dsu_pmu->pmu_lock, flags);
+
 	dsu_pmu_event_update(event);
 	event->hw.state |= PERF_HES_STOPPED | PERF_HES_UPTODATE;
 }
@@ -605,11 +616,13 @@ static struct dsu_pmu *dsu_pmu_alloc(struct platform_device *pdev)
 		return ERR_PTR(-ENOMEM);
 
 	raw_spin_lock_init(&dsu_pmu->pmu_lock);
+	spin_lock_init(&dsu_pmu->fcm_idle_lock);
 	/*
 	 * Initialise the number of counters to -1, until we probe
 	 * the real number on a connected CPU.
 	 */
 	dsu_pmu->num_counters = -1; /*lint !e570*/
+	dsu_pmu->fcm_idle = false;
 	return dsu_pmu;
 }
 
@@ -690,6 +703,152 @@ static void dsu_pmu_init_pmu(struct dsu_pmu *dsu_pmu)
 	dsu_pmu_get_reset_overflow();
 }
 
+struct cpu_pm_dsu_pmu_args {
+	struct dsu_pmu	*dsu_pmu;
+	unsigned long	cmd;
+	int		cpu;
+	int		ret;
+};
+
+extern bool hisi_fcm_cluster_pwrdn(void);
+
+#ifdef CONFIG_CPU_PM
+static void cpu_pm_dsu_pmu_setup(struct dsu_pmu *dsu_pmu, unsigned long cmd)
+{
+	struct dsu_hw_events *hw_events = &dsu_pmu->hw_events;
+	struct perf_event *event;
+	int idx;
+
+	for (idx = 0; idx < dsu_pmu->num_counters; idx++) {
+		/*
+		 * If the counter is not used skip it, there is no
+		 * need of stopping/restarting it.
+		 */
+		if (!test_bit(idx, hw_events->used_mask))
+			continue;
+
+		event = hw_events->events[idx];
+		if (!event)
+			continue;
+
+		/*
+		 * Check if an attempt was made to free this event during
+		 * the CPU went offline.
+		 */
+		if (event->state == PERF_EVENT_STATE_ZOMBIE)
+			continue;
+
+		switch (cmd) {
+		case CPU_PM_ENTER:
+			/*
+			 * Stop and update the counter
+			 */
+			dsu_pmu_stop(event, PERF_EF_UPDATE);
+			break;
+		case CPU_PM_EXIT:
+		case CPU_PM_ENTER_FAILED:
+			 /*
+			  * Restore and enable the counter.
+			  * dsu_pmu_start() indirectly calls
+			  *
+			  * perf_event_update_userpage()
+			  *
+			  * that requires RCU read locking to be functional,
+			  * wrap the call within RCU_NONIDLE to make the
+			  * RCU subsystem aware this cpu is not idle from
+			  * an RCU perspective for the dsu_pmu_start() call
+			  * duration.
+			  */
+			RCU_NONIDLE(dsu_pmu_start(event, PERF_EF_RELOAD));
+			break;
+		default:
+			break;
+		}
+	}
+}
+
+static void cpu_pm_dsu_pmu_common(void *info)
+{
+	struct cpu_pm_dsu_pmu_args *data	= info;
+	struct dsu_pmu *dsu_pmu		= data->dsu_pmu;
+	unsigned long cmd		= data->cmd;
+	int cpu				= data->cpu;
+	struct dsu_hw_events *hw_events = &dsu_pmu->hw_events;
+	int enabled = bitmap_weight(hw_events->used_mask, dsu_pmu->num_counters);
+	bool fcm_pwrdn = 0;
+
+	if (!cpumask_test_cpu(cpu, &dsu_pmu->associated_cpus)) {
+		data->ret = NOTIFY_DONE;
+		return;
+	}
+
+	if (!enabled) {
+		data->ret = NOTIFY_OK;
+		return;
+	}
+
+	data->ret = NOTIFY_OK;
+
+	switch (cmd) {
+	case CPU_PM_ENTER:
+		spin_lock(&dsu_pmu->fcm_idle_lock);
+		fcm_pwrdn = hisi_fcm_cluster_pwrdn();
+		if (fcm_pwrdn && (false == dsu_pmu->fcm_idle)) {
+			dsu_pmu->fcm_idle = true;
+			dsu_pmu_disable(&dsu_pmu->pmu);
+			cpu_pm_dsu_pmu_setup(dsu_pmu, cmd);
+		}
+		spin_unlock(&dsu_pmu->fcm_idle_lock);
+		break;
+	case CPU_PM_EXIT:
+	case CPU_PM_ENTER_FAILED:
+		spin_lock(&dsu_pmu->fcm_idle_lock);
+		if (true == dsu_pmu->fcm_idle) {
+			dsu_pmu->fcm_idle = false;
+			cpu_pm_dsu_pmu_setup(dsu_pmu, cmd);
+			dsu_pmu_enable(&dsu_pmu->pmu);
+		}
+		spin_unlock(&dsu_pmu->fcm_idle_lock);
+		break;
+	default:
+		data->ret = NOTIFY_DONE;
+		break;
+	}
+
+	return;
+}
+
+static int cpu_pm_dsu_pmu_notify(struct notifier_block *b, unsigned long cmd,
+			     void *v)
+{
+	struct cpu_pm_dsu_pmu_args data = {
+		.dsu_pmu	= container_of(b, struct dsu_pmu, cpu_pm_nb),
+		.cmd	= cmd,
+		.cpu	= smp_processor_id(),
+	};
+
+	cpu_pm_dsu_pmu_common(&data);
+	return data.ret;
+}
+
+static int cpu_pm_dsu_pmu_register(struct dsu_pmu *dsu_pmu)
+{
+	dsu_pmu->cpu_pm_nb.notifier_call = cpu_pm_dsu_pmu_notify;
+	return cpu_pm_register_notifier(&dsu_pmu->cpu_pm_nb);
+}
+
+static void cpu_pm_dsu_pmu_unregister(struct dsu_pmu *dsu_pmu)
+{
+	cpu_pm_unregister_notifier(&dsu_pmu->cpu_pm_nb);
+}
+
+#else
+static inline int cpu_pm_dsu_pmu_register(struct dsu_pmu *dsu_pmu) { return 0; }
+static inline void cpu_pm_dsu_pmu_unregister(struct dsu_pmu *dsu_pmu) { }
+static void cpu_pm_dsu_pmu_common(void *info) { }
+#endif
+
+
 static int dsu_pmu_device_probe(struct platform_device *pdev)
 {
 	int irq, rc;
@@ -746,12 +905,20 @@ static int dsu_pmu_device_probe(struct platform_device *pdev)
 		.attr_groups	= dsu_pmu_attr_groups,
 	};
 
+	rc = cpu_pm_dsu_pmu_register(dsu_pmu);
+	if(rc){
+		cpuhp_state_remove_instance(dsu_pmu_cpuhp_state,
+						 &dsu_pmu->cpuhp_node);
+		irq_set_affinity_hint(dsu_pmu->irq, NULL);
+	}
+
 #ifdef CONFIG_HISI_L3C_DEVFREQ
 	rc = perf_pmu_register(&dsu_pmu->pmu, name, PERF_TYPE_DSU);
 #else
 	rc = perf_pmu_register(&dsu_pmu->pmu, name, -1);
 #endif
 	if (rc) {
+		cpu_pm_dsu_pmu_unregister(dsu_pmu);
 		cpuhp_state_remove_instance(dsu_pmu_cpuhp_state,
 						 &dsu_pmu->cpuhp_node);
 		irq_set_affinity_hint(dsu_pmu->irq, NULL);
@@ -765,6 +932,7 @@ static int dsu_pmu_device_remove(struct platform_device *pdev)
 	struct dsu_pmu *dsu_pmu = platform_get_drvdata(pdev);
 
 	perf_pmu_unregister(&dsu_pmu->pmu);
+	cpu_pm_dsu_pmu_unregister(dsu_pmu);
 	cpuhp_state_remove_instance(dsu_pmu_cpuhp_state, &dsu_pmu->cpuhp_node);
 	irq_set_affinity_hint(dsu_pmu->irq, NULL);
 

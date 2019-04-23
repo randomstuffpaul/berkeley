@@ -21,6 +21,7 @@
 #include "platform_helpers.h"
 #include "huawei_platform/power/charger/charger_ap/direct_charger/loadswitch/rt9748/rt9748.h"
 #include "../core/platform.h"
+#include "../core/vendor_info.h"
 
 #ifdef CONFIG_DUAL_ROLE_USB_INTF
 #include <linux/usb/class-dual-role.h>
@@ -54,7 +55,7 @@ const char* FUSB_DT_INTERRUPT_INTN =    "fsc_interrupt_int_n";      // Name of t
 static irqreturn_t _fusb_isr_intn(int irq, void *dev_id);
 #endif  // FSC_INTERRUPT_TRIGGERED
 
-
+#define FUSB_FORCE_ROLESWAP_TIMEOUT  500
 
 
 
@@ -71,7 +72,8 @@ static void fusb_force_source(struct dual_role_phy_instance *dual_role)
 
     FSC_PRINT("FUSB  %s - Force State Source\n", __func__);
     core_set_source();
-    fusb_StartTimers(&chip->timer_force_timeout, 1500); /* ms */
+	fusb_StartTimers(&chip->timer_force_timeout,
+	 			FUSB_FORCE_ROLESWAP_TIMEOUT); /* ms */
     if (dual_role) {
 	dual_role_instance_changed(dual_role);
     }
@@ -89,7 +91,8 @@ static void fusb_force_sink(struct dual_role_phy_instance *dual_role)
 
     FSC_PRINT("FUSB  %s - Force State Sink\n", __func__);
     core_set_sink();
-    fusb_StartTimers(&chip->timer_force_timeout, 1500); /* ms */
+	fusb_StartTimers(&chip->timer_force_timeout,
+				FUSB_FORCE_ROLESWAP_TIMEOUT); /* ms */
     if (dual_role) {
 	dual_role_instance_changed(dual_role);
     }
@@ -247,11 +250,10 @@ static int fusb_dual_role_set_prop(struct dual_role_phy_instance *dual_role,
 }
 FSC_S32 fusb_dual_role_phy_init(void)
 {
-	FSC_PRINT("%s +\n", __func__);
 	struct dual_role_phy_desc *dual_desc = NULL;
 	struct dual_role_phy_instance *dual_role = NULL;
 	struct fusb30x_chip* chip = fusb30x_GetChip();
-
+	FSC_PRINT("%s +\n", __func__);
 	if (!chip) {
 		pr_err("invalid fusb30x_chip\n");
 		return -EINVAL;
@@ -3688,6 +3690,8 @@ void fusb_InitChipData(void)
     struct device_node* node = NULL;
     struct fusb30x_chip* chip = fusb30x_GetChip();
     int ret = 0;
+    unsigned int sink_pdo_number;
+
     if (chip == NULL)
     {
         pr_err("%s - Chip structure is null!\n", __func__);
@@ -3704,6 +3708,16 @@ void fusb_InitChipData(void)
         chip->discover_mode_supported = of_property_read_bool(node, "discover_mode_supported");
         chip->enter_mode_supported = of_property_read_bool(node, "enter_mode_supported");
         chip->discover_svid_supported = of_property_read_bool(node, "discover_svid_supported");
+        ret = of_property_read_u32(node, "pd,sink-pdo-number", &sink_pdo_number);
+
+        if (ret) {
+            pr_err("%s - Missing pd sink-pdo-number\n", __func__);
+            chip->sink_pdo_number = Num_Snk_PDOs;
+        } else {
+            chip->sink_pdo_number = sink_pdo_number;
+        }
+
+        FSC_PRINT("FUSB %s -chip->sink_pdo_number=%d, Num_Snk_PDOs=%d, sink_pdo_number=%d,\n", __func__, chip->sink_pdo_number, Num_Snk_PDOs, sink_pdo_number);
     }
     else {
         pr_err("%s - Could not get vendor_info node\n", __func__);
@@ -3715,6 +3729,7 @@ void fusb_InitChipData(void)
         chip->discover_mode_supported = 0;
         chip->enter_mode_supported = 0;
         chip->discover_svid_supported = 0;
+        chip->sink_pdo_number = Num_Snk_PDOs;
     }
     pr_err("%s Device Tree Validation Check vconn_swap_to_on_supported: %d\n", __func__,chip->vconn_swap_to_on_supported);
     pr_err("%s Device Tree Validation Check vconn_swap_to_off_supported: %d\n", __func__,chip->vconn_swap_to_off_supported);

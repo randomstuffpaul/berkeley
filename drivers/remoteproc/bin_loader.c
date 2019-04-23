@@ -41,27 +41,31 @@ rproc_bin_sanity_check(struct rproc *rproc, const struct firmware *fw)
 static
 u32 rproc_bin_get_boot_addr(struct rproc *rproc, const struct firmware *fw)
 {
-	return 0;
+    return 0;
 }
 
 static int
 rproc_bin_load_segments(struct rproc *rproc, const struct firmware *fw)
 {
-	return 0;
+    if (use_sec_isp()) {
+        return 0;
+    }
+
+    return hisp_bin_load_segments(rproc);
 }
 
 static struct resource_table *
 rproc_bin_find_rsc_table(struct rproc *rproc, const struct firmware *fw,
-			 int *tablesz)
+            int *tablesz)
 {
-	struct resource_table *table = NULL;
-	int tablesize;
+    struct resource_table *table = NULL;
+    int tablesize;
 
-    if ((table = (struct resource_table *)get_rsctable(&tablesize)) == NULL)
+    if ((table = (struct resource_table *)hisp_get_rsctable(&tablesize)) == NULL)
         pr_err("[%s] Failed : get_rsctable.%pK\n", __func__, table);
 
     *tablesz = tablesize;
-	return table;
+    return table;
 }
 
 static struct resource_table *

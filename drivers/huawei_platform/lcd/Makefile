@@ -11,4 +11,5 @@ EXTRA_CFLAGS += -I$(LCD_EFFECT_DIR)/drivers/huawei_platform/lcd \
 		-Idrivers/video/fbdev/hisi/dss \
 		-Idrivers/staging/android \
 		-Idrivers/atfdriver \
-		-Idrivers/hisi/tzdriver
+		-Idrivers/hisi/tzdriver\
+                -Idrivers/hisi/tzdriver/libhwsecurec

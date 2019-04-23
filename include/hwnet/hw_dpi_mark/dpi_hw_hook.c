@@ -51,6 +51,8 @@ typedef struct{
 /* dpi_mark_rule for one APP */
 typedef struct{
 	uid_t			   dmr_app_uid;
+	uint32_t		   dmr_mplk_netid;
+	uint32_t		   dmr_mplk_strategy;
 	dpi_rule_t		  dmr_rule;
 }dpi_mark_rule_t;
 

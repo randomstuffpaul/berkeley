@@ -73,6 +73,9 @@ extern "C"
 
 #define AT_BER_UNKNOWN                          (99)
 
+/*主线现在支持140个频段大于128扩展为256个最大频段支持*/
+#define AT_FEATURE_LTE_MAX_SUPPORT_BAND         (256)
+
 enum
 {
     EN_SERVICE_CELL_ID,

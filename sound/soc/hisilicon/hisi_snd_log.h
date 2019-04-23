@@ -36,14 +36,18 @@
 #define LOG_TAG "hisi_snd"
 #endif
 
+/*lint -e683*/
+#define pr_notice(fmt, ...) \
+        printk(KERN_NOTICE pr_fmt(fmt), ##__VA_ARGS__)
+
 #if DEBUG_LEVEL
-#define logd(fmt, ...) pr_info(LOG_TAG"[D]:%s:%d: "fmt, __FUNCTION__, __LINE__, ##__VA_ARGS__)
+#define logd(fmt, ...) pr_notice(LOG_TAG"[D]:%s:%d: "fmt, __FUNCTION__, __LINE__, ##__VA_ARGS__)
 #else
 #define logd(fmt, ...)
 #endif
 
 #if INFO_LEVEL
-#define logi(fmt, ...) pr_info(LOG_TAG"[I]:%s:%d: "fmt, __FUNCTION__, __LINE__, ##__VA_ARGS__)
+#define logi(fmt, ...) pr_notice(LOG_TAG"[I]:%s:%d: "fmt, __FUNCTION__, __LINE__, ##__VA_ARGS__)
 #else
 #define logi(fmt, ...)
 #endif

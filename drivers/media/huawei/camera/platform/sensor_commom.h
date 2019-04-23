@@ -54,6 +54,15 @@ struct sensor_cfg_data;
 #define VIDIOC_HISI_CSI_DISABLE \
     _IOWR('V', BASE_VIDIOC_PRIVATE + 13, struct sensor_cfg_data)
 
+#define EXT_NAME_NUM                   (5)
+#define EXT_THRESHOLD_NUM              (EXT_NAME_NUM*2)
+
+typedef enum _ext_type
+{
+    NO_EXT_INFO = 0,
+    EXT_INFO_NO_ADC = 1,
+    EXT_INFO_ADC = 2,
+}ext_type;
 
 
 /***************************** cfg type define *******************************/
@@ -78,6 +87,7 @@ struct sensor_cfg_data;
 #define SENSOR_INDEX_INVALID        0xFFFFFFFF
 #define LDO_VOLTAGE_1P0V            1000000
 #define LDO_VOLTAGE_1P05V           1050000
+#define LDO_VOLTAGE_1P08V           1080000
 #define LDO_VOLTAGE_1P1V            1100000
 #define LDO_VOLTAGE_1P13V           1130000
 #define LDO_VOLTAGE_1P145V          1145000
@@ -189,6 +199,7 @@ enum sensor_power_seq_type_t {
     SENSOR_DRVVDD,
     SENSOR_BVDD, /* using for buck vdd voltage control */
     SENSOR_RXDPHY_CLK,
+    SENSOR_LASER_XSHUT,/*xshut used for laser*/
 };
 
 enum sensor_power_pmic_type_t {
@@ -332,6 +343,7 @@ typedef enum {
 	AVDD2_EN,/*used for power up front sensor's second avdd gpio*/
     MIPI_EN,
     AFVDD_EN,/*used for power up afvdd gpio*/
+    LASER_XSHUT,/*laser*/
     IO_MAX,
 } gpio_t;
 
@@ -339,6 +351,12 @@ typedef enum {
     PIN_LEVEL_LOW = 0,
     PIN_LEVEL_HIGH
 } pin_level_t;
+
+typedef struct _tag_rpc_info_t {
+    struct workqueue_struct *rpc_work_queue;
+    struct work_struct rpc_work;
+    int camera_status;
+} rpc_info_t;
 
 typedef struct _tag_hwsensor_board_info
 {
@@ -386,10 +404,20 @@ typedef struct _tag_hwsensor_board_info
     int module_type;
     int flash_pos_type;//0-alone 1-mix
     int reset_type;
+    int release_value;  //reset gpio release active value
+    int hold_value;  //reset gpio hold activity value
     int topology_type;//hardware topology type for structured light
-
-	int            phyinfo_valid;
-	phy_info_t     phyinfo;
+    int            phyinfo_valid;
+    phy_info_t     phyinfo;
+    /*add for TOF Tx name*/
+    unsigned int ext_type;
+    int adc_channel;
+    int ext_num;
+    int adc_threshold[EXT_THRESHOLD_NUM];
+    char ext_name[EXT_NAME_NUM][DEVICE_NAME_SIZE];
+    /* add for Txx rpc */
+    int need_rpc; // radio power ctl for radio frequency interference
+    rpc_info_t rpc_info;
 } hwsensor_board_info_t;
 
 struct hisi_sensor_awb_otp {

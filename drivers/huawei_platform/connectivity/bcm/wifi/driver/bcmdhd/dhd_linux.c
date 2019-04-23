@@ -4255,50 +4255,48 @@ dhd_dpc_thread(void *data)
 	complete_and_exit(&tsk->completed, 0);
 }
 #ifdef BCMSDIO
-#define HW_SDIO_AUTO_FREQ_NORMAL_CPU   0
-#define HW_SDIO_AUTO_FREQ_BUSY_CPU     1
-#define HW_SDIO_AUTO_FREQ_CPU_NUM      4
-#define HW_SDIO_FREQ_HIGHEST_SPEED_LEVLE  16000
-#define HW_SDIO_FREQ_HIGHER_SPEED_LEVLE   8000
-#define HW_SDIO_FREQ_ADJUST_PEROID     50
+#define HW_SDIO_FREQ_ADJUST_PEROID     2000
+#define PRIMARY_CPUCORE 0
+#define DPC_CPUCORE 4
+#define DHD_TPUT_THRESHOLD (150*1024*1024/8) // 150Mbps
+extern int brcm_mmc_irq;
 void
-hw_sdio_auto_freq_set_thread_affinity(dhd_info_t *dhd, ulong total_sdio_rate)
+dhdsdio_interrupt_set_cpucore(dhd_info_t *dhd, bool set)
 {
-	ulong current_cpu = HW_SDIO_AUTO_FREQ_NORMAL_CPU;
-	struct cpumask cpu_mask;
+	struct cpumask rxf_cpu_mask;
+	struct cpumask irq_cpu_mask;
+	int dpc_cpumask = PRIMARY_CPUCORE;
 	if (dhd == NULL)
 	{
 		return;
 	}
-	if ((total_sdio_rate >= HW_SDIO_FREQ_HIGHEST_SPEED_LEVLE)
-		&& (HW_SDIO_AUTO_FREQ_NORMAL_CPU == current_cpu))
+	if (set)
 	{
-		cpumask_setall(&cpu_mask);
-		current_cpu = HW_SDIO_AUTO_FREQ_BUSY_CPU;
-		/* set wifi rx thread to CPU4~7 */
-		cpumask_clear_cpu(0, &cpu_mask);
-		cpumask_clear_cpu(1, &cpu_mask);
-		cpumask_clear_cpu(2, &cpu_mask);
-		cpumask_clear_cpu(3, &cpu_mask);
-	}
-	else if ((total_sdio_rate <= HW_SDIO_FREQ_HIGHER_SPEED_LEVLE)
-		&& (HW_SDIO_AUTO_FREQ_BUSY_CPU == current_cpu))
-	{
-		cpumask_setall(&cpu_mask);
-		current_cpu = HW_SDIO_AUTO_FREQ_NORMAL_CPU;
-		/* set wifi rx thread to CPU1~3 */
-		cpumask_clear_cpu(0, &cpu_mask);
-		cpumask_clear_cpu(4, &cpu_mask);
-		cpumask_clear_cpu(5, &cpu_mask);
-		cpumask_clear_cpu(6, &cpu_mask);
-		cpumask_clear_cpu(7, &cpu_mask);
+		cpumask_setall(&rxf_cpu_mask);
+		/* set wifi rxf thread to CPU5~7  dpc&irq to cpu 4*/
+		cpumask_clear_cpu(0, &rxf_cpu_mask);
+		cpumask_clear_cpu(1, &rxf_cpu_mask);
+		cpumask_clear_cpu(2, &rxf_cpu_mask);
+		cpumask_clear_cpu(3, &rxf_cpu_mask);
+		cpumask_clear_cpu(4, &rxf_cpu_mask);
+		dpc_cpumask = DPC_CPUCORE;
+		irq_cpu_mask = *cpumask_of(DPC_CPUCORE);
 	}
 	else
 	{
-		return;
+		cpumask_setall(&rxf_cpu_mask);
+		cpumask_setall(&irq_cpu_mask);
+		/* set wifi rx thread to CPU1~3   dpc to cpu 0 irq to cpu0~7*/
+		cpumask_clear_cpu(0, &rxf_cpu_mask);
+		cpumask_clear_cpu(4, &rxf_cpu_mask);
+		cpumask_clear_cpu(5, &rxf_cpu_mask);
+		cpumask_clear_cpu(6, &rxf_cpu_mask);
+		cpumask_clear_cpu(7, &rxf_cpu_mask);
+		dpc_cpumask = PRIMARY_CPUCORE;
 	}
-	set_cpus_allowed_ptr(dhd->thr_rxf_ctl.p_task, &cpu_mask);
-
+	set_cpus_allowed_ptr(dhd->thr_rxf_ctl.p_task, &rxf_cpu_mask);
+	set_cpus_allowed_ptr(dhd->thr_dpc_ctl.p_task, cpumask_of(dpc_cpumask));
+	irq_set_affinity_hint(brcm_mmc_irq, &irq_cpu_mask);
 	return;
 }
 #endif
@@ -4314,15 +4312,11 @@ dhd_rxf_thread(void *data)
 	dhd_pub_t *pub = &dhd->pub;
 #ifdef BCMSDIO
 	dhd_if_t *ifp = dhd->iflist[0];
-	ulong tx_pkts = 0;
-	ulong rx_pkts = 0;
-	ulong tx_pps = 0;
-	ulong rx_pps = 0;
-	ulong pre_tx_pkts = 0;
-	ulong pre_rx_pkts = 0;
-	ulong total_sdio_rate = 0;
+	ulong rx_bytes = 0;
+ 	ulong pre_rx_bytes = 0;
 	ulong pre_jiffies = 0;
 	ulong passed_msec = 0;
+	bool flag = FALSE;
 #endif
 	/* This thread doesn't need any user-level access,
 	 * so get rid of all our resources
@@ -4363,14 +4357,22 @@ dhd_rxf_thread(void *data)
 			passed_msec = jiffies_to_msecs(jiffies - pre_jiffies);
 			if (ifp && (passed_msec >= HW_SDIO_FREQ_ADJUST_PEROID)) {
 			    pre_jiffies = jiffies;
-			    tx_pkts = ifp->stats.tx_packets;
-			    rx_pkts = ifp->stats.rx_packets;
-			    tx_pps = (tx_pkts - pre_tx_pkts) * 1000 / passed_msec;
-			    rx_pps = (rx_pkts - pre_rx_pkts) * 1000 / passed_msec;
-			    total_sdio_rate = tx_pps + rx_pps;
-			    hw_sdio_auto_freq_set_thread_affinity(dhd, total_sdio_rate);
-			    pre_tx_pkts = tx_pkts;
-			    pre_rx_pkts = rx_pkts;
+				rx_bytes = ifp->stats.rx_bytes;
+				if ((rx_bytes - pre_rx_bytes) >=
+					((ulong)DHD_TPUT_THRESHOLD * passed_msec / 1000)){
+					if (!flag){
+						dhdsdio_interrupt_set_cpucore(dhd,true);
+						flag = TRUE;
+					}
+				}
+				else
+				{
+					if (flag){
+						dhdsdio_interrupt_set_cpucore(dhd,false);
+						flag = FALSE;
+					}
+				}
+				pre_rx_bytes = rx_bytes;
 			}
 #endif
 			skb = dhd_rxf_dequeue(pub);
@@ -13645,11 +13647,16 @@ int net_hw_set_filter_enable(dhd_pub_t *pub, int on) {
     int idx;
 
     DHD_ERROR(("%s: enter\n", __FUNCTION__));
+#ifdef HW_WIFI_FILTER_WIFI_LOCK
+    DHD_OS_WAKE_LOCK(pub);
+#endif
     for (idx = HW_PKT_FILTER_MIN_IDX; idx < HW_PKT_FILTER_MAX_IDX; idx++) {
         if(pub->pktfilter[idx] != NULL)
             dhd_pktfilter_offload_enable(pub, pub->pktfilter[idx], on, dhd_master_mode);
     }
-
+#ifdef HW_WIFI_FILTER_WIFI_LOCK
+    DHD_OS_WAKE_UNLOCK(pub);
+#endif
     return 0;
 }
 
@@ -13669,7 +13676,9 @@ int net_hw_add_filter_items(dhd_pub_t *pub, hw_wifi_filter_item *items, int coun
 
     //clear previous filters
     //net_hw_clear_filters(pub);
-
+#ifdef HW_WIFI_FILTER_WIFI_LOCK
+    DHD_OS_WAKE_LOCK(pub);
+#endif
     for (i = 0; i < count; i++) {
         id = HW_PKT_FILTER_ID_BASE + i;
         idx = HW_PKT_FILTER_MIN_IDX + i;
@@ -13691,7 +13700,9 @@ int net_hw_add_filter_items(dhd_pub_t *pub, hw_wifi_filter_item *items, int coun
         }
         items++;
     }
-
+#ifdef HW_WIFI_FILTER_WIFI_LOCK
+    DHD_OS_WAKE_UNLOCK(pub);
+#endif
     return 0;
 }
 
@@ -13699,6 +13710,9 @@ int net_hw_clear_filters(dhd_pub_t *pub) {
     int i, id;
 
     DHD_ERROR(("%s: enter\n", __FUNCTION__));
+#ifdef HW_WIFI_FILTER_WIFI_LOCK
+    DHD_OS_WAKE_LOCK(pub);
+#endif
     for (i = HW_PKT_FILTER_MIN_IDX; i < HW_PKT_FILTER_MAX_IDX; i++) {
         id = HW_PKT_FILTER_ID_BASE + i - HW_PKT_FILTER_MIN_IDX;
         if (NULL != pub->pktfilter[i]) {
@@ -13706,7 +13720,9 @@ int net_hw_clear_filters(dhd_pub_t *pub) {
             pub->pktfilter[i] = NULL;
         }
     }
-
+#ifdef HW_WIFI_FILTER_WIFI_LOCK
+    DHD_OS_WAKE_UNLOCK(pub);
+#endif
     return 0;
 }
 

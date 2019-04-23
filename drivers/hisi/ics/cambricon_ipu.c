@@ -615,22 +615,101 @@ bool ipu_get_reset_offset (struct device *dev)
 
 bool ipu_get_feature_tree (struct device *dev)
 {
-	UNUSED_PARAMETER(dev);
+	/* get platform information */
+	const char *str;
+	int ret = of_property_read_string(dev->of_node, "ics-platform", &str);
+
+	if (ret) {
+		printk(KERN_ERR"[%s]: IPU_ERROR:fatal err, of_property_read_string fail\n", __func__);
+		return false;
+	}
 
 	memset(&adapter->feature_tree, 0, sizeof(adapter->feature_tree));// coverity[secure_coding]
+	if (strncmp(str, "kirin970_es", sizeof("kirin970_es")) == 0) {
+		adapter->feature_tree.finish_irq_expand_ns = false;
+		adapter->feature_tree.finish_irq_expand_p = false;
+		adapter->feature_tree.finish_irq_expand_s = false;
+		adapter->feature_tree.finish_irq_to_hifi = false;
+		adapter->feature_tree.finish_irq_to_ivp = false;
+		adapter->feature_tree.finish_irq_to_isp = false;
+		adapter->feature_tree.finish_irq_to_lpm3 = false;
+		adapter->feature_tree.finish_irq_to_iocmu = false;
+		adapter->feature_tree.smmu_port_select = false;
+		adapter->feature_tree.soft_watchdog_enable = false;
+		adapter->feature_tree.ipu_reset_when_in_error = IPU_RESET_UNSUPPORT;
+		adapter->feature_tree.ipu_bandwidth_lmt = IPU_BANDWIDTH_LMT_UNSUPPORT;
+	} else if (strncmp(str, "kirin970_cs", sizeof("kirin970_cs")) == 0) {
+		adapter->feature_tree.finish_irq_expand_ns = true;
+		adapter->feature_tree.finish_irq_expand_p = true;
+		adapter->feature_tree.finish_irq_expand_s = true;
+		adapter->feature_tree.finish_irq_to_hifi = true;
+		adapter->feature_tree.finish_irq_to_ivp = true;
+		adapter->feature_tree.finish_irq_to_isp = true;
+		adapter->feature_tree.finish_irq_to_lpm3 = true;
+		adapter->feature_tree.finish_irq_to_iocmu = true;
+		adapter->feature_tree.smmu_port_select = false;
+		adapter->feature_tree.soft_watchdog_enable = true;
+		adapter->feature_tree.ipu_reset_when_in_error = IPU_RESET_BY_CONFIG_NOC_BUS;
+		adapter->feature_tree.ipu_bandwidth_lmt = IPU_BANDWIDTH_LMT_BY_QOS;
+	} else if (strncmp(str, "kirin980_es_fpga", sizeof("kirin980_es_fpga")) == 0) {
+		/* if F5 is not detected, return error */
+		unsigned int f5_status;
+		void __iomem *pctrl_io_addr = ioremap(0xe8a09000UL, (unsigned long)0xff);
+		if (!pctrl_io_addr) {
+			printk(KERN_ERR"[%s]:IPU_ERROR:pctrl_io_addr ioremap fail\n", __func__);
+			return false;
+		}
 
-	adapter->feature_tree.finish_irq_expand_ns = true;
-	adapter->feature_tree.finish_irq_expand_p = true;
-	adapter->feature_tree.finish_irq_expand_s = true;
-	adapter->feature_tree.finish_irq_to_hifi = true;
-	adapter->feature_tree.finish_irq_to_ivp = true;
-	adapter->feature_tree.finish_irq_to_isp = true;
-	adapter->feature_tree.finish_irq_to_lpm3 = true;
-	adapter->feature_tree.finish_irq_to_iocmu = true;
-	adapter->feature_tree.smmu_port_select = false;
-	adapter->feature_tree.soft_watchdog_enable = true;
-	adapter->feature_tree.ipu_reset_when_in_error = IPU_RESET_BY_CONFIG_NOC_BUS;
-	adapter->feature_tree.ipu_bandwidth_lmt = IPU_BANDWIDTH_LMT_BY_QOS;
+		f5_status = ioread32((void *)((unsigned long)pctrl_io_addr + 0xbc)) & 0x20000;
+
+		iounmap(pctrl_io_addr);
+
+		if (!f5_status) {
+			printk(KERN_WARNING"[%s]:ipu f5 is unprepared, ipu can not load\n", __func__);
+			return false;
+		}
+
+		adapter->feature_tree.finish_irq_expand_ns = true;
+		adapter->feature_tree.finish_irq_expand_p = true;
+		adapter->feature_tree.finish_irq_expand_s = true;
+		adapter->feature_tree.finish_irq_to_hifi = true;
+		adapter->feature_tree.finish_irq_to_ivp = true;
+		adapter->feature_tree.finish_irq_to_isp = true;
+		adapter->feature_tree.finish_irq_to_lpm3 = true;
+		adapter->feature_tree.finish_irq_to_iocmu = true;
+		adapter->feature_tree.smmu_port_select = false;
+		adapter->feature_tree.level1_irq = true;
+		adapter->feature_tree.performance_monitor = true;
+		adapter->feature_tree.wr_qword = true;
+		adapter->feature_tree.soft_watchdog_enable = false; /* for FPGA, the speed is very low, can not enable watchdog */
+		adapter->feature_tree.lpm3_set_vcodecbus = true;
+		adapter->feature_tree.smmu_mstr_hardware_start = true;
+		adapter->feature_tree.ipu_reset_when_in_error = IPU_SOFT_RESET;
+		adapter->feature_tree.ipu_bandwidth_lmt = IPU_BANDWIDTH_LMT_BY_RW_OSD;
+	} else if (strncmp(str, "kirin980_es", sizeof("kirin980_es")) == 0) {
+		adapter->feature_tree.finish_irq_expand_ns = true;
+		adapter->feature_tree.finish_irq_expand_p = true;
+		adapter->feature_tree.finish_irq_expand_s = true;
+		adapter->feature_tree.finish_irq_to_hifi = true;
+		adapter->feature_tree.finish_irq_to_ivp = true;
+		adapter->feature_tree.finish_irq_to_isp = true;
+		adapter->feature_tree.finish_irq_to_lpm3 = true;
+		adapter->feature_tree.finish_irq_to_iocmu = true;
+		adapter->feature_tree.smmu_port_select = false;
+		adapter->feature_tree.level1_irq = true;
+		adapter->feature_tree.performance_monitor = true;
+		adapter->feature_tree.wr_qword = true;
+		adapter->feature_tree.soft_watchdog_enable = true;
+		adapter->feature_tree.lpm3_set_vcodecbus = true;
+		adapter->feature_tree.smmu_mstr_hardware_start = true;
+		adapter->feature_tree.ipu_reset_when_in_error = IPU_SOFT_RESET;
+		adapter->feature_tree.ipu_bandwidth_lmt = IPU_BANDWIDTH_LMT_BY_RW_OSD;
+	} else {
+		printk(KERN_ERR"[%s]: IPU_ERROR:fatal err, platform is unsupported\n", __func__);
+		return false;
+	}
+
+	printk(KERN_DEBUG"[%s]: the platform is %s\n", __func__, str);
 
 	return true;
 }

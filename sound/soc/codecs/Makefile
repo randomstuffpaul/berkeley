@@ -1,10 +1,11 @@
 ifeq ($(CONFIG_HI6402_MBHC_ANC),y)
-EXTRA_CFLAGS +=	-Idrivers/hisi/slimbus/
 EXTRA_CFLAGS +=	-DANC_HEADSET
 endif
 EXTRA_CFLAGS += -I$(src)/hisi/hs_auto_calib/
+EXTRA_CFLAGS += -Idrivers/hisi/hi64xx_dsp/
+EXTRA_CFLAGS +=	-Idrivers/hisi/slimbus/
 
-ifneq ($(TARGET_BUILD_VARIANT),user)
+ifeq ($(CONFIG_HISI_AUDIO_DEBUG),y)
 EXTRA_CFLAGS += -DHI6XXX_FPGA_TEST
 endif
 

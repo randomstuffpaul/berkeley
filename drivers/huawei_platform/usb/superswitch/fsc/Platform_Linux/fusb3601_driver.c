@@ -31,9 +31,6 @@
 #include <linux/hisi/contexthub/tca.h>
 #endif
 #include <huawei_platform/usb/hw_pd_dev.h>
-#ifdef CONFIG_CC_ANTI_CORROSION
-#include <huawei_platform/usb/hw_cc_anti_corrosion.h>
-#endif
 
 #ifdef CONFIG_HUAWEI_HW_DEV_DCT
 #include <huawei_platform/devdetect/hw_dev_dec.h>
@@ -97,17 +94,11 @@ int fusb3601_get_cc_mode(void)
 {
        return 0;
 }
-#ifdef CONFIG_CC_ANTI_CORROSION
-struct cc_corrosion_ops fusb3601_corrosion_ops = {
-    .set_cc_mode = fusb3601_set_cc_mode,
-    .get_cc_mode = fusb3601_get_cc_mode,
-};
-#endif
 
 static void fusb3601_hard_reset(void* client)
 {
-    pr_debug("%s++\n", __func__);
     struct fusb3601_chip* chip = fusb3601_GetChip();
+    pr_debug("%s++\n", __func__);
     if (chip == NULL)
     {
         pr_debug("%s - Chip structure is null!\n", __func__);
@@ -124,8 +115,8 @@ static void fusb3601_hard_reset(void* client)
 
 static void fusb3601_set_voltage(void* client, int set_voltage)
 {
-    pr_debug("%s++\n", __func__);
     struct fusb3601_chip* chip = fusb3601_GetChip();
+    pr_debug("%s++\n", __func__);
     if (chip == NULL)
     {
         pr_debug("%s - Chip structure is null!\n", __func__);
@@ -141,12 +132,35 @@ static void fusb3601_set_voltage(void* client, int set_voltage)
     up(&chip->suspend_lock);
 }
 
+static int fusb3601_get_cc_state(void)
+{
+	struct fusb3601_chip* chip = fusb3601_GetChip();
+	struct Port* port;
+	int val = 0;
+	if (!chip)
+	{
+		pr_info("FUSB  %s - Chip structure is NULL!\n", __func__);
+		return -1;
+	}
+	port = &chip->port;
+	if (!port) {
+		return -1;
+	}
+	val = FUSB3601_GetStateCC(port);
+	pr_info("FUSB  %s - CCStat.CC1 = 0x%x, CCStat.CC2 = 0x%x\n",
+		__func__, port->registers_.CCStat.CC1_STAT, port->registers_.CCStat.CC2_STAT);
+	val = val & CC_STATUS_MASK;
+	return val;
+}
+
+
 static struct pd_dpm_ops tcpc_device_pd_dpm_ops = {
 	.pd_dpm_get_hw_dock_svid_exist = NULL,
 	.pd_dpm_notify_direct_charge_status = NULL,
 	.pd_dpm_set_cc_mode = fusb3601_set_cc_mode,
 	.pd_dpm_hard_reset = fusb3601_hard_reset,
 	.pd_dpm_set_voltage = fusb3601_set_voltage,
+	.pd_dpm_get_cc_state = fusb3601_get_cc_state,
 };
 
 static int __init fusb3601_init(void)
@@ -270,6 +284,7 @@ static int fusb3601_probe_work(struct work_struct *work)
 		pr_info("cc_check_ops register failed!\n");
 		return -1;
 	}
+	pr_info("shanshan1. *%s* pd_dpm_ops_register\n", __func__);
 	pd_dpm_ops_register(&tcpc_device_pd_dpm_ops, NULL);
 	moisture_detection_init();
         pr_debug("FUSB  %s - Core is initialized!\n", __func__);
@@ -410,9 +425,7 @@ static int fusb3601_probe (struct i2c_client* client,
 #endif
 	pr_debug("FUSB  %s - Device check passed!\n", __func__);
 	FUSB3601_charge_register_callback();
-#ifdef CONFIG_CC_ANTI_CORROSION
-	cc_corrosion_register_ops(&fusb3601_corrosion_ops);
-#endif
+
 #ifdef CONFIG_DUAL_ROLE_USB_INTF
 	FUSB3601_dual_role_phy_init();
 #endif

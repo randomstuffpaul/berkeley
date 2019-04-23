@@ -300,6 +300,8 @@ static int parse_misc_id_from_name(const img_file_info *curr_file_info,
 {
 	unsigned int curr_misc_id;
 	unsigned int cos_id;
+	unsigned int max_misc_num = HISEE_MAX_MISC_IMAGE_NUMBER;
+	unsigned int is_smx_0 = 0;
 
 	if (NULL == curr_file_info || NULL == misc_image_cnt_array) {
 		return HISEE_ERROR;
@@ -312,21 +314,32 @@ static int parse_misc_id_from_name(const img_file_info *curr_file_info,
 	if (HISEE_MAX_MISC_ID_NUMBER <= curr_misc_id) {
 		return HISEE_ERROR;
 	}
+
+	hisee_get_smx_cfg(&is_smx_0);
+	if (SMX_PROCESS_0 == is_smx_0) {
+		max_misc_num = HISEE_SMX_MISC_IMAGE_NUMBER;
+	}
 	/*group misc image index by cos_id, then counter add one*/
-	cos_id = curr_misc_id / HISEE_MAX_MISC_IMAGE_NUMBER;
+	cos_id = curr_misc_id / max_misc_num;
 	misc_image_cnt_array[cos_id] += 1;
 
-	if (misc_image_cnt_array[cos_id] > HISEE_MAX_MISC_IMAGE_NUMBER) {
+	if (misc_image_cnt_array[cos_id] > max_misc_num) {
 		pr_err("%s():misc cnt =%d is invalid\n", __func__, misc_image_cnt_array[cos_id]);
 		return HISEE_SUB_FILE_OFFSET_CHECK_ERROR;
 	}
-	/* get misc version */
-	if (misc_image_cnt_array[cos_id] == HISEE_MAX_MISC_IMAGE_NUMBER) {
-		misc_image_cnt_array[cos_id] -= HISEE_MISC_NO_UPGRADE_NUMBER;
-		g_misc_version[cos_id] = curr_file_info->size;
-		pr_err("hisee:%s():cos_id=%d, misc_cnt=%d,misc_version=%d\n",
-			__func__, cos_id, misc_image_cnt_array[cos_id], g_misc_version[cos_id]);
+
+	/* get misc version*/
+	if (SMX_PROCESS_0 != is_smx_0) {
+		if (misc_image_cnt_array[cos_id] == max_misc_num) {
+			misc_image_cnt_array[cos_id] -= HISEE_MISC_NO_UPGRADE_NUMBER;
+			g_misc_version[cos_id] = curr_file_info->size;
+			pr_err("hisee:%s():cos_id=%d, misc_cnt=%d,misc_version=%d\n",
+				__func__, cos_id, misc_image_cnt_array[cos_id], g_misc_version[cos_id]);
+		}
+	} else {
+		pr_err("hisee:%s():cos_id=%d, misc_cnt=%d\n", __func__, cos_id, misc_image_cnt_array[cos_id]);
 	}
+
 	return HISEE_OK;
 }
 
@@ -565,6 +578,7 @@ static int hisee_image_type_chk(hisee_img_file_type type, char *sub_file_name,
 		}
 	}
 	if (i == p_hisee_img_head->file_cnt) {
+		pr_err("%s():image type is %d, sub_file_name is %s\n", __func__, type, sub_file_name);
 		pr_err("%s():hisee_read_img_header failed, ret=%d\n", __func__, ret);
 		ret = HISEE_IMG_SUB_FILE_ABSENT_ERROR;
 	}

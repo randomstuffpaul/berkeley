@@ -79,6 +79,57 @@ static int is_scp_charger = 0;
 static struct uscp_device_info* g_di = NULL;
 static struct wake_lock uscp_wakelock;
 
+#ifdef CONFIG_HUAWEI_POWER_DEBUG
+static ssize_t uscp_dbg_show(void *dev_data, char *buf, size_t size)
+{
+	struct uscp_device_info *dev_p = (struct uscp_device_info *)dev_data;
+
+	if (!dev_p) {
+		hwlog_err("error: platform_get_drvdata return null!\n");
+		return scnprintf(buf, size, "platform_get_drvdata return null!\n");
+	}
+
+	return scnprintf(buf, size,
+		"uscp_threshold_tusb=%d\n" "open_mosfet_temp=%d\n" "close_mosfet_temp=%d\n" "interval_switch_temp=%d\n",
+		dev_p->uscp_threshold_tusb,
+		dev_p->open_mosfet_temp,
+		dev_p->close_mosfet_temp,
+		dev_p->interval_switch_temp);
+}
+
+static ssize_t uscp_dbg_store(void *dev_data, const char *buf, size_t size)
+{
+	struct uscp_device_info *dev_p = (struct uscp_device_info *)dev_data;
+	unsigned int uscp_tusb = 0;
+	unsigned int open_temp = 0;
+	unsigned int close_temp = 0;
+	unsigned int switch_temp = 0;
+
+	if (!dev_p) {
+		hwlog_err("error: platform_get_drvdata return null!\n");
+		return -EINVAL;
+	}
+
+	if (sscanf(buf, "%d %d %d %d", &uscp_tusb, &open_temp, &close_temp, &switch_temp) != 4) {
+		hwlog_err("error: unable to parse input:%s\n", buf);
+		return -EINVAL;
+	}
+
+	dev_p->uscp_threshold_tusb = uscp_tusb;
+	dev_p->open_mosfet_temp = open_temp;
+	dev_p->close_mosfet_temp = close_temp;
+	dev_p->interval_switch_temp = switch_temp;
+
+	hwlog_info("uscp_threshold_tusb=%d, open_mosfet_temp=%d, close_mosfet_temp=%d, interval_switch_temp=%d\n",
+		dev_p->uscp_threshold_tusb,
+		dev_p->open_mosfet_temp,
+		dev_p->close_mosfet_temp,
+		dev_p->interval_switch_temp);
+
+	return size;
+}
+#endif
+
 static void uscp_wake_lock(void)
 {
     if(!wake_lock_active(&uscp_wakelock))
@@ -620,12 +671,20 @@ static int uscp_probe(struct platform_device *pdev)
     {
         hwlog_err("charger_type_notifier_register failed\n");
         ret = -EINVAL;
-        goto free_gpio;
+        goto fail_free_wakelock;
     }
     charge_type_handler(di, type);
+
+#ifdef CONFIG_HUAWEI_POWER_DEBUG
+	power_dbg_ops_register("uscp_para", platform_get_drvdata(pdev),
+		(power_dgb_show)uscp_dbg_show, (power_dgb_store)uscp_dbg_store);
+#endif
+
     hwlog_info("uscp probe ok!\n");
     return 0;
 
+fail_free_wakelock:
+	wake_lock_destroy(&uscp_wakelock);
 free_gpio:
     gpio_free(di->gpio_uscp);
 free_mem:

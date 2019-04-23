@@ -772,6 +772,23 @@ out:
     return NV_ERROR;
 }
 
+u32 nv_check_data(u32 item_size, u32 buff_size, u8* item_base)
+{
+    if(item_size > buff_size)
+    {
+        g_nv_ctrl.revert_len_err++;
+        nv_printf("nv length is too large, skip it!nvsize:0x%x, buffsize:0x%x\n",
+                    item_size, buff_size);
+        return BSP_ERR_NV_OVER_MEM_ERR;
+    }
+    if(NULL == item_base)
+    {
+        nv_printf("can't get nv base\n");
+        return BSP_ERR_NV_NO_THIS_ID;
+    }
+
+    return NV_OK;
+}
 u32 nv_revert_item(nv_revert_file_s * file, u32 itemid, u32 mkcrc, u8* temp_buff, u32 buff_size)
 {
     u32 ret;
@@ -830,13 +847,12 @@ u32 nv_revert_item(nv_revert_file_s * file, u32 itemid, u32 mkcrc, u8* temp_buff
     item_size   = nv_get_item_len(&mem_item, NULL);
     mdm_size    = nv_get_item_mdmlen(&mem_item, NULL);
     mdm_num     = file_item.modem_num < mem_item.modem_num?file_item.modem_num:mem_item.modem_num;
-    if(item_size > buff_size)
+
+    ret = nv_check_data(item_size, buff_size, item_base);
+    if(NV_OK != ret)
     {
-        g_nv_ctrl.revert_len_err++;
-        nv_debug(NV_FUN_REVERT_DATA,13,itemid,item_size,buff_size);
-        nv_printf("nv length is too large, skip it! nvid:0x%x nvsize:0x%x, buffsize:0x%x\n",
-                    itemid, item_size, buff_size);
-        return BSP_ERR_NV_OVER_MEM_ERR;
+        nv_printf("invalid nvid:0x%x data:%d\n", itemid, ret);
+        return ret;
     }
 
     for(i=1; i<=mdm_num; i++)
@@ -1612,7 +1628,11 @@ u32 nv_flushItem(nv_flush_item_s *flush_item)
         file_offset = (u32)nv_get_item_filemdmoffset(&item_info, flush_item->modemid, NULL, NULL);
         need_crc = false;
     }
-
+    if(NULL == data)
+    {
+        nv_printf("can't get item base\n");
+        return BSP_ERR_NV_NO_THIS_ID;
+    }
     if(need_crc)
     {
         u8* buff;

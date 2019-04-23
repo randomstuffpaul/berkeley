@@ -108,6 +108,9 @@ struct lcdkit_bl_ic_info
 	struct backlight_ic_cmd bl_enhance_cur_ramp_cmd;
 	struct backlight_ic_cmd bl_enhance_boost_cur_cmd;
 	struct backlight_ic_cmd bl_enhance_bl_sink_cmd;
+	unsigned int   bl_ocp_fault_bit;
+	unsigned int   bl_ovp_fault_bit;
+	unsigned int   bl_tsd_bit;
 };
 
 struct lcdkit_bl_ic_device {

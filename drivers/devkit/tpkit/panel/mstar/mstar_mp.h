@@ -61,6 +61,7 @@
 #define NORMAL_JUDGE  0
 #define NO_RATIO_JUDGE (NULL_DATA-1)
 #define NO_JUDGE (NULL_DATA-2)
+#define NOTCH_JUDGE 3
 #define PIN_NO_ERROR 0xFFFF
 #define IIR_MAX 32600
 #define PIN_UN_USE 0xABCD
@@ -189,6 +190,7 @@ typedef struct
     u32  bd_r_bottom;    
     u32  va_top;
     u32  va_bottom;
+    u32  notch;
 }MpUniformityPart;
 
 typedef struct
@@ -305,7 +307,10 @@ typedef struct
     u8 self_sample_hi;
     u8 self_sample_lo;
     MpUniformityPart uniformity_ratio;
-    u8 bd_va_ratio_max ;   
+    MpUniformityPart uniformity_ratio_max;
+    MpUniformityPart uniformity_ratio_min;
+    int get_deltac_flag;
+    u8 bd_va_ratio_max ;
     u8 bd_va_ratio_min;
 } MutualMpTest_t;
 
@@ -362,6 +367,7 @@ typedef struct
     int *pborder_ratio_buf;
     int  uniformity_check_fail[3];
     MpUniformityPart uniformity_judge;
+    int *pdeltac_buffer;
 
 } MutualMpTestResult_t;
 
@@ -374,6 +380,7 @@ enum new_flow_test_type
     TYPE_KPhase = 0x4,
     TYPE_SELF = 0x5,
     TYPE_DQPhase = 0x6,
+    TYPE_SHORT_HOPPING = 0x7,
 };
 
 struct mp_main_func

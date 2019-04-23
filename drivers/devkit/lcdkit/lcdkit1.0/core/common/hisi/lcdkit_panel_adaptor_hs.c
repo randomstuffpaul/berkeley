@@ -505,44 +505,38 @@ void lcdkit_dsi_tx(void* pdata, struct lcdkit_dsi_panel_cmds* cmds)
 
 int lcdkit_dsi_rx(void* pdata, uint32_t* out, int len, struct lcdkit_dsi_panel_cmds* cmds)
 {
-    struct hisi_fb_data_type* hisifd = NULL;
-    char __iomem* mipi_dsi0_base = NULL;
-    struct dsi_cmd_desc packet_size_cmd_set;
-    int ret = 0;
-    struct dsi_cmd_desc* cmd;
-    cmd = kzalloc(sizeof(struct dsi_cmd_desc) * cmds->cmd_cnt, GFP_KERNEL);
-
-    ret = lcdkit_cmds_to_dsi_cmds(cmds, cmd);
-
-    if (ret)
-    {
-       LCDKIT_ERR("lcdkit_cmds convert fail!\n");
+	struct hisi_fb_data_type* hisifd = NULL;
+	char __iomem* mipi_dsi0_base = NULL;
+	struct dsi_cmd_desc packet_size_cmd_set;
+	int ret = 0;
+	struct dsi_cmd_desc* cmd;
+	cmd = kzalloc(sizeof(struct dsi_cmd_desc) * cmds->cmd_cnt, GFP_KERNEL);
+	if (!cmd) {
+		LCDKIT_ERR("kzalloc fail!\n");
+		return -EINVAL;
+	}
+	ret = lcdkit_cmds_to_dsi_cmds(cmds, cmd);
+	if (ret) {
+		LCDKIT_ERR("lcdkit_cmds convert fail!\n");
+		kfree(cmd);
+		return ret;
+	}
+	hisifd = (struct hisi_fb_data_type*) pdata;
+	mipi_dsi0_base = hisifd->mipi_dsi0_base;
+	if (lcdkit_check_mipi_fifo_empty(mipi_dsi0_base)) {
+		ret = -1;
+	} else {
+		packet_size_cmd_set.dtype = DTYPE_MAX_PKTSIZE;
+		packet_size_cmd_set.vc = 0;
+		packet_size_cmd_set.dlen = len;
+		mipi_dsi_max_return_packet_size(&packet_size_cmd_set, mipi_dsi0_base);
+		ret = mipi_dsi_cmds_rx(out, cmd, cmds->cmd_cnt, mipi_dsi0_base);
+	}
+	if (ret)
+		LCDKIT_INFO("lcdkit_dsi_rx failed!\n");
 	kfree(cmd);
-       return ret;
-    }
-
-    hisifd = (struct hisi_fb_data_type*) pdata;
-    mipi_dsi0_base = hisifd->mipi_dsi0_base;
-    if(lcdkit_check_mipi_fifo_empty(mipi_dsi0_base))
-    {
-        ret = -1;
-    }
-    else
-    {
-        packet_size_cmd_set.dtype = DTYPE_MAX_PKTSIZE;
-        packet_size_cmd_set.vc = 0;
-        packet_size_cmd_set.dlen = len;
-        mipi_dsi_max_return_packet_size(&packet_size_cmd_set, mipi_dsi0_base);
-        ret = mipi_dsi_cmds_rx(out, cmd, cmds->cmd_cnt, mipi_dsi0_base);
-    }
-    if(ret)
-    {
-        LCDKIT_INFO("lcdkit_dsi_rx failed!\n");
-    }
-    kfree(cmd);
-
-    return ret;
-
+	cmd = NULL;
+	return ret;
 }
 
 /*switch lp to hs or hs to lp*/
@@ -1718,7 +1712,7 @@ static int __init early_parse_ddic_oem_cmdline(char *arg)
 early_param("DDIC_INFO", early_parse_ddic_oem_cmdline);
 
 
-int read_ddic_reg_interface(uint8_t *out, struct lcdkit_dsi_panel_cmds *cmds, struct hisi_fb_data_type *hisifd, int max_out_size)
+static void read_ddic_reg_interface(uint8_t *out, struct lcdkit_dsi_panel_cmds *cmds, struct hisi_fb_data_type *hisifd, int max_out_size)
 {
     int i = 0, ret = 0, dlen = 0, cnt = 0;
     struct lcdkit_dsi_cmd_desc *cm;
@@ -1734,7 +1728,7 @@ int read_ddic_reg_interface(uint8_t *out, struct lcdkit_dsi_panel_cmds *cmds, st
         ret = lcdkit_lread_reg(hisifd, tmp_value, cm, cm->dlen);
         if (ret) {
             LCDKIT_ERR("read reg error\n");
-            return ret;
+            return;
         }
         /* get invalid value start index*/
         read_start_index = 0;
@@ -1764,12 +1758,12 @@ int read_ddic_reg_interface(uint8_t *out, struct lcdkit_dsi_panel_cmds *cmds, st
             cnt++;
             if (cnt >= max_out_size)
             {
-                return 0;
+                return;
             }
         }
         cm++;
     }
-    return 0;
+    return;
 
 }
 
@@ -2024,17 +2018,25 @@ static void hostprocessing_get_2d_barcode(char *oem_data,struct hisi_fb_data_typ
 {
 	uint8_t i = 0;
 	uint8_t read_value[LCD_DDIC_INFO_LEN] = {0};
+	uint8_t oem_read_num = 0;
 
 	if ((NULL == hisifd) || (NULL == oem_data)) {
 		LCDKIT_ERR("NULL pointer\n");
 		return;
 	}
-	for (i = 0; i < LCD_OEM_2DBLOCK_NUM*LCD_OEM_BLOCK_LEN; i ++) {
+
+	oem_read_num = LCD_OEM_2DBLOCK_NUM + lcdkit_info.panel_infos.block_num_offset;
+	if(oem_read_num*LCD_OEM_BLOCK_LEN > LCD_DDIC_INFO_LEN){
+		LCDKIT_ERR("The oem_read_num is range\n");
+		return;
+	}
+	for (i = 0; i < oem_read_num*LCD_OEM_BLOCK_LEN; i ++) {
 		oem_data[i] = 0;
 	}
 	LCDKIT_INFO(" get 2d barcode enter.\n");
+
 	oem_data[0] = HOST_OEM_2D_BARCODE_TYPE;
-	oem_data[1] = LCD_OEM_2DBLOCK_NUM;
+	oem_data[1] = oem_read_num;
 
 	if (lcdkit_info.panel_infos.host_info_all_in_ddic)
 	{
@@ -2063,7 +2065,7 @@ static void hostprocessing_get_2d_barcode(char *oem_data,struct hisi_fb_data_typ
 			LCDKIT_PANEL_CMD_RELEASE();
 		}
 
-		for (i = 0; i < LCD_OEM_2DBLOCK_NUM*LCD_OEM_BLOCK_LEN - 2; i++)
+		for (i = 0; i < oem_read_num*LCD_OEM_BLOCK_LEN - 2; i++)
 		{
 			LCDKIT_INFO("read_value[%d]=[0x%x]  ",i,read_value[i]);
 			oem_data[i + 2] = read_value[i];
@@ -2345,7 +2347,7 @@ static void hostprocessing_read_brightness_colorpoint_hx83112(struct hisi_fb_dat
 	return;
 }
 
-hostprocessing_read_brightness_colorpoint_td4336(uint8_t color_point_id[],uint8_t start_position,uint8_t length)
+static void hostprocessing_read_brightness_colorpoint_td4336(uint8_t color_point_id[],uint8_t start_position,uint8_t length)
 {
 
 	if (NULL == color_point_id)

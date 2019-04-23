@@ -33,6 +33,7 @@
 #include <linux/skbuff.h>
 #include <linux/spinlock.h>
 #include <linux/tcp.h>
+#include <linux/inet.h>
 
 #include <net/inet_common.h>
 #include <net/inet_connection_sock.h>
@@ -69,6 +70,7 @@ u64 mptcp_v4_get_key(__be32 saddr, __be32 daddr, __be16 sport, __be16 dport,
 
 	return *((u64 *)hash);
 }
+
 
 static void mptcp_v4_reqsk_destructor(struct request_sock *req)
 {
@@ -179,12 +181,12 @@ int mptcp_finish_handshake(struct sock *child, struct sk_buff *skb)
 	return ret;
 }
 
+
 /* Similar to: tcp_v4_do_rcv
  * We only process join requests here. (either the SYN or the final ACK)
  */
 int mptcp_v4_do_rcv(struct sock *meta_sk, struct sk_buff *skb)
 {
-	const struct mptcp_cb *mpcb = tcp_sk(meta_sk)->mpcb;
 	const struct tcphdr *th = tcp_hdr(skb);
 	const struct iphdr *iph = ip_hdr(skb);
 	struct sock *child, *rsk = NULL, *sk;
@@ -211,9 +213,15 @@ int mptcp_v4_do_rcv(struct sock *meta_sk, struct sk_buff *skb)
 	if (sk->sk_state == TCP_NEW_SYN_RECV) {
 		struct request_sock *req = inet_reqsk(sk);
 
+		if (!mptcp_can_new_subflow(meta_sk))
+			goto reset_and_discard;
+
+		local_bh_disable();
+
 		child = tcp_check_req(meta_sk, skb, req, false);
 		if (!child) {
 			reqsk_put(req);
+			local_bh_enable();
 			goto discard;
 		}
 
@@ -221,15 +229,18 @@ int mptcp_v4_do_rcv(struct sock *meta_sk, struct sk_buff *skb)
 			ret = mptcp_finish_handshake(child, skb);
 			if (ret) {
 				rsk = child;
+				local_bh_enable();
 				goto reset_and_discard;
 			}
 
+			local_bh_enable();
 			return 0;
 		}
 
 		/* tcp_check_req failed */
 		reqsk_put(req);
 
+		local_bh_enable();
 		goto discard;
 	}
 
@@ -239,15 +250,7 @@ int mptcp_v4_do_rcv(struct sock *meta_sk, struct sk_buff *skb)
 	return ret;
 
 new_subflow:
-	/* Has been removed from the tk-table. Thus, no new subflows.
-	 *
-	 * Check for close-state is necessary, because we may have been closed
-	 * without passing by mptcp_close().
-	 *
-	 * When falling back, no new subflows are allowed either.
-	 */
-	if (meta_sk->sk_state == TCP_CLOSE || !tcp_sk(meta_sk)->inside_tk_table ||
-	    mpcb->infinite_mapping_rcv || mpcb->send_infinite_mapping)
+	if (!mptcp_can_new_subflow(meta_sk))
 		goto reset_and_discard;
 
 	child = tcp_v4_cookie_check(meta_sk, skb);
@@ -262,8 +265,11 @@ new_subflow:
 		}
 	}
 
-	if (tcp_hdr(skb)->syn)
+	if (tcp_hdr(skb)->syn) {
+		local_bh_disable();
 		mptcp_v4_join_request(meta_sk, skb);
+		local_bh_enable();
+	}
 
 discard:
 	kfree_skb(skb);
@@ -287,6 +293,8 @@ int mptcp_init4_subsockets(struct sock *meta_sk, const struct mptcp_loc4 *loc,
 	struct socket_alloc sock_full;
 	struct socket *sock = (struct socket *)&sock_full;
 	int ret;
+	char src_ip_str[INET_ADDRSTRLEN];
+	char dst_ip_str[INET_ADDRSTRLEN];
 
 	/** First, create and prepare the new socket */
 	memcpy(&sock_full, meta_sk->sk_socket, sizeof(sock_full));
@@ -337,10 +345,12 @@ int mptcp_init4_subsockets(struct sock *meta_sk, const struct mptcp_loc4 *loc,
 		goto error;
 	}
 
-	mptcp_debug("%s: token %#x pi %d src_addr:%pI4:%d dst_addr:%pI4:%d ifidx: %d\n",
+	mptcp_debug("%s: token %#x pi %d src_addr:%s:%d dst_addr:%s:%d ifidx: %d\n",
 		    __func__, tcp_sk(meta_sk)->mpcb->mptcp_loc_token,
-		    tp->mptcp->path_index, &loc_in.sin_addr,
-		    ntohs(loc_in.sin_port), &rem_in.sin_addr,
+		    tp->mptcp->path_index,
+			anonymousIPv4addr(loc_in.sin_addr.s_addr, src_ip_str, INET_ADDRSTRLEN),
+		    ntohs(loc_in.sin_port),
+			anonymousIPv4addr(rem_in.sin_addr.s_addr, dst_ip_str, INET_ADDRSTRLEN),
 		    ntohs(rem_in.sin_port), loc->if_idx);
 
 	if (tcp_sk(meta_sk)->mpcb->pm_ops->init_subsocket_v4)
@@ -359,6 +369,7 @@ int mptcp_init4_subsockets(struct sock *meta_sk, const struct mptcp_loc4 *loc,
 	sk_set_socket(sk, meta_sk->sk_socket);
 	sk->sk_wq = meta_sk->sk_wq;
 
+	mptcp_init_sub_sock(sk, FALSE);
 	return 0;
 
 error:
@@ -412,16 +423,16 @@ int mptcp_pm_v4_init(void)
 	mptcp_join_request_sock_ipv4_ops.init_req = mptcp_v4_join_init_req;
 
 	ops->slab_name = kasprintf(GFP_KERNEL, "request_sock_%s", "MPTCP");
-	if (!ops->slab_name) {
+	if (ops->slab_name == NULL) {
 		ret = -ENOMEM;
 		goto out;
 	}
 
 	ops->slab = kmem_cache_create(ops->slab_name, ops->obj_size, 0,
-				      SLAB_DESTROY_BY_RCU | SLAB_HWCACHE_ALIGN,
+				      SLAB_DESTROY_BY_RCU|SLAB_HWCACHE_ALIGN,
 				      NULL);
 
-	if (!ops->slab) {
+	if (ops->slab == NULL) {
 		ret =  -ENOMEM;
 		goto err_reqsk_create;
 	}

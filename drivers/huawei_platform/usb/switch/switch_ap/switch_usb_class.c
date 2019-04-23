@@ -102,9 +102,9 @@ EXPORT_SYMBOL_GPL(get_swstate_value);
 void switch_usb2_access_through_ap(void)
 {
     int ret = 0;
-    ret = fsa9685_manual_sw(FSA9685_USB2);
+    ret = usbswitch_common_manual_sw(FSA9685_USB2);
     if (ret < 0)
-        hwlog_err("%s: fsa9685_manual_sw error!!! ret = %d\n", __func__, ret);
+        hwlog_err("%s: usbswitch_common_manual_sw error!!! ret = %d\n", __func__, ret);
 }
 EXPORT_SYMBOL_GPL(switch_usb2_access_through_ap);
 
@@ -177,13 +177,13 @@ static void set_reg_to_target_state(int state)
     hwlog_info("%s: ------entry. state=%d\n", __func__, state);
     switch(state){
     case USB_TO_AP:
-        fsa9685_manual_sw(FSA9685_USB1);
+        usbswitch_common_manual_sw(FSA9685_USB1);
         break;
     case USB_TO_MODEM1:
-        fsa9685_manual_sw(FSA9685_USB2);
+        usbswitch_common_manual_sw(FSA9685_USB2);
         break;
     case USB_OFF:
-        fsa9685_manual_sw(FSA9685_OPEN);
+        usbswitch_common_manual_sw(FSA9685_OPEN);
         break;
     default:
         hwlog_err("%s: state[%d] is error!!!\n", __func__, state);

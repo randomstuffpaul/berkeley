@@ -373,6 +373,7 @@ F2FS_RW_ATTR(NM_INFO, f2fs_nm_info, dirty_nats_ratio, dirty_nats_ratio);
 F2FS_RW_ATTR(F2FS_SBI, f2fs_sb_info, max_victim_search, max_victim_search);
 F2FS_RW_ATTR(F2FS_SBI, f2fs_sb_info, dir_level, dir_level);
 F2FS_RW_ATTR(F2FS_SBI, f2fs_sb_info, readdir_ra, readdir_ra);
+F2FS_RW_ATTR(F2FS_SBI, f2fs_sb_info, gc_test_cond, gc_test_cond);
 F2FS_RW_ATTR(F2FS_SBI, f2fs_sb_info, cp_interval, interval_time[CP_TIME]);
 F2FS_RW_ATTR(F2FS_SBI, f2fs_sb_info, idle_interval, interval_time[REQ_TIME]);
 F2FS_RW_ATTR(F2FS_SBI, f2fs_sb_info, iostat_enable, iostat_enable);
@@ -435,6 +436,7 @@ static struct attribute *f2fs_attrs[] = {
 	ATTR_LIST(max_victim_search),
 	ATTR_LIST(dir_level),
 	ATTR_LIST(readdir_ra),
+	ATTR_LIST(gc_test_cond),
 	ATTR_LIST(ram_thresh),
 	ATTR_LIST(ra_nid_pages),
 	ATTR_LIST(dirty_nats_ratio),
@@ -688,6 +690,8 @@ static int f2fs_bd_discard_info_show(struct seq_file *seq, void *p)
 	unsigned int total_blks = 0, undiscard_cnt = 0;
 	unsigned int i, j;
 
+	if (!f2fs_discard_en(sbi))
+		goto out;
 	for (i = 0; i < segs; i++) {
 		struct seg_entry *se = get_seg_entry(sbi, i);
 		/*lint -save -e826*/
@@ -735,6 +739,7 @@ static int f2fs_bd_discard_info_show(struct seq_file *seq, void *p)
 		up_write(&sit_i->sentry_lock);
 	}
 
+out:
 	/*
 	 * each colum indicates: discard_cnt discard_blk_cnt undiscard_cnt
 	 * undiscard_blk_cnt discard_time max_discard_time

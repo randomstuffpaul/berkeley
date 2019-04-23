@@ -344,7 +344,9 @@ extern "C" {
 /* TP-LINK 7300识别:AP OUI + 芯片OUI */
 #define MAC_IS_TP_LINK_7300(pst_bss_dscr)   ((0xd0 == pst_bss_dscr->auc_bssid[0]) && (0x76 == pst_bss_dscr->auc_bssid[1]) &&\
                                                 (0xe7 == pst_bss_dscr->auc_bssid[2]) && (WLAN_AP_CHIP_OUI_RALINK == pst_bss_dscr->en_is_tplink_oui))
-
+/* ASUS AX88U识别:AP OUI + 芯片OUI */
+#define MAC_IS_ASUS_AX88U_AP(pst_bss_dscr)   ((0x0c == pst_bss_dscr->auc_bssid[0]) && (0x9d == pst_bss_dscr->auc_bssid[1]) &&\
+                                                (0x92 == pst_bss_dscr->auc_bssid[2]) && (WLAN_AP_CHIP_OUI_BCM == pst_bss_dscr->en_is_tplink_oui))
 
 #define MAC_IS_FEIXUN_K3(puc_bssid)    ((0x2c == puc_bssid[0]) && (0xb2 == puc_bssid[1]) && (0x1a == puc_bssid[2]))
 
@@ -379,7 +381,6 @@ extern "C" {
 #define WFA_OUI_BYTE2       0x6F
 #define WFA_OUI_BYTE3       0x9A
 #define WFA_P2P_v1_0        0x09
-#define WFA_OUI_WORD       (WFA_OUI_BYTE1|(WFA_OUI_BYTE2<<8)|(WFA_OUI_BYTE3<<16))
 
 #define MAC_VHT_CHANGE (BIT1)
 #define MAC_HT_CHANGE  (BIT2)
@@ -417,6 +418,7 @@ typedef enum
     MAC_AP_TYPE_TPLINK              = BIT5,
     MAC_AP_TYPE_M2S                 = BIT6,
     MAC_AP_TYPE_ROAM                = BIT7,
+    MAC_AP_TYPE_160M_OP_MODE        = BIT8,
     MAC_AP_TYPE_BUTT
 } mac_ap_type_enum;
 typedef oal_uint16 mac_ap_type_enum_uint16;
@@ -575,6 +577,7 @@ typedef oal_uint8 mac_txbf_clb_enum_uint8;
 /* Spectrum Management Category下的Action枚举值 */
 typedef enum
 {
+    MAC_SPEC_TPC_REQUEST        = 2,
     MAC_SPEC_CH_SWITCH_ANNOUNCE = 4   /*  Channel Switch Announcement */
 }mac_specmgmt_action_type_enum;
 typedef oal_uint8 mac_specmgmt_action_type_enum_uint8;

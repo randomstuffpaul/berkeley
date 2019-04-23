@@ -32,6 +32,10 @@
 #include "hisi_mmc_debug.h"
 #define CMDQ_DEBUG
 #endif
+#ifdef CONFIG_HUAWEI_EMMC_DSM
+extern void sdhci_dsm_handle(struct sdhci_host *host, struct mmc_request *mrq);
+extern void sdhci_dsm_set_host_status(struct sdhci_host *host, u32 error_bits);
+#endif
 
 /* 1 sec FIXME: optimize it */
 #define HALT_TIMEOUT_MS 1000
@@ -44,11 +48,6 @@
 
 extern int sdhci_get_cmd_err(u32 intmask);
 extern int sdhci_get_data_err(u32 intmask);
-
-#ifdef CONFIG_HUAWEI_EMMC_DSM
-extern void sdhci_cmdq_dsm_set_host_status(struct sdhci_host *host, u32 error_bits);
-extern void sdhci_cmdq_dsm_work(struct cmdq_host *cq_host, bool dsm);
-#endif
 
 void cmdq_dump_task_history(struct cmdq_host *cq_host)
 {
@@ -243,9 +242,9 @@ static void cmdq_dump_adma_mem(struct cmdq_host *cq_host)
 
 	for_each_set_bit(tag, &data_active_reqs, cq_host->num_slots) {
 		desc_dma = get_trans_desc_dma(cq_host, tag);
-		pr_err("%s: %s: tag = %d, trans_dma(phys) = %pad, trans_desc(virt) = 0x%pK\n",
+		pr_err("%s: %s: tag = %d, trans_desc(virt) = 0x%pK\n",
 				mmc_hostname(mmc), __func__, tag,
-				&desc_dma, get_trans_desc(cq_host, tag));
+				get_trans_desc(cq_host, tag));
 		print_hex_dump(KERN_ERR, "cmdq-adma:", DUMP_PREFIX_ADDRESS,
 				32, 8, get_trans_desc(cq_host, tag),
 				(desc_size), false);
@@ -1059,9 +1058,7 @@ static void cmdq_ring_dbl_in_irq(struct mmc_host *mmc)
 struct mmc_request* get_first_req(struct cmdq_host *cq_host, u32 *tag)
 {
 	int i;
-	struct mmc_request *mrq;
-
-	for (i = 0; i < cq_host->num_slots; i++) {
+	for (i = 0; i < cq_host->num_slots; i++) {/*lint !e574 */
 	      if(cq_host->mrq_slot[i]) {
 			*tag = i;
 		      return cq_host->mrq_slot[i];
@@ -1136,7 +1133,7 @@ int cmdq_interrupt_errors_handle(struct mmc_host *mmc, u32 intmask,
 		tag = CQTERRI_RES_TASK(err_info);
 		pr_err("%s: CMD err tag: %lu\n", __func__, tag);
 
-		mrq = get_mrq_by_tag(cq_host, &tag);
+		mrq = get_mrq_by_tag(cq_host,(u32 *)&tag);
 		/* CMD44/45/46/47 will not have a valid cmd */
 		if (mrq->cmd)
 			mrq->cmd->error = err;
@@ -1145,7 +1142,7 @@ int cmdq_interrupt_errors_handle(struct mmc_host *mmc, u32 intmask,
 	} else if (err_info & CQTERRI_DAT_ERR) {
 		tag = CQTERRI_DAT_TASK(err_info);
 		pr_err("%s: Dat err  tag: %lu\n", __func__, tag);
-		mrq = get_mrq_by_tag(cq_host, &tag);
+		mrq = get_mrq_by_tag(cq_host,(u32 *)&tag);
 		mrq->data->error = err;
 	} else {
 #ifdef CONFIG_EMMC_FAULT_INJECT
@@ -1163,7 +1160,7 @@ int cmdq_interrupt_errors_handle(struct mmc_host *mmc, u32 intmask,
 			return IRQ_HANDLED;
 		}
 		tag = ffs(dbr_set) - 1;
-		mrq = get_mrq_by_tag(cq_host, &tag);
+		mrq = get_mrq_by_tag(cq_host,(u32 *)&tag);
 		if (mrq->data)
 			mrq->data->error = err;
 		else
@@ -1190,7 +1187,8 @@ int cmdq_interrupt_errors_handle(struct mmc_host *mmc, u32 intmask,
 	}
 
 #ifdef CONFIG_HUAWEI_EMMC_DSM
-	sdhci_cmdq_dsm_set_host_status(mmc_priv(mmc), (intmask & SDHCI_INT_ERROR_MASK));
+	sdhci_dsm_set_host_status(mmc_priv(mmc), intmask & SDHCI_INT_ERROR_MASK);
+	sdhci_dsm_handle(mmc_priv(mmc), mrq);
 #endif
 	cmdq_finish_data(mmc, tag);
 	spin_unlock(&cq_host->cmdq_lock);

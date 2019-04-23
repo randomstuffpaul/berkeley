@@ -29,8 +29,11 @@
 /* use for notify soundtrigger event */
 #define HI6402_DSP_CMD3 				   (BASE_ADDR_PAGE_CFG + 0x073)
 
-#define HI6402_MSG_ADDR (HI64xx_OCRAM1_BASE + HI64xx_MSG_START_ADDR_OFFSET)
-#define HI6402_PARA_ADDR (HI64xx_OCRAM1_BASE)
+#define HI6402_OCRAM1_BASE                 0x10046340
+#define HI6402_MSG_ADDR                    (HI6402_OCRAM1_BASE + HI64xx_MSG_START_ADDR_OFFSET)
+#define HI6402_PARA_ADDR                   (HI6402_OCRAM1_BASE)
+#define HI6402_MLIB_TO_AP_MSG_ADDR         (HI6402_OCRAM1_BASE + 0x19874)
+#define HI6402_MLIB_TO_AP_MSG_SIZE         (588)
 
 #define HI6402_CFG_SW_ENTER 1
 #define HI6402_CFG_SW_EXIT 0

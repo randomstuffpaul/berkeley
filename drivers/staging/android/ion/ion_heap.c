@@ -23,6 +23,9 @@
 #include <linux/scatterlist.h>
 #include <linux/vmalloc.h>
 #include <linux/hisi/ion-iommu.h>
+#ifdef CONFIG_HISI_LB
+#include <linux/hisi/hisi_lb.h>
+#endif
 
 #include "ion.h"
 #include "ion_priv.h"
@@ -40,12 +43,16 @@ void *ion_heap_map_kernel(struct ion_heap *heap,
 	struct page **tmp = pages;
 
 	if (!pages)
-		return NULL;
+		return ERR_PTR(-ENOMEM);
 
 	if (buffer->flags & ION_FLAG_CACHED)
 		pgprot = PAGE_KERNEL;
 	else
 		pgprot = pgprot_writecombine(PAGE_KERNEL);
+
+#ifdef CONFIG_HISI_LB
+	lb_pid_prot_build(buffer->plc_id, &pgprot);
+#endif
 
 	for_each_sg(table->sgl, sg, table->nents, i) {
 		int npages_this_entry = PAGE_ALIGN(sg->length) / PAGE_SIZE;
@@ -80,6 +87,10 @@ int ion_heap_map_user(struct ion_heap *heap, struct ion_buffer *buffer,
 	int i;
 	int ret;
 
+#ifdef CONFIG_HISI_LB
+	lb_pid_prot_build(buffer->plc_id, &vma->vm_page_prot);
+#endif
+
 	for_each_sg(table->sgl, sg, table->nents, i) {
 		struct page *page = sg_page(sg);
 		unsigned long remainder = vma->vm_end - addr;
@@ -96,6 +107,8 @@ int ion_heap_map_user(struct ion_heap *heap, struct ion_buffer *buffer,
 		len = min(len, remainder);
 		ret = remap_pfn_range(vma, addr, page_to_pfn(page), len,
 				      vma->vm_page_prot);
+		if (buffer->flags & ION_FLAG_SMMUV3_BUFFER)
+			ion_flush_all_cpus_caches();
 		if (ret)
 			return ret;
 		addr += len;
@@ -174,6 +187,10 @@ int ion_heap_buffer_zero(struct ion_buffer *buffer)
 		pgprot = PAGE_KERNEL;
 	else
 		pgprot = pgprot_writecombine(PAGE_KERNEL);
+
+#ifdef CONFIG_HISI_LB
+	lb_pid_prot_build(buffer->plc_id, &pgprot);
+#endif
 
 	return ion_heap_sglist_zero(table->sgl, table->nents, pgprot);
 }

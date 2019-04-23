@@ -65,8 +65,7 @@ static int do_alg_tests(void)
 	return 0;
 }
 
-
-static long tcrypt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+static long tcrypt_base_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
     int ret = 0;
 
@@ -100,6 +99,15 @@ static long tcrypt_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
     return ret;
 }
 
+static long tcrypt_ioctl(struct file* file, unsigned int cmd, unsigned long arg)
+{
+    return tcrypt_base_ioctl(file,cmd,arg);
+}
+
+static long tcrypt_compat_ioctl(struct file* file, unsigned int cmd, unsigned long arg)
+{
+    return tcrypt_base_ioctl(file,cmd,compat_ptr(arg));
+}
 
 static int tcrypt_open(struct inode *inode, struct file *file)
 {
@@ -112,6 +120,9 @@ static const struct file_operations tcrypt_fops = {
     .owner	 = THIS_MODULE,
     .unlocked_ioctl = tcrypt_ioctl,
     .open = tcrypt_open,
+#ifdef CONFIG_COMPAT
+    .compat_ioctl   = tcrypt_compat_ioctl,
+#endif
 };
 
 

@@ -14,7 +14,7 @@
 #include <linux/hisi/hi64xx/asp_dma.h>
 #include <linux/hisi/hi64xx/hi64xx_irq.h>
 
-extern int hi64xx_hifi_om_init(struct hi64xx_irq *irqmgr);
+extern int hi64xx_hifi_om_init(struct hi64xx_irq *irqmgr, unsigned int codec_type);
 extern void hi64xx_hifi_om_deinit(void);
 extern int hi64xx_hifi_om_hook_start(void);
 extern void hi64xx_hifi_om_hook_stop(void);

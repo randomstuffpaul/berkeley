@@ -23,6 +23,10 @@
 #include <huawei_platform/emcom/network_evaluation.h>
 #endif
 
+#ifdef CONFIG_HW_NETWORK_MEASUREMENT
+#include <huawei_platform/emcom/smartcare/smartcare.h>
+#endif
+
 #undef HWLOG_TAG
 #define HWLOG_TAG emcom_netlink
 HWLOG_REGIST();
@@ -157,8 +161,11 @@ static void kernel_emcom_receive(struct sk_buff *__skb)
                     Emcom_Xengine_EvtProc(nlh->nlmsg_type,packet,data_len);
                     break;
                 #endif
+                #ifdef CONFIG_HW_NETWORK_MEASUREMENT
                 case EMCOM_SUB_MOD_SMARTCARE:
+                    smartcare_event_process(nlh->nlmsg_type, packet, data_len);
                     break;
+                #endif
                 #ifdef CONFIG_HUAWEI_NWEVAL
                 case EMCOM_SUB_MOD_NWEVAL:
                     nweval_event_process(nlh->nlmsg_type, packet, data_len);
@@ -256,22 +263,36 @@ static void emcom_netlink_deinit(void)
 static int __init emcom_netlink_module_init(void)
 {
     emcom_netlink_init();
+
     #ifdef CONFIG_HUAWEI_XENGINE
     Emcom_Xengine_Init();
     #endif
+
     #ifdef CONFIG_HUAWEI_NWEVAL
     nweval_init();
     #endif
+
+    #ifdef CONFIG_HW_NETWORK_MEASUREMENT
+    smartcare_init();
+    #endif
+
     g_emcom_module_state = EMCOM_NETLINK_INIT;
+
     return 0;
 }
 
 static void __exit emcom_netlink_module_exit(void)
 {
     g_emcom_module_state = EMCOM_NETLINK_EXIT;
+
     #ifdef CONFIG_HUAWEI_XENGINE
     Emcom_Xengine_clear();
     #endif
+
+    #ifdef CONFIG_HW_NETWORK_MEASUREMENT
+    smartcare_deinit();
+    #endif
+
     emcom_netlink_deinit();
 }
 

@@ -101,7 +101,7 @@ typedef struct base_mem_handle {
  * More flags can be added to this list, as long as they don't clash
  * (see BASE_MEM_FLAGS_NR_BITS for the number of the first free bit).
  */
-typedef u32 base_mem_alloc_flags;
+typedef u64 base_mem_alloc_flags;
 
 /* Memory allocation, access/hint flags.
  *
@@ -209,11 +209,28 @@ typedef u32 base_mem_alloc_flags;
 /* scrameble Bit in kernel */
 #define BASE_MEM_SCRAMBLE_BIT ((base_mem_alloc_flags)1 << 22)
 
+/* reserved */
+#define BASE_MEM_RESERVED_23 ((base_mem_alloc_flags)1 << 23)
+
+#define BASE_MEM_LB_READ_POLICY_BIT1        ((base_mem_alloc_flags)1 << 24)
+#define BASE_MEM_LB_READ_POLICY_BIT2        ((base_mem_alloc_flags)1 << 25)
+#define BASE_MEM_LB_WRITE_POLICY_BIT1       ((base_mem_alloc_flags)1 << 26)
+#define BASE_MEM_LB_WRITE_POLICY_BIT2       ((base_mem_alloc_flags)1 << 27)
+
 /* Number of bits used as flags for base memory management
  *
  * Must be kept in sync with the base_mem_alloc_flags flags
  */
-#define BASE_MEM_FLAGS_NR_BITS 23
+#define BASE_MEM_FLAGS_NR_BITS 28
+
+
+/* Use bit[56:63] to identify the last buffer cache policy. We use high bit first.
+ */
+
+#define BASE_MEM_LB_POLICY_NR_BITS 8
+
+#define BASE_MEM_LB_POLICY_MASK \
+	(((1ULL << BASE_MEM_LB_POLICY_NR_BITS) - 1) << (64 - BASE_MEM_LB_POLICY_NR_BITS))
 
 /* A mask for all output bits, excluding IN/OUT bits.
  */

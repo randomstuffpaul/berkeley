@@ -1710,6 +1710,8 @@ int mmc_blk_ioctl_rpmb_cmd(enum func_id id,
 	struct mmc_blk_ioc_rpmb_data *idata;
 	int err = 0, i = 0;
 	u32 status = 0;
+	bool switch_err = false;
+	int switch_retry = 3;
 
 	md = mmc_blk_get(bdev->bd_disk);
 	/* make sure this is a rpmb partition */
@@ -1733,9 +1735,12 @@ int mmc_blk_ioctl_rpmb_cmd(enum func_id id,
 	mmc_get_card(card);
 	/*mmc_claim_host(card->host);*/
 
+retry:
 	err = mmc_blk_part_switch(card, md);
-	if (err)
+	if (err) {
+		switch_err = true;
 		goto cmd_rel_host;
+	}
 
 	for (i = 0; i < MMC_IOC_MAX_RPMB_CMD; i++) {
 		struct mmc_blk_ioc_data *curr_data;
@@ -1817,6 +1822,15 @@ int mmc_blk_ioctl_rpmb_cmd(enum func_id id,
 	}
 
 cmd_rel_host:
+	if (err == -ENOMSG) {
+		if (!mmc_blk_reset(md, card->host, 0)) {
+			if (switch_err && switch_retry--) {
+				switch_err = false;
+				goto retry;
+			}
+		}
+	}
+
 	mmc_put_card(card);
 /*mmc_release_host(card->host);*/
 

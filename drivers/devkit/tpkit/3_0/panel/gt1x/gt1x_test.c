@@ -23,7 +23,7 @@
 #include "../../huawei_ts_kit.h"
 
 #define SHORT_TO_GND_RESISTER(sig)  (div_s64(5266285, (sig) & (~0x8000)) - 40 * 100)	/* 52662.85/code-40 */
-#define SHORT_TO_VDD_RESISTER(sig,value) (div_s64(36864 * ((value) - 9) *100, (((sig) & (~0x8000)) * 7)) - 40 * 100)
+#define SHORT_TO_VDD_RESISTER(sig, value) (div_s64((s64)(36864 * ((value) - 9)) * 100, (((sig) & (~0x8000)) * 7)) - 40 * 100)
 
 #define FLOAT_AMPLIFIER 1000
 #define MAX_U16_VALUE	65535
@@ -50,6 +50,7 @@
 #define CSV_TP_SPECIAL_RAW_DELTA   "special_raw_delta"
 #define CSV_TP_SHORT_THRESHOLD     "shortciurt_threshold"
 
+char *gt1x_strncat(char *dest, char *src, size_t dest_size);
 /**
  * struct ts_test_params - test parameters
  * drv_num: touch panel tx(driver) number
@@ -293,7 +294,7 @@ static int gt1x_tptest_finish(struct gt1x_ts_test *ts_test)
 
 	TS_LOG_INFO("TP test finish\n");
 	ret = gt1x_chip_reset();
-	if (ret)
+	if (ret < 0)
 		TS_LOG_ERR("%s: chip reset failed\n", __func__);
 	if (ts_test->ts->ops.send_cfg) {
 		ret = ts_test->ts->ops.send_cfg(&ts_test->orig_config);
@@ -416,7 +417,7 @@ static void gt1x_test_noisedata(struct gt1x_ts_test *ts_test)
 	if (ret) {
 		TS_LOG_ERR("%s: Failed send rawdata command:ret%d\n", __func__, ret);
 		ts_test->test_result[GTP_NOISE_TEST] = SYS_SOFTWARE_REASON;
-		return;
+		goto exit;
 	}
 
 	TS_LOG_INFO("%s: Enter rawdata mode\n", __func__);
@@ -492,13 +493,19 @@ static void gt1x_test_noisedata(struct gt1x_ts_test *ts_test)
 	ret = ts_test->ts->ops.send_cmd(GTP_CMD_NORMAL, 0x00, GT1X_NEED_SLEEP);
 	if (ret)
 		TS_LOG_ERR("Failed send normal mode cmd:ret%d\n", ret);
-	return;
+	goto exit;
 
 soft_err_out:
 	buf[0] = 0x00;
 	ts_test->ts->ops.i2c_write(GTP_READ_COOR_ADDR, &buf[0], 1);
 	ts_test->noisedata.size = 0;
 	ts_test->test_result[GTP_NOISE_TEST] = SYS_SOFTWARE_REASON;
+exit:
+	if(data_buf){
+		TS_LOG_INFO("%s: kfree data_buf.\n", __func__);
+		kfree(data_buf);
+		data_buf = NULL;
+	}
 	return;
 }
 
@@ -669,6 +676,22 @@ static void gt1x_capacitance_test(struct gt1x_ts_test *ts_test)
 static void gt1x_shortcircut_test(struct gt1x_ts_test *ts_test);
 static void gt1x_put_test_result(struct ts_rawdata_info *info, struct gt1x_ts_test *ts_test);
 
+/** gt1x_put_test_failed_prepare_newformat *
+* i2c prepare Abnormal failed */
+static void gt1x_put_test_failed_prepare_newformat(struct ts_rawdata_info_new *info)
+{
+	int ret = 0;
+	ret = gt1x_strncat(info->i2cinfo, "0F", sizeof(info->i2cinfo));
+	if(!ret){
+		TS_LOG_ERR("%s: strncat 0F failed.\n", __func__);
+	}
+	ret = gt1x_strncat(info->i2cerrinfo, "software reason", sizeof(info->i2cerrinfo));
+	if(!ret){
+		TS_LOG_ERR("%s: strncat software reason failed.\n", __func__);
+	}
+	return;
+}
+
 int gt1x_get_rawdata(struct ts_rawdata_info *info,struct ts_cmd_node *out_cmd)
 {
 	int ret = 0;
@@ -695,7 +718,11 @@ int gt1x_get_rawdata(struct ts_rawdata_info *info,struct ts_cmd_node *out_cmd)
 	ret = gt1x_tptest_prepare(gts_test);
 	if (ret) {
 		TS_LOG_ERR("%s: Failed parse test peremeters, exit test\n", __func__);
-		strncpy(info->result, "0F-software reason", TS_RAWDATA_RESULT_MAX -1);
+		if (gt1x_ts->dev_data->ts_platform_data->chip_data->rawdata_newformatflag == TS_RAWDATA_NEWFORMAT) {
+			gt1x_put_test_failed_prepare_newformat((struct ts_rawdata_info_new *)info);
+		} else {
+			strncpy(info->result, "0F-software reason", TS_RAWDATA_RESULT_MAX -1);
+		}
 		goto exit_finish;
 	}
 	TS_LOG_INFO("%s: TP test prepare OK\n", __func__);
@@ -720,7 +747,7 @@ char *gt1x_strncat(char *dest, char *src, size_t dest_size)
 	size_t dest_len = 0;
 
 	dest_len = strnlen(dest, dest_size);
-	return strncat(&dest[dest_len], src, dest_size - dest_len - 1);
+	return strncat(&dest[dest_len], src, (dest_size > dest_len ? (dest_size - dest_len - 1) : 0));
 }
 char *gt1x_strncatint(char * dest, int src, char * format, size_t dest_size)
 {
@@ -1201,7 +1228,7 @@ static int gt1x_shortcircut_analysis(struct gt1x_ts_test *ts_test)
 
 		r_threshold = ts_test->test_params.r_drv_drv_threshold;
 		short_pin_num = be16_to_cpup((__be16 *)&data_buf[0]);
-		if (short_pin_num > MAX_DRV_NUM + MAX_SEN_NUM)
+		if (short_pin_num > (MAX_DRV_NUM + MAX_SEN_NUM - 1))
 			continue;
 
 		for (j = i + 1; j < MAX_DRV_NUM; j++) {
@@ -1231,7 +1258,7 @@ static int gt1x_shortcircut_analysis(struct gt1x_ts_test *ts_test)
 
 		r_threshold = ts_test->test_params.r_sen_sen_threshold;
 		short_pin_num = be16_to_cpup((__be16 *)&data_buf[0]) + MAX_DRV_NUM;
-		if (short_pin_num > MAX_DRV_NUM + MAX_SEN_NUM)
+		if (short_pin_num > (MAX_DRV_NUM + MAX_SEN_NUM -1))
 			continue;
 
 		for (j = 0; j < MAX_SEN_NUM; j++) {
@@ -1243,7 +1270,7 @@ static int gt1x_shortcircut_analysis(struct gt1x_ts_test *ts_test)
 						self_capdata[short_pin_num], adc_signal,
 						r_threshold);
 				if (ret < 0) {
-					err |= ret;
+					err |= (u32)ret;
 					TS_LOG_ERR("Rx%d-Rx%d shortcircut\n",
 							short_pin_num - MAX_DRV_NUM, j);
 				}
@@ -1264,7 +1291,7 @@ static int gt1x_shortcircut_analysis(struct gt1x_ts_test *ts_test)
 
 		r_threshold = ts_test->test_params.r_drv_sen_threshold;
 		short_pin_num = be16_to_cpup((__be16 *)&data_buf[0]) + MAX_DRV_NUM;
-		if (short_pin_num > MAX_DRV_NUM + MAX_SEN_NUM)
+		if (short_pin_num > (MAX_DRV_NUM + MAX_SEN_NUM - 1))
 			continue;
 
 		for (j = 0; j < MAX_DRV_NUM; j++) {
@@ -1288,7 +1315,7 @@ static int gt1x_shortcircut_analysis(struct gt1x_ts_test *ts_test)
 		data_buf = NULL;
 	}
 
-	return err | ret ? -EFAULT :  NO_ERR;
+	return err | (u32)ret ? -EFAULT :  NO_ERR;
 shortcircut_analysis_error:
 	if(data_buf!=NULL){
 		kfree(data_buf);

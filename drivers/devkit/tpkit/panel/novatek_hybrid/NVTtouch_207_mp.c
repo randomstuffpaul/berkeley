@@ -182,9 +182,10 @@ static int32_t nvt_hybrid_read_short_rxrx(void)
 	for (i = 0; i < nvt_hybrid_ts->ain_rx_num; i++) {
 		sh = nvt_hybrid_rawdata_short_rxrx0[i];
 		sh1 = nvt_hybrid_rawdata_short_rxrx1[i];
-		if (ABS(sh) < ABS(sh1))
+		if (ABS(sh) < ABS(sh1)) {
 			sh = sh1;
-			nvt_hybrid_rawdata_short_rxrx[i] = sh;
+		}
+		nvt_hybrid_rawdata_short_rxrx[i] = sh;
 	}
 
 	TS_LOG_INFO("%s:--\n", __func__);

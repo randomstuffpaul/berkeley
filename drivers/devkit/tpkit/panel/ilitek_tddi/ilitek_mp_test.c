@@ -1048,7 +1048,8 @@ static int allnode_mutual_cdc_data(int index)
     /* Check busy */
     ilitek_info("Check busy method = %d\n",core_mp->busy_cdc);
     if (core_mp->busy_cdc == POLL_CHECK) {
-        res = ilitek_config_check_cdc_busy(50, 100);
+        /* retry 50 times, each time delay 50ms */
+        res = ilitek_config_check_cdc_busy(50, 50);
     } else if (core_mp->busy_cdc == INT_CHECK) {
         res = ilitek_config_check_int_status(false);
     } else if (core_mp->busy_cdc == DELAY_CHECK) {
@@ -1460,7 +1461,8 @@ int allnode_open_cdc_data(int mode, int *buf, int *dac)
     /* Check busy */
     ilitek_info("Check busy method = %d\n",core_mp->busy_cdc);
     if (core_mp->busy_cdc == POLL_CHECK) {
-        res = ilitek_config_check_cdc_busy(50, 100);
+        /* retry 50 times, each time delay 50ms */
+        res = ilitek_config_check_cdc_busy(50, 50);
     } else if (core_mp->busy_cdc == INT_CHECK) {
         res = ilitek_config_check_int_status(false);
     } else if (core_mp->busy_cdc == DELAY_CHECK) {
@@ -1575,7 +1577,6 @@ static int ilitek_test_get_raw_data(int index, u32 offset)
             dest_buf = p_test->orignal_data[num];
             for (i = 0; i < core_mp->frame_len; i++)
                 dest_buf[i + offset] = tItems[index].buf[i];
-            p_test->items[num] = &tItems[index];
         } else {
             ilitek_err("check hash failed\n");
             ret = -EINVAL;
@@ -1669,7 +1670,7 @@ static int open_test_sp(int index)
         open[i].charg_rate = kcalloc(core_mp->frame_len, sizeof(s32), GFP_KERNEL);
         open[i].full_Open = kcalloc(core_mp->frame_len, sizeof(s32), GFP_KERNEL);
         open[i].dac = kcalloc(core_mp->frame_len, sizeof(s32), GFP_KERNEL);
-        open[i].cdc = kcalloc(core_mp->frame_len, sizeof(s32), GFP_KERNEL);
+        //open[i].cdc = kcalloc(core_mp->frame_len, sizeof(s32), GFP_KERNEL);
     }
 
     for (i = 0; i < get_frame_cont; i++) {
@@ -1763,6 +1764,11 @@ int codeToOhm(s32 Code)
     } else {
         douTDF1 = 219;
         douTDF2 = 100;
+    }
+
+    if (Code == 0) {
+        ilitek_info("This node is zero,set 1 to calculate\n");
+        Code = 1;
     }
 
     temp = ((douTVCH - douTVCL) * douVariation * (douTDF1 - douTDF2) * (1<<14) / (36 * Code * douCint)) * 100;
@@ -2074,28 +2080,19 @@ out:
 
 void core_mp_retry(int index, int count)
 {
-    u8 test_cmd[2] = { 0 };
-
     if (count == 0) {
         ilitek_info("Finish retry action\n");
         return;
     }
 
-    ilitek_config_ice_mode_enable();
-
-    if (ilitek_config_set_watch_dog(false) < 0) {
-        ilitek_err("Failed to disable watch dog\n");
-    }
-
-    ilitek_config_ic_reset();
-
-    ilitek_config_ice_mode_disable();
+    /* hw reset avoid i2c error */
+    ilitek_chip_reset();
 
     /* Switch to Demo mode */
-    ilitek_config_mode_ctrl(ILITEK_DEMO_MODE, test_cmd);
+    ilitek_config_mode_ctrl(ILITEK_DEMO_MODE, NULL);
 
     /* Switch to test mode */
-    ilitek_config_mode_ctrl(ILITEK_TEST_MODE, test_cmd);
+    ilitek_config_mode_ctrl(ILITEK_TEST_MODE, NULL);
 
     ilitek_info("retry = %d, item = %s\n", count, tItems[index].desp);
 
@@ -2341,11 +2338,13 @@ bool ilitek_check_result(int index)
                     if (data[offset] > bk_max_buf[offset] ||
                         data[offset] < bk_min_buf[offset]) {
                         mp_result = false;
-                        ilitek_err("offset = %d, bk_max_buf = %d, bk_min_buf = %d, data =%d\n",
-                            offset,
+                        ilitek_err("%s [%2d, %2d] val is [%5d], BK limit is [%5d, %5d]\n",
+                            tItems[index].desp,
+                            y,
+                            x,
+                            data[offset],
                             bk_max_buf[offset],
-                            bk_min_buf[offset],
-                            data[offset]);
+                            bk_min_buf[offset]);
                     }
                 }
             }
@@ -2361,13 +2360,14 @@ bool ilitek_check_result(int index)
                         min_buf[offset] > max_ts ||
                         min_buf[offset] < min_ts) {
                         mp_result = false;
-                        ilitek_err("offset = %d, max_buf = %d, min_buf = %d\n",
-                            offset,
+                        ilitek_err("%s [%2d, %2d] min_max val is [%5d, %5d], limit is [%5d, %5d]\n",
+                            tItems[index].desp,
+                            y,
+                            x,
+                            min_buf[offset],
                             max_buf[offset],
-                            min_buf[offset]);
-                        ilitek_err("max_ts = %d, min_ts = %d\n",
-                            max_ts,
-                            min_ts);
+                            min_ts,
+                            max_ts);
                     }
                 }
             }
@@ -2394,7 +2394,6 @@ void core_mp_run_test(char *item, bool ini)
     core_mp->frame_len = core_mp->xch_len * core_mp->ych_len;
 
     if (item == NULL || strncmp(item, " ", strlen(item)) == 0 || core_mp->frame_len == 0 ) {
-        tItems[i].result = "FAIL";
         core_mp->final_result = MP_FAIL;
         ilitek_err("Invaild string or length\n");
         return;
@@ -2471,6 +2470,60 @@ void core_mp_run_test(char *item, bool ini)
     }
 }
 
+/* debug: dump crc result, hw check mp fw status, after copy from flash to iram */
+static int host_download_dma_check(void)
+{
+    int retry = ILITEK_DEBUG_CRC_RETRYS;
+    u32 start_addr = 0, block_size = ILITEK_DEBUG_MP_FW_SIZE;
+    u32 busy = 0 , crc_data = 0;
+
+    ilitek_info("start_addr = %d, block_size = %d\n", start_addr, block_size);
+
+    /* dma1 src1 adress */
+    ilitek_config_ice_mode_write(0x072104, start_addr, 4);
+    /* dma1 src1 format */
+    ilitek_config_ice_mode_write(0x072108, 0x80000001, 4);
+    /* dma1 dest address */
+    ilitek_config_ice_mode_write(0x072114, 0x00030000, 4);
+    /* dma1 dest format */
+    ilitek_config_ice_mode_write(0x072118, 0x80000000, 4);
+    /* Block size*/
+    ilitek_config_ice_mode_write(0x07211C, block_size, 4);
+    /* crc off */
+    ilitek_config_ice_mode_write(0x041014, 0x00000000, 4);
+    /* dma crc */
+    ilitek_config_ice_mode_write(0x041048, 0x00000001, 4);
+    /* crc on */
+    ilitek_config_ice_mode_write(0x041014, 0x00010000, 4);
+    /* Dma1 stop */
+    ilitek_config_ice_mode_write(0x072100, 0x00000000, 4);
+    /* clr int */
+    ilitek_config_ice_mode_write(0x048006, 0x1, 1);
+    /* Dma1 start */
+    ilitek_config_ice_mode_write(0x072100, 0x01000000, 4);
+
+    /* Polling BIT0 */
+    while (retry > 0) {
+        mdelay(1);
+        /* check iram crc status */
+        busy = ilitek_config_read_write_onebyte(0x048006);
+
+        if ((busy & 0x01) == 1)
+            break;
+
+        retry--;
+    }
+
+    if (retry <= 0) {
+        ilitek_err("BIT0 is busy\n");
+        return -EIO;
+    }
+
+    /* read iram crc result */
+    crc_data =  ilitek_config_ice_mode_read(0x04101C);
+    ilitek_info("read crc[0x04101c], data = 0x%x\n" , crc_data);
+}
+
 int core_mp_move_code(void)
 {
     ilitek_info("Prepaing to enter Test Mode\n");
@@ -2485,10 +2538,6 @@ int core_mp_move_code(void)
         return -1;
     }
 
-    if (ilitek_config_set_watch_dog(false) < 0) {
-        ilitek_err("Failed to disable watch dog\n");
-    }
-
     /* DMA Trigger */
     ilitek_config_ice_mode_write(0x41010, 0xFF, 1);
 
@@ -2497,18 +2546,17 @@ int core_mp_move_code(void)
     /* CS High */
     ilitek_config_ice_mode_write(0x041000, 0x1, 1);
 
+    host_download_dma_check();
+
     mdelay(60);
 
     /* Code reset */
     ilitek_config_ice_mode_write(0x40040, 0xAE, 1);
 
-    if (ilitek_config_set_watch_dog(true) < 0) {
-        ilitek_err("Failed to enable watch dog\n");
-    }
-
     ilitek_config_ice_mode_disable();
 
-    if (ilitek_config_check_cdc_busy(300, 50) < 0) {
+    /* retry 15 times, each time delay 50ms */
+    if (ilitek_config_check_cdc_busy(15, 50) < 0) {
         ilitek_err("Check busy is timout ! Enter Test Mode failed\n");
         return -1;
     }

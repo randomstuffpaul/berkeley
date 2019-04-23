@@ -34,6 +34,10 @@ int ufs_i2c_readl(struct ufs_hba *hba, u32 *value, u32 addr)
 
 	u32 temp = cpu_to_be32(addr);
 	if (host->i2c_client) {
+		ret = i2c_master_send(
+			host->i2c_client, (char *)(&temp), (int)sizeof(u32));
+		if (ret < 0)
+			pr_err("%s ufs_i2c_write fail\n", __func__);
 		ret = i2c_master_recv(host->i2c_client, (char *)(&temp),
 				      (int)sizeof(u32));
 		if (ret < 0)
@@ -105,103 +109,164 @@ void i2c_chipsel_gpio_config(struct ufs_kirin_host *host, struct device *dev)
 void hisi_mphy_updata_temp_sqvref(struct ufs_hba *hba,
 				struct ufs_kirin_host *host)
 {
-	if (host->caps & USE_HISI_MPHY_TC) {
-		/*in low temperature to solve the PLL'S oscill */
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0x00c1, 0x0),
-			       0x1); /*RG_PLL_CP*/
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0x00d4, 0x0),
-			       0x51); /*RG_PLL_DMY0*/
-		/*rate A->B's VC0 stable time*/
-		/* ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00db, 0x0),
-			       0x5);*/
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00f0, 0x4),
-			       0x1); /*RX enable lane 0*/
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00f0, 0x5),
-			       0x1); /*RX enable lane 1*/
-		/* H8's workaround*/
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00f1, 0x4),
-			       0x7); /*RX_SQ_VERF, lane 0*/
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00f1, 0x5),
-			       0x7); /*RX_SQ_VERF, lane 1*/
-	}
+	/*in low temperature to solve the PLL'S oscill */
+	ufshcd_dme_set(
+		hba, UIC_ARG_MIB_SEL((u32)0x00c1, 0x0), 0x1); /*RG_PLL_CP*/
+	ufshcd_dme_set(
+		hba, UIC_ARG_MIB_SEL((u32)0x00d4, 0x0), 0x51); /*RG_PLL_DMY0*/
+	/*rate A->B's VC0 stable time*/
+	/* ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00db, 0x0),
+		       0x5);*/
+	ufshcd_dme_set(
+		hba, UIC_ARG_MIB_SEL(0x00f0, 0x4), 0x1); /*RX enable lane 0*/
+	ufshcd_dme_set(
+		hba, UIC_ARG_MIB_SEL(0x00f0, 0x5), 0x1); /*RX enable lane 1*/
+	/* H8's workaround*/
+	ufshcd_dme_set(
+		hba, UIC_ARG_MIB_SEL(0x00f1, 0x4), 0x7); /*RX_SQ_VERF, lane 0*/
+	ufshcd_dme_set(
+		hba, UIC_ARG_MIB_SEL(0x00f1, 0x5), 0x7); /*RX_SQ_VERF, lane 1*/
 }
 
 void hisi_mphy_updata_vswing_fsm_ocs5(struct ufs_hba *hba,
 				struct ufs_kirin_host *host)
 {
 	uint32_t value = 0;
-	if (host->caps & USE_HISI_MPHY_TC) {
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c2, 0x4),
-			       0x1); /*RX_MC_PRESENT*/
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c2, 0x5),
-			       0x1); /*RX_MC_PRESENT*/
-		/*disable vSwing change*/
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0x00c7, 0x0),
-			       0x3); /*meaure the power, can close it*/
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0x00c8, 0x0),
-			       0x3); /*meaure the power, can close it*/
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0x007a, 0x0), 0x1c);
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x007a, 0x1), 0x1c);
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0x007c, 0x0), 0xd4);
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x007c, 0x1), 0xd4);
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cf, 0x4),
-			       0x2); /*RX_STALL*/
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cf, 0x5),
-			       0x2); /*RX_STALL*/
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00d0, 0x4),
-			       0x2); /*RX_SLEEP*/
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00d0, 0x5),
-			       0x2); /*RX_SLEEP*/
+	ufshcd_dme_set(
+		hba, UIC_ARG_MIB_SEL(0x00c2, 0x4), 0x1); /*RX_MC_PRESENT*/
+	ufshcd_dme_set(
+		hba, UIC_ARG_MIB_SEL(0x00c2, 0x5), 0x1); /*RX_MC_PRESENT*/
+	/*disable vSwing change*/
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0x00c7, 0x0),
+		0x3); /*meaure the power, can close it*/
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0x00c8, 0x0),
+		0x3); /*meaure the power, can close it*/
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0x007a, 0x0), 0x1c);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x007a, 0x1), 0x1c);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0x007c, 0x0), 0xd4);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x007c, 0x1), 0xd4);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cf, 0x4), 0x2); /*RX_STALL*/
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cf, 0x5), 0x2); /*RX_STALL*/
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00d0, 0x4), 0x2); /*RX_SLEEP*/
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00d0, 0x5), 0x2); /*RX_SLEEP*/
 
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cc, 0x4),
-			       0x3); /*RX_HS_CLK_EN*/
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cc, 0x5),
-			       0x3); /*RX_HS_CLK_EN*/
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cd, 0x4),
-			       0x3); /*RX_LS_CLK_EN*/
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cd, 0x5),
-			       0x3); /*RX_LS_CLK_EN*/
-		/*enhance the accuracy of squelch detection*/
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00ce, 0x4),
-			       0x3); /*RX_H8_EXIT*/
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00ce, 0x5),
-			       0x3); /*RX_H8_EXIT*/
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cc, 0x4), 0x3); /*RX_HS_CLK_EN*/
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cc, 0x5), 0x3); /*RX_HS_CLK_EN*/
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cd, 0x4), 0x3); /*RX_LS_CLK_EN*/
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cd, 0x5), 0x3); /*RX_LS_CLK_EN*/
+	/*enhance the accuracy of squelch detection*/
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00ce, 0x4), 0x3); /*RX_H8_EXIT*/
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00ce, 0x5), 0x3); /*RX_H8_EXIT*/
 
-		/* try to solve the OCS=5 */
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00e9, 0x4),
-			       0x20); /*RX_HS_DATA_VALID_TIMER_VAL0*/
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00e9, 0x5),
-			       0x20); /*RX_HS_DATA_VALID_TIMER_VAL0*/
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00ea, 0x4),
-			       0x1); /*RX_HS_DATA_VALID_TIMER_VAL1*/
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00ea, 0x5),
-			       0x1); /*RX_HS_DATA_VALID_TIMER_VAL1*/
+	/* try to solve the OCS=5 */
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00e9, 0x4),
+		0x20); /*RX_HS_DATA_VALID_TIMER_VAL0*/
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00e9, 0x5),
+		0x20); /*RX_HS_DATA_VALID_TIMER_VAL0*/
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00ea, 0x4),
+		0x1); /*RX_HS_DATA_VALID_TIMER_VAL1*/
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00ea, 0x5),
+		0x1); /*RX_HS_DATA_VALID_TIMER_VAL1*/
 
-		/* set the HS-prepare length and sync length to MAX value, try
-		* to solve the data check error problem,
-		* the device seems not receive the write cmd. */
-		/* PA_TxHsG1SyncLength , can not set MPHY's register directly */
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0x1552, 0x0), 0x4F);
-		/* PA_TxHsG2SyncLength , can not set MPHY's register directly */
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0x1554, 0x0), 0x4F);
-		/* PA_TxHsG3SyncLength , can not set MPHY's register directly */
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0x1556, 0x0), 0x4F);
+	/* set the HS-prepare length and sync length to MAX value, try
+	* to solve the data check error problem,
+	* the device seems not receive the write cmd. */
+	/* PA_TxHsG1SyncLength , can not set MPHY's register directly */
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0x1552, 0x0), 0x4F);
+	/* PA_TxHsG2SyncLength , can not set MPHY's register directly */
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0x1554, 0x0), 0x4F);
+	/* PA_TxHsG3SyncLength , can not set MPHY's register directly */
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0x1556, 0x0), 0x4F);
 
-		/*enlarge TX_LS_PREPARE_LENGTH*/
-		/*enable override*/
-		ufshcd_dme_get(hba, UIC_ARG_MIB_SEL((u32)0xd0f0, 0x0),
-			       &value); /* Unipro VS_mphy_disable */
-		value |= (1 << 3);
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0xd0f0, 0x0), value);
-		/*Set to max value 0xf*/
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0xd0f4, 0x0), 0xf);
+	/*enlarge TX_LS_PREPARE_LENGTH*/
+	/*enable override*/
+	ufshcd_dme_get(hba, UIC_ARG_MIB_SEL((u32)0xd0f0, 0x0),
+		&value); /* Unipro VS_mphy_disable */
+	value |= (1 << 3);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0xd0f0, 0x0), value);
+	/*Set to max value 0xf*/
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0xd0f4, 0x0), 0xf);
 
-
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0xd085, 0x0), 0x1); /* update */
-	}
+	ufshcd_dme_set(
+		hba, UIC_ARG_MIB_SEL((u32)0xd085, 0x0), 0x1); /* update */
 }
 /*lint -restore*/
 
+void hisi_mphy_V200_updata(struct ufs_hba *hba, struct ufs_kirin_host *host)
+{
+	/*in low temperature to solve the PLL'S oscill */
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0x0009, 0x4), 0x1);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0x0009, 0x5), 0x1);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00df, 0x0), 0x3);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0023, 0x0), 0x4);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0023, 0x1), 0x4);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00a3, 0x4), 0x4);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00a3, 0x5), 0x4);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00f1, 0x4), 0x4);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00f1, 0x5), 0x4);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0003, 0x4), 0x0a);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0003, 0x5), 0x0a);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0004, 0x4), 0x64);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0004, 0x5), 0x64);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cf, 0x4), 0x2);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00cf, 0x5), 0x2);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00d0, 0x4), 0x2);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00d0, 0x5), 0x2);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00f0, 0x4), 0x1);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00f0, 0x5), 0x1);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0059, 0x0), 0x0f);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0059, 0x1), 0x0f);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x005a, 0x0), 0x0);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x005a, 0x1), 0x0);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x005b, 0x0), 0x0f);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x005b, 0x1), 0x0f);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x005c, 0x0), 0x0);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x005c, 0x1), 0x0);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x005d, 0x0), 0x0);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x005d, 0x1), 0x0);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x005e, 0x0), 0x0a);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x005e, 0x1), 0x0a);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x005f, 0x0), 0x0a);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x005f, 0x1), 0x0a);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x007a, 0x0), 0x0);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x007a, 0x1), 0x0);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x007b, 0x0), 0x0);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x007b, 0x1), 0x0);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c3, 0x4), 0x4);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c3, 0x5), 0x4);
+
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00f6, 0x4), 0x1);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00f6, 0x5), 0x1);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c7, 0x0), 0x3);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c8, 0x0), 0x3);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c5, 0x0), 0x3);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c6, 0x0), 0x3);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00e9, 0x4), 0x0);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00e9, 0x5), 0x0);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00ea, 0x4), 0x10);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00ea, 0x5), 0x10);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00f4, 0x4), 0x0);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00f4, 0x5), 0x0);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00f3, 0x4), 0x0);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00f3, 0x5), 0x0);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00f2, 0x4), 0x3);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00f2, 0x5), 0x3);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00f6, 0x4), 0x2);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00f6, 0x5), 0x2);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00f5, 0x4), 0x0);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00f5, 0x5), 0x0);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00fc, 0x4), 0x1f);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00fc, 0x5), 0x1f);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00fd, 0x4), 0x0);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00fd, 0x5), 0x0);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00fb, 0x4), 0x5);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00fb, 0x5), 0x5);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0011, 0x4), 0x11);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0011, 0x5), 0x11);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0xd085, 0x0), 0x1);
+	/* Trigger UniPro update */
+	mdelay(40); /* wait 40ms */
+}
 /*lint -e845 -e648*/
 
 void adapt_pll_to_power_mode(struct ufs_hba *hba)

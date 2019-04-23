@@ -182,8 +182,9 @@ static int secsg_cma_alloc(struct ion_secsg_heap *secsg_heap,
 	cma_size = cma_get_size(secsg_heap->cma);
 	cma_remain = cma_size - (allocated_size + size_remain);
 	if (secsg_heap->heap_size <= (allocated_size + size_remain)) {
-		pr_err("heap full! allocated(0x%lx), heap_size(0x%lx))\n",
-		       allocated_size, secsg_heap->heap_size);
+		pr_err("heap full! allocated_size(0x%lx), remain_size(0x%lx),"
+		       " heap_size(0x%lx), cma_remain(0x%lx)\n", allocated_size,
+		       size_remain, secsg_heap->heap_size, cma_remain);
 		return -ENOMEM;
 	}
 
@@ -245,7 +246,7 @@ static int secsg_cma_alloc(struct ion_secsg_heap *secsg_heap,
 			goto err_out2;
 		}
 	} else {
-		memset(page_address(pg), 0x0, size);/* unsafe_function_ignore: memset */
+		memset(page_address(pg), 0x0, size);
 		ion_flush_all_cpus_caches();
 	}
 	gen_pool_free(secsg_heap->pool, page_to_phys(pg), size);
@@ -486,7 +487,7 @@ int __secsg_fill_watermark(struct ion_secsg_heap *secsg_heap)
 	alloc->size = size;
 	list_add_tail(&alloc->list, &secsg_heap->allocate_head);
 
-	memset(page_address(pg), 0x0, size);/* unsafe_function_ignore: memset */
+	memset(page_address(pg), 0x0, size);
 	gen_pool_free(secsg_heap->pool, page_to_phys(pg), size);
 	secsg_debug("out %s %llu MB memory.\n",
 		    __func__, (size) / SZ_1M);

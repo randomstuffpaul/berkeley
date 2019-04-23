@@ -773,7 +773,7 @@ static bool unmap_kernel_at_el0(const struct arm64_cpu_capabilities *entry,
 	 * ThunderX leads to apparent I-cache corruption of kernel text, which
 	 * ends as well as you might imagine. Don't even try.
 	 */
-	if (cpus_have_cap(ARM64_WORKAROUND_CAVIUM_27456)) {
+	if (cpus_have_const_cap(ARM64_WORKAROUND_CAVIUM_27456)) {
 		str = "ARM64_WORKAROUND_CAVIUM_27456";
 		__kpti_forced = -1;
 	}
@@ -836,7 +836,7 @@ static int __init parse_kpti(char *str)
 	__kpti_forced = enabled ? 1 : -1;
 	return 0;
 }
-__setup("kpti=", parse_kpti);
+early_param("kpti", parse_kpti);
 #endif	/* CONFIG_UNMAP_KERNEL_AT_EL0 */
 
 #ifdef CONFIG_HISI_HHEE
@@ -1233,5 +1233,5 @@ void __init setup_cpu_features(void)
 static bool __maybe_unused
 cpufeature_pan_not_uao(const struct arm64_cpu_capabilities *entry, int __unused)
 {
-	return (cpus_have_cap(ARM64_HAS_PAN) && !cpus_have_cap(ARM64_HAS_UAO));
+	return (cpus_have_const_cap(ARM64_HAS_PAN) && !cpus_have_const_cap(ARM64_HAS_UAO));
 }

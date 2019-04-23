@@ -30,6 +30,10 @@
 
 /*avoid to invoke mainline code,we can only use this ugly code*/
 #include "mmc_hisi_card.h"
+#ifdef CONFIG_HUAWEI_EMMC_DSM
+void sdhci_dsm_report(struct mmc_host *host, struct mmc_request *mrq);
+#endif
+
 
 #ifdef CONFIG_HW_MMC_MAINTENANCE_DATA
 extern void record_cmdq_rw_data(struct mmc_request *mrq);
@@ -745,8 +749,6 @@ EXPORT_SYMBOL(mmc_blk_cmdq_issue_flush_rq);
 static void mmc_blk_cmdq_reset(struct mmc_host *host, bool clear_all)
 {
 	int err = 0;
-	unsigned long timeout;
-	struct mmc_cmdq_context_info *ctx_info = &host->cmdq_ctx;
 
 	if (mmc_cmdq_halt(host, true)) {
 		pr_err("%s: halt failed\n", mmc_hostname(host));
@@ -758,35 +760,13 @@ static void mmc_blk_cmdq_reset(struct mmc_host *host, bool clear_all)
 	}
 
 reset:
-	if (host->is_coldboot_on_reset_fail) {
-		mmc_set_cold_reset(host);
-		timeout = jiffies + 10*60*HZ;
-		mod_timer(&host->err_handle_timer, timeout);
-	}
-
 	host->cmdq_ops->disable_immediatly(host);
 	err = mmc_cmdq_hw_reset(host);
-	if (err && err != -EOPNOTSUPP) {
-		/* if reset fail times = 3, the device maybe in bad state, cold reboot */
-		if (host->is_coldboot_on_reset_fail) {
-			ctx_info->reset_fail_count++;
-			if (ctx_info->reset_fail_count > CMDQ_RESET_FAIL_MAX) {
-#ifdef CONFIG_HISI_BB
-				rdr_syserr_process_for_ap(RDR_MODID_MMC_COLDBOOT, 0, 0);
-#else
-				machine_restart("AP_S_EMMC_COLDBOOT");
-#endif
-			}
-		}
-
-		pr_err("%s: failed to cmdq_hw_reset err = %d\n",
-		                mmc_hostname(host), err);
+	if (err == -EOPNOTSUPP) {
+		pr_err("%s: not support reset\n", __func__);
 		host->cmdq_ops->enable(host);
-		mmc_cmdq_halt(host, false);
 		goto out;
 	}
-
-	ctx_info->reset_fail_count = 0;
 
 	/*
 	 * CMDQ HW reset would have already made CQE
@@ -1129,11 +1109,8 @@ enum blk_eh_timer_return mmc_blk_cmdq_req_timed_out(struct request *req)
 		"curr_state:0x%lx, active reqs:0x%lx timed out\n",
 		__func__, req, req->tag, req->cmd_flags,
 		ctx_info->curr_state, ctx_info->active_reqs);
-	pr_err("%s: with request req:0x%pK, tag:%d, cmd flag:0x%llx,"
-		"issue time:%lld, start time:%lld, end time:%lld\n",
+	pr_err("%s: issue time:%lld, start time:%lld, end time:%lld\n",
 		__func__,
-		cmdq_task_info[req->tag].req, cmdq_task_info[req->tag].req->tag,
-		cmdq_task_info[req->tag].req->cmd_flags,
 		ktime_to_ns(cmdq_task_info[req->tag].issue_time),
 		ktime_to_ns(cmdq_task_info[req->tag].start_dbr_time),
 		ktime_to_ns(cmdq_task_info[req->tag].end_dbr_time));
@@ -1158,6 +1135,10 @@ enum blk_eh_timer_return mmc_blk_cmdq_req_timed_out(struct request *req)
 	cmdq_req = &mq_rq->mmc_cmdq_req;
 
 	BUG_ON(!mrq || !cmdq_req);
+
+#ifdef CONFIG_HUAWEI_EMMC_DSM
+	sdhci_dsm_report(host, mrq);
+#endif
 
 	if (cmdq_req->cmdq_req_flags & DCMD)
 		mrq->cmd->error = -ETIMEDOUT;
@@ -1246,10 +1227,10 @@ int mmc_blk_cmdq_issue_rq(struct mmc_queue *mq, struct request *req)
 	int ret = 0;
 	struct mmc_blk_data *md = mq->data;
 	struct mmc_card *card = md->queue.card;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 9, 0))
 	unsigned int cmd_flags = req->cmd_flags;
+#endif
 	struct mmc_cmdq_context_info *ctx_info = &card->host->cmdq_ctx;
-
-	mmc_cmdq_task_info_init(card, req);
 
 	mmc_claim_host(card->host);
 	ret = mmc_blk_part_switch(card, md);
@@ -1267,6 +1248,8 @@ int mmc_blk_cmdq_issue_rq(struct mmc_queue *mq, struct request *req)
 		mmc_cmdq_switch_error(card, mq, req);
 		return ret;
 	}
+
+	mmc_cmdq_task_info_init(card, req);
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 9, 0))
 	if (cmd_flags & (REQ_FLUSH | REQ_DISCARD) &&
@@ -1351,9 +1334,9 @@ static void mmc_cmdq_dispatch_req(struct request_queue *q)
  *
  */
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 9, 0))
-static void mmc_blk_cmdq_dump_status(struct request_queue *q, enum BLK_DUMP_TYPE dump_type)
+void mmc_blk_cmdq_dump_status(struct request_queue *q, enum BLK_DUMP_TYPE dump_type)
 #else
-static void mmc_blk_cmdq_dump_status(struct request_queue *q, enum blk_dump_scenario dump_type)
+void mmc_blk_cmdq_dump_status(struct request_queue *q, enum blk_dump_scenario dump_type)
 #endif
 {
 	struct mmc_card *card;
@@ -1422,7 +1405,7 @@ enum blk_eh_timer_return mmc_cmdq_rq_timed_out(struct request *req)
 	pr_err("%s: request with req: 0x%pK, tag: %d, flags: 0x%llx timed out\n",
 			__func__, req, req->tag, req->cmd_flags);
 
-        return mq->cmdq_req_timed_out(req);
+	return mq->cmdq_req_timed_out(req);
 }
 
 int mmc_cmdq_init(struct mmc_queue *mq, struct mmc_card *card)
@@ -1464,7 +1447,7 @@ int mmc_cmdq_init(struct mmc_queue *mq, struct mmc_card *card)
 				mmc_card_name(card), q_depth);
 		goto free_mqrq_sg;
 	}
-#ifdef CONFIG_HISI_BLK_CORE
+#ifdef CONFIG_HISI_BLK
 	card->mmc_tags = mq->queue->queue_tags;
 	card->mmc_tags_depth = q_depth;
 #endif
@@ -1613,18 +1596,6 @@ int mmc_cmdq_init_queue(struct mmc_queue *mq, struct mmc_card * card,
 					mmc_hostname(card->host), ret);
 		}
 
-#ifdef	CONFIG_HISI_BLK_CORE
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 9, 0))
-		blk_queue_io_latency_check_enable(mq->queue,1);
-		blk_queue_io_latency_statistic_enable(mq->queue,0);
-		blk_queue_io_latency_warning_threshold(mq->queue, 2000);
-		blk_lld_dump_register(mq->queue, mmc_blk_cmdq_dump_status, false);
-#else
-		blk_queue_latency_warning_set(mq->queue, 2000);
-		blk_queue_dump_register(mq->queue, mmc_blk_cmdq_dump_status);
-#endif
-		blk_queue_busy_idle_enable(mq->queue, 1);
-#endif /* CONFIG_HISI_BLK_CORE */
 #ifdef CONFIG_HISI_MMC_MANUAL_BKOPS
 		if (card->ext_csd.man_bkops_en && hisi_mmc_is_bkops_needed(card))
 			hisi_mmc_manual_bkops_config(mq->queue);

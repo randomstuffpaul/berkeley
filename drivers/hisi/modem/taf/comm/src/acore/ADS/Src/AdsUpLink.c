@@ -865,7 +865,7 @@ VOS_UINT32 ADS_UL_RcvCdsIpPacketMsg(MsgBlock *pMsg)
 
     if (VOS_NULL_PTR == pstZcData)
     {
-        PS_MEM_FREE(ACPU_PID_ADS_UL, pstAdsNdisDataInd);
+        (VOS_VOID)VOS_FreeMsg(ACPU_PID_ADS_UL, pstAdsNdisDataInd);
 
         return VOS_ERR;
     }

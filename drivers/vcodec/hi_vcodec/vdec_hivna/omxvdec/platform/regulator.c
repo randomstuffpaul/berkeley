@@ -28,7 +28,10 @@
 #define VCODEC_CLOCK_NAME       "clk_vdec"
 #define VCODEC_CLK_RATE         "dec_clk_rate"
 
-static HI_U32  g_clock_values[] = {450000000, 300000000, 185000000};
+static HI_U32  g_clock_values[] = {450000000, 300000000, 185000000, 166000000};
+#ifdef PLATFORM_HIVCODECV500
+static HI_U32  g_VdecClkRate_lower = 166000000;
+#endif
 static HI_U32  g_VdecClkRate_l  = 185000000;
 static HI_U32  g_VdecClkRate_n  = 300000000;
 static HI_U32  g_VdecClkRate_h  = 450000000;
@@ -118,6 +121,9 @@ static HI_S32 VDEC_Init_ClockRate(struct device *dev)
 	ret  = read_clock_rate_value(dev->of_node, 0, &g_VdecClkRate_h);
 	ret += read_clock_rate_value(dev->of_node, 1, &g_VdecClkRate_n);
 	ret += read_clock_rate_value(dev->of_node, 2, &g_VdecClkRate_l);
+#ifdef PLATFORM_HIVCODECV500
+	ret += read_clock_rate_value(dev->of_node, 3, &g_VdecClkRate_lower);
+#endif
 	RETURN_FAIL_IF_COND_IS_TRUE(ret, "read clock failed");
 
 #ifdef CONFIG_ES_VDEC_LOW_FREQ
@@ -335,7 +341,6 @@ HI_S32 VDEC_Regulator_Enable(HI_VOID)
 		dprint(PRN_FATAL, "%s clk_prepare_enable failed\n", __func__);
 		goto error_regulator_disable;
 	}
-
 	ret  = clk_set_rate(g_PvdecClk, g_VdecClkRate_l);
 	if (ret)
 	{
@@ -410,11 +415,19 @@ HI_S32 VDEC_Regulator_Disable(HI_VOID)
 		dprint(PRN_FATAL, "%s disable regulator failed\n", __func__);
 	}
 
-	ret = clk_set_rate(g_PvdecClk, g_VdecClkRate_l);
+#ifdef PLATFORM_HIVCODECV500
+	ret  = clk_set_rate(g_PvdecClk, g_VdecClkRate_lower);
+	if (ret) {
+		dprint(PRN_FATAL, "%s Failed to clk_set_rate:%u, return %d\n", __func__, g_VdecClkRate_lower, ret);
+		//goto error_exit;//continue, no return
+	}
+#else
+	ret  = clk_set_rate(g_PvdecClk, g_VdecClkRate_l);
 	if (ret) {
 		dprint(PRN_FATAL, "%s Failed to clk_set_rate:%u, return %d\n", __func__, g_VdecClkRate_l, ret);
 		//goto error_exit;//continue, no return
 	}
+#endif
 
 	clk_disable_unprepare(g_PvdecClk);
 

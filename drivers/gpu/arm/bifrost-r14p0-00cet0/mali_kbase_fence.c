@@ -129,7 +129,7 @@ kbase_fence_free_callbacks(struct kbase_jd_atom *katom)
 		/* Cancel callbacks that hasn't been called yet. */
 		ret = dma_fence_remove_callback(cb->fence, &cb->fence_cb);
 		if (ret) {
-			int ret;
+			int ret;//lint !e578
 
 			/* Fence had not signaled, clean up after
 			 * canceling.
@@ -151,7 +151,7 @@ kbase_fence_free_callbacks(struct kbase_jd_atom *katom)
 
 	return res;
 }
-
+/*lint -e593*/
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 10, 0))
 int
 kbase_fence_add_callback(struct kbase_jd_atom *katom,
@@ -206,3 +206,4 @@ kbase_fence_add_callback(struct kbase_jd_atom *katom,
 
 	return err;
 }
+/*lint +e593*/

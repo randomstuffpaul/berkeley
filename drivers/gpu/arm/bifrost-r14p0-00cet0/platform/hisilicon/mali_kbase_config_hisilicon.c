@@ -50,6 +50,8 @@
 #endif
 #include <linux/delay.h>
 #include <linux/of_address.h>
+#include <linux/of.h>
+#include <linux/of_platform.h>
 #include <backend/gpu/mali_kbase_pm_internal.h>
 #include <backend/gpu/mali_kbase_device_internal.h>
 #include "mali_kbase_config_platform.h"
@@ -127,6 +129,9 @@ static int kbase_set_hi_features_mask(struct kbase_device *kbdev)
 			break;
 		case GPU_ID2_MAKE(7, 2, 1, 1, 0, 0, 0):
 			hi_features = kbase_hi_feature_tNOx_r0p0;
+			break;
+		case GPU_ID2_MAKE(7, 4, 0, 2, 1, 0, 0):
+			hi_features = kbase_hi_feature_tGOx_r1p0;
 			break;
 		case GPU_ID2_MAKE(7, 0, 9, 0, 1, 1, 0):
 			hi_features = kbase_hi_feature_tSIx_r1p1;
@@ -550,6 +555,145 @@ static struct devfreq_cooling_ops hisi_model_ops = {
 };
 #endif
 
+/* This function is used when memory_group_manager is not supported. */
+static struct page *native_alloc_pages(struct memory_group_manager_device *mgm_dev __maybe_unused,
+                                       u8 __maybe_unused id, gfp_t gfp_mask, unsigned int order)
+{
+	KBASE_DEBUG_ASSERT(mgm_dev != NULL);
+	/* we ignore mgm_dev and policy id. */
+	return alloc_pages(gfp_mask, order);
+}
+
+/* This function is used when memory_group_manager is not supported. */
+static void native_free_pages(struct memory_group_manager_device *mgm_dev __maybe_unused,
+                              u8 id __maybe_unused, struct page *page, unsigned int order)
+{
+	KBASE_DEBUG_ASSERT(page != NULL);
+	__free_pages(page, order);
+}
+
+struct memory_group_manager_ops kbase_native_mgm_ops = {
+	.mgm_alloc_pages = &native_alloc_pages,
+	.mgm_free_pages = &native_free_pages,
+};
+
+static int kbasep_hisi_mgm_init(struct kbase_device *kbdev)
+{
+#ifdef CONFIG_OF
+	struct device_node *mgm_node;
+	struct platform_device *pdev;
+	struct memory_group_manager_device *mgm_dev;
+
+	mgm_node = of_parse_phandle(kbdev->dev->of_node,
+                                "physical_memory_group_manager", 0);
+
+	if (!mgm_node) {
+		/* If memory_group_manager cannot be looked up then we assume
+		 * memory_group_manager is not supported on this platform. */
+		kbdev->hisi_dev_data.mgm_dev = kzalloc(sizeof(*kbdev->hisi_dev_data.mgm_dev),
+                                               GFP_KERNEL);
+		if (!kbdev->hisi_dev_data.mgm_dev)
+			return -ENOMEM;
+
+		kbdev->hisi_dev_data.mgm_ops = &kbase_native_mgm_ops;
+
+		dev_info(kbdev->dev, "physical memory group manager is not available, use native instead.\n");
+		return 0;
+	}
+
+	pdev = of_find_device_by_node(mgm_node);
+	if (!pdev)
+		return -EINVAL;
+
+	mgm_dev = platform_get_drvdata(pdev);
+	if (!mgm_dev)
+		return -EPROBE_DEFER;
+
+	kbdev->hisi_dev_data.mgm_dev = mgm_dev;
+	kbdev->hisi_dev_data.mgm_ops = &mgm_dev->ops;
+
+	dev_info(kbdev->dev, "physical memory group manager init succ.\n");
+#endif
+	return 0;
+}
+
+static void kbasep_hisi_mgm_term(struct kbase_device *kbdev)
+{
+	if (kbdev->hisi_dev_data.mgm_dev)
+		kfree(kbdev->hisi_dev_data.mgm_dev);
+}
+
+static int kbase_platform_backend_init(struct kbase_device *kbdev)
+{
+	int err = 0;
+	kbdev->hisi_dev_data.callbacks = (struct kbase_hisi_callbacks *)gpu_get_callbacks();
+
+	/* Init the hisilicon memory group manager. */
+	err = kbasep_hisi_mgm_init(kbdev);
+	if (err) {
+		dev_err(kbdev->dev, "[mali] Init memory group manager failed.\n");
+		return err;
+	}
+
+#ifdef CONFIG_HISI_LAST_BUFFER
+	cache_policy_callbacks *lb_cache_cbs = kbase_hisi_get_lb_cache_cbs(kbdev);
+	KBASE_DEBUG_ASSERT(lb_cache_cbs != NULL);
+	/* This operation will parse the device tree and create policy info. */
+	err = lb_cache_cbs->lb_create_policy_info(kbdev);
+	if (err) {
+		dev_err(kbdev->dev,"[mali] Create last buffer policy info failed.\n");
+		return err;
+	}
+
+	lb_quota_manager *lb_quota_cbs = kbase_hisi_get_lb_quota_cbs(kbdev);
+	KBASE_DEBUG_ASSERT(lb_quota_cbs != NULL);
+	lb_quota_cbs->quota_timer_init(&lb_quota_cbs->quota_timer);
+#endif
+
+	return 0;
+}
+
+static void kbase_platform_backend_term(struct kbase_device *kbdev)
+{
+	/* term the hisilicon memory group manager. */
+	kbasep_hisi_mgm_term(kbdev);
+
+#ifdef CONFIG_HISI_LAST_BUFFER
+	cache_policy_callbacks *lb_cache_cbs = kbase_hisi_get_lb_cache_cbs(kbdev);
+	KBASE_DEBUG_ASSERT(lb_cache_cbs != NULL);
+	lb_cache_cbs->lb_destroy_policy_info(kbdev);
+
+	lb_quota_manager *lb_quota_cbs = kbase_hisi_get_lb_quota_cbs(kbdev);
+	KBASE_DEBUG_ASSERT(lb_quota_cbs != NULL);
+	lb_quota_cbs->quota_timer_cancel(&lb_quota_cbs->quota_timer);
+#endif
+
+	kbdev->hisi_dev_data.callbacks = NULL;
+}
+
+#ifdef CONFIG_HISI_LAST_BUFFER
+static void kbase_platform_request_quota(struct kbase_device *kbdev)
+{
+	lb_quota_manager *lb_quota_cbs = kbase_hisi_get_lb_quota_cbs(kbdev);
+	KBASE_DEBUG_ASSERT(lb_quota_cbs);
+
+	lb_quota_cbs->quota_timer_cancel(&lb_quota_cbs->quota_timer);
+
+	/* Request last buffer quota again if quota released. */
+	if (lb_quota_cbs->quota_released) {
+		lb_quota_cbs->requestQuota(kbdev);
+		lb_quota_cbs->quota_released = false;
+	}
+}
+
+static void kbase_platform_release_quota(struct kbase_device *kbdev)
+{
+	lb_quota_manager *lb_quota_cbs = kbase_hisi_get_lb_quota_cbs(kbdev);
+	KBASE_DEBUG_ASSERT(NULL != lb_quota_cbs);
+
+	lb_quota_cbs->quota_timer_start(&lb_quota_cbs->quota_timer);
+}
+#endif
 
 static int kbase_platform_init(struct kbase_device *kbdev)
 {
@@ -568,6 +712,11 @@ static int kbase_platform_init(struct kbase_device *kbdev)
 	kbase_dev = kbdev;
 #endif
 
+	/* Init the hisilicon platform related data first. */
+	if (kbase_platform_backend_init(kbdev)) {
+		pr_err("[mali] platform backend init failed.\n");
+		return 0;
+	}
 
 	kbdev->clk = devm_clk_get(dev, NULL);
 	if (IS_ERR(kbdev->clk)) {
@@ -586,8 +735,6 @@ static int kbase_platform_init(struct kbase_device *kbdev)
 
 	if (fhss_init(dev))
 		pr_err("[mali] Failed to init fhss\n");
-
-	kbdev->hisi_callbacks = (struct kbase_hisi_callbacks *)gpu_get_callbacks();
 
 #ifdef CONFIG_PM_DEVFREQ
 #ifdef CONFIG_HISI_HW_VOTE_GPU_FREQ
@@ -640,7 +787,10 @@ static int kbase_platform_init(struct kbase_device *kbdev)
 		pr_err("[mali]  NULL pointer [kbdev->devFreq]\n");
 		goto JUMP_DEVFREQ_THERMAL;
 	}
+/*lint -e565*/
+#pragma GCC diagnostic push
 
+#pragma GCC diagnostic ignored "-Wunused-variable"
 #ifdef CONFIG_DEVFREQ_THERMAL
 	{
 		struct devfreq_cooling_ops *callbacks;
@@ -660,7 +810,8 @@ static int kbase_platform_init(struct kbase_device *kbdev)
 		}
 	}
 #endif
-
+#pragma GCC diagnostic pop
+/*lint +e565*/
 	/* make devfreq function */
 	//mali_kbase_devfreq_profile.polling_ms = DEFAULT_POLLING_MS;
 #endif/*CONFIG_PM_DEVFREQ*/
@@ -673,6 +824,9 @@ static void kbase_platform_term(struct kbase_device *kbdev)
 #ifdef CONFIG_PM_DEVFREQ
 	devfreq_remove_device(kbdev->devfreq);
 #endif
+
+	/* term the hisilicon platform related data at last. */
+	kbase_platform_backend_term(kbdev);
 }
 
 kbase_platform_funcs_conf platform_funcs = {
@@ -682,12 +836,16 @@ kbase_platform_funcs_conf platform_funcs = {
 
 static int pm_callback_power_on(struct kbase_device *kbdev)
 {
+#ifdef CONFIG_HISI_LAST_BUFFER
+	kbase_platform_request_quota(kbdev);
+#endif
+
 #ifdef CONFIG_MALI_MIDGARD_RT_PM
 	int result;
 	int ret_val;
 	struct device *dev = kbdev->dev;
 
-	/* norr es */
+	/* es */
 	if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0014)) {
 		unsigned int value = 0;
 		/* read PERI_CTRL21 and set it's [0~16]bit to 0, disable mem shutdown by software */
@@ -697,7 +855,7 @@ static int pm_callback_power_on(struct kbase_device *kbdev)
 		value = readl(kbdev->pctrlreg + PERI_CTRL93) & MASK_DISABLEDSBYSF;
 		writel(value, kbdev->pctrlreg + PERI_CTRL93);
 	}
-	/* norr cs */
+	/* cs */
 	if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0015)) {
 		unsigned int value = 0;
 		/* read PERI_CTRL93 and set it's [1~17]bit to 0, disable deep sleep by software */
@@ -732,11 +890,15 @@ static int pm_callback_power_on(struct kbase_device *kbdev)
 
 static void pm_callback_power_off(struct kbase_device *kbdev)
 {
+#ifdef CONFIG_HISI_LAST_BUFFER
+	kbase_platform_release_quota(kbdev);
+#endif
+
 #ifdef CONFIG_MALI_MIDGARD_RT_PM
 	struct device *dev = kbdev->dev;
 	int ret = 0, retry = 0;
 
-	/* norr es */
+	/* es */
 	if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0014)) {
 		unsigned int value = 0;
 		/* read PERI_CTRL21 and set it's [0~16]bit to 1, enable mem shutdown by software */
@@ -746,7 +908,7 @@ static void pm_callback_power_off(struct kbase_device *kbdev)
 		value = readl(kbdev->pctrlreg + PERI_CTRL93) | MASK_ENABLEDSBYSF;
 		writel(value, kbdev->pctrlreg + PERI_CTRL93);
 	}
-	/* norr cs */
+	/* cs */
 	if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0015)) {
 		unsigned int value = 0;
 		/* read PERI_CTRL93 and set it's [1~17]bit to 1, enable deep sleep by software */
@@ -806,18 +968,28 @@ static void pm_callback_power_off(struct kbase_device *kbdev)
 #endif
 }
 
+#pragma GCC diagnostic push
+
+#pragma GCC diagnostic ignored "-Wunused-function"
 static int pm_callback_runtime_init(struct kbase_device *kbdev)
 {
 	pm_suspend_ignore_children(kbdev->dev, true);
 	pm_runtime_enable(kbdev->dev);
 	return 0;
 }
+#pragma GCC diagnostic pop
 
+#pragma GCC diagnostic push
+
+#pragma GCC diagnostic ignored "-Wunused-function"
 static void pm_callback_runtime_term(struct kbase_device *kbdev)
 {
 	pm_runtime_disable(kbdev->dev);
 }
+#pragma GCC diagnostic pop
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
 static void pm_callback_runtime_off(struct kbase_device *kbdev)
 {
 #ifdef CONFIG_PM_DEVFREQ
@@ -828,10 +1000,13 @@ static void pm_callback_runtime_off(struct kbase_device *kbdev)
 
 	kbase_platform_off(kbdev);
 }
+#pragma GCC diagnostic pop
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
 static int pm_callback_runtime_on(struct kbase_device *kbdev)
 {
-	/* norr es */
+	/*es */
 	if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0014)) {
 		unsigned int value = 0;
 		/* read PERI_CTRL21 and set it's [0~16]bit to 0, disable mem shutdown by software */
@@ -841,7 +1016,7 @@ static int pm_callback_runtime_on(struct kbase_device *kbdev)
 		value = readl(kbdev->pctrlreg + PERI_CTRL93) & MASK_DISABLEDSBYSF;
 		writel(value, kbdev->pctrlreg + PERI_CTRL93);
 	}
-	/* norr cs */
+	/* cs */
 	if (kbase_has_hi_feature(kbdev, KBASE_FEATURE_HI0015)) {
 		unsigned int value = 0;
 		/* read PERI_CTRL93 and set it's [1~17]bit to 0, disable deep sleep by software */
@@ -859,6 +1034,7 @@ static int pm_callback_runtime_on(struct kbase_device *kbdev)
 
 	return 0;
 }
+#pragma GCC diagnostic pop
 
 static inline void pm_callback_suspend(struct kbase_device *kbdev)
 {

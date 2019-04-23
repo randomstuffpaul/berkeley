@@ -30,6 +30,7 @@
 #include <huawei_platform/log/imonitor.h>
 #include <huawei_platform/dp_source/dp_dsm.h>
 #include <huawei_platform/dp_source/dp_debug.h>
+#include <huawei_platform/dp_source/dp_factory.h>
 
 #ifdef DP_DSM_ENABLE
 #undef HWLOG_TAG
@@ -41,9 +42,6 @@ HWLOG_REGIST();
 
 // for print debug log
 //#define DP_DSM_DEBUG
-
-// for replace imonitor with dmd
-//#define DP_DSM_USE_DMD_DEBUG
 
 #ifndef UNUSED
 #define UNUSED(x) ((void)(x))
@@ -137,8 +135,11 @@ HWLOG_REGIST();
 #define DP_DSM_SOURCE_SWITCH_NUM         (8)
 #define DP_DSM_EARLIEST_TIME_POINT(a, b) (((a) >= (b)) ? ((a) % (b)) : 0)
 
-//  error number
+// error number:
+// 1. hotplug retval
 #define DP_DSM_ERRNO_DSS_PWRON_FAILED    (0xFFFF)
+#define DP_DSM_ERRNO_HPD_NOT_EXISTED     (0xFFFF + 1)
+// 2. link training retval
 #define DP_DSM_ERRNO_DEVICE_SRS_FAILED   (0xFFFF)
 
 // from tca.h (vendor\hisi\ap\kernel\include\linux\hisi\contexthub)
@@ -394,6 +395,9 @@ typedef struct {
 #define DP_DSM_IMONITOR_DELAYED_TIME (0)
 #define DP_DSM_IMONITOR_PREPARE_PRIV ((NULL == data) ? g_dp_dsm_priv : data)
 
+#define DP_DSM_HPD_DELAYED_TIME  (3 * 1000)  // 3s
+#define DP_DSM_HPD_TIME_INTERVAL (10 * 1000) // 10s
+
 #define DP_DSM_GET_LINK_MIN_TIME(m,t) \
 	do { \
 		if (0 == m.tv_usec) { \
@@ -412,7 +416,12 @@ typedef struct {
 	struct list_head list_head;
 
 	struct mutex lock;
-	struct delayed_work work;
+	struct delayed_work imonitor_work;
+
+	// check whether hpd existed or not
+	struct delayed_work hpd_work;
+	bool hpd_existed;
+	unsigned long hpd_jiffies;
 
 	uint32_t report_num[DP_IMONITOR_TYPE_NUM];
 	unsigned long report_jiffies;
@@ -469,8 +478,8 @@ static dp_imonitor_event_id_t imonitor_event_id[] = {
 
 static dp_dmd_error_no_t dmd_error_no[] = {
 	// NOTE: 936000100 and 936000101 have been discarded
-	{ DP_DMD_LINK_SUCCESS, DSM_DP_BASIC_DISPLAY_TIME_NO },
-	{ DP_DMD_LINK_FAILED,  DSM_DP_BASIC_EXTERNAL_DISPLAY_NO },
+	// { DP_DMD_LINK_SUCCESS, DSM_DP_BASIC_DISPLAY_TIME_NO },     // 936000101
+	// { DP_DMD_LINK_FAILED,  DSM_DP_BASIC_EXTERNAL_DISPLAY_NO }, // 936000100
 };
 
 static struct dsm_dev dp_dsm = {
@@ -501,6 +510,7 @@ static const unsigned char data_bin2ascii[17] = "0123456789ABCDEF";
 #define DP_DSM_EDID_EXT_HEADER       (0x02)
 #define DP_DSM_EDID_EXT_BLOCKS_INDEX (126)
 #define DP_DSM_EDID_EXT_BLOCKS_MAX   (3)
+#define DP_DSM_PARAM_NAME_MAX        (16)
 
 static const uint8_t g_edid_v1_header[DP_DSM_EDID_HEADER_SIZE] = {0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00};
 
@@ -538,6 +548,13 @@ static const uint8_t g_edid_v1_header[DP_DSM_EDID_HEADER_SIZE] = {0x00, 0xff, 0x
 			p->f = false; \
 			dp_add_info_to_imonitor_list(t, p); \
 		} \
+	} while(0)
+
+#define DP_DSM_CHECK_LINK_STATE(p, s) (p->hotplug_state & (1 << s))
+#define DP_DSM_REPORT_LINK_STATE(p, s) \
+	do { \
+		dp_link_state_event(s); \
+		p->last_hotplug_state |= (1 << s); \
 	} while(0)
 
 // param time:
@@ -661,8 +678,9 @@ static int dp_data_bin_to_str(char *dst, int dst_len, uint8_t *src, int src_len,
 	return 0;
 }
 
-static void dp_set_hotplug_state(dp_dsm_priv_t *priv, dp_link_state_t state)
+void dp_set_hotplug_state(dp_link_state_t state)
 {
+	dp_dsm_priv_t *priv = g_dp_dsm_priv;
 	int old_state = 0;
 
 	if (NULL == priv) {
@@ -680,6 +698,7 @@ static void dp_set_hotplug_state(dp_dsm_priv_t *priv, dp_link_state_t state)
 	hwlog_info("%s: last_hotplug_state=0x%x, hotplug_state old=0x%x, new=0x%x.\n", __func__,
 		priv->last_hotplug_state, old_state, priv->hotplug_state);
 }
+EXPORT_SYMBOL_GPL(dp_set_hotplug_state);
 
 static void dp_report_hotplug_state(dp_dsm_priv_t *priv)
 {
@@ -690,29 +709,47 @@ static void dp_report_hotplug_state(dp_dsm_priv_t *priv)
 
 	hwlog_info("%s: hotplug_state=0x%x.\n", __func__, priv->hotplug_state);
 	if (priv->hotplug_retval < 0) { // hotplug failed
-		if (priv->hotplug_state & (1 << DP_LINK_STATE_LINK_FAILED)) {
-			dp_link_state_event(DP_LINK_STATE_LINK_FAILED);
-			priv->last_hotplug_state |= (1 << DP_LINK_STATE_LINK_FAILED);
-		} else if (priv->hotplug_state & (1 << DP_LINK_STATE_AUX_FAILED)) {
-			dp_link_state_event(DP_LINK_STATE_AUX_FAILED);
-			priv->last_hotplug_state |= (1 << DP_LINK_STATE_AUX_FAILED);
+		// for MMIE test
+		if (dp_factory_mode_is_enable()) {
+			if (DP_DSM_CHECK_LINK_STATE(priv, DP_LINK_STATE_EDID_FAILED)) { // 1024*768
+				DP_DSM_REPORT_LINK_STATE(priv, DP_LINK_STATE_EDID_FAILED);
+				goto ret_out;
+			} else if (DP_DSM_CHECK_LINK_STATE(priv, DP_LINK_STATE_SAFE_MODE)
+				&& (priv->hotplug_width == DP_SAFE_MODE_DISPLAY_WIDTH)
+				&& (priv->hotplug_high == DP_SAFE_MODE_DISPLAY_HIGH)) { // safe mode, 640*480
+				DP_DSM_REPORT_LINK_STATE(priv, DP_LINK_STATE_SAFE_MODE);
+				goto ret_out;
+			} else if (DP_DSM_CHECK_LINK_STATE(priv, DP_LINK_STATE_INVALID_COMBINATIONS)) {
+				DP_DSM_REPORT_LINK_STATE(priv, DP_LINK_STATE_INVALID_COMBINATIONS);
+				goto ret_out;
+			} else if (DP_DSM_CHECK_LINK_STATE(priv, DP_LINK_STATE_LINK_REDUCE_RATE)) {
+				DP_DSM_REPORT_LINK_STATE(priv, DP_LINK_STATE_LINK_REDUCE_RATE);
+				goto ret_out;
+			}
+		}
+
+		if (DP_DSM_CHECK_LINK_STATE(priv, DP_LINK_STATE_LINK_FAILED)) {
+			DP_DSM_REPORT_LINK_STATE(priv, DP_LINK_STATE_LINK_FAILED);
+		} else if (DP_DSM_CHECK_LINK_STATE(priv, DP_LINK_STATE_AUX_FAILED)) {
+			DP_DSM_REPORT_LINK_STATE(priv, DP_LINK_STATE_AUX_FAILED);
 		} else {
 			hwlog_info("%s: hotplug failed, hotplug_state=0x%x, skip!\n", __func__, priv->hotplug_state);
 		}
 	} else { // hotplug success
-		if (priv->hotplug_state & (1 << DP_LINK_STATE_EDID_FAILED)) { // 1024*768
-			dp_link_state_event(DP_LINK_STATE_EDID_FAILED);
-			priv->last_hotplug_state |= (1 << DP_LINK_STATE_EDID_FAILED);
-		} else if ((priv->hotplug_state & (1 << DP_LINK_STATE_SAFE_MODE))
+		if (DP_DSM_CHECK_LINK_STATE(priv, DP_LINK_STATE_EDID_FAILED)) { // 1024*768
+			DP_DSM_REPORT_LINK_STATE(priv, DP_LINK_STATE_EDID_FAILED);
+		} else if (DP_DSM_CHECK_LINK_STATE(priv, DP_LINK_STATE_SAFE_MODE)
 			&& (priv->hotplug_width == DP_SAFE_MODE_DISPLAY_WIDTH)
 			&& (priv->hotplug_high == DP_SAFE_MODE_DISPLAY_HIGH)) { // safe mode, 640*480
-			dp_link_state_event(DP_LINK_STATE_SAFE_MODE);
-			priv->last_hotplug_state |= (1 << DP_LINK_STATE_SAFE_MODE);
+			DP_DSM_REPORT_LINK_STATE(priv, DP_LINK_STATE_SAFE_MODE);
 		} else {
 			hwlog_info("%s: hotplug success, hotplug_state=0x%x, skip!\n", __func__, priv->hotplug_state);
 		}
 	}
+
+ret_out:
 	priv->hotplug_state = 0;
+	dp_factory_set_link_event_no(priv->last_hotplug_state, false, NULL, priv->hotplug_retval);
 }
 
 static int dp_add_info_to_imonitor_list(dp_imonitor_type_t type, dp_dsm_priv_t *data)
@@ -720,11 +757,6 @@ static int dp_add_info_to_imonitor_list(dp_imonitor_type_t type, dp_dsm_priv_t *
 	dp_dsm_priv_t *priv = NULL;
 	dp_hotplug_info_t *hotplug = NULL;
 	int ret = 0;
-
-#ifdef DP_DSM_USE_DMD_DEBUG
-	dp_imonitor_report(type, NULL);
-	return 0;
-#endif
 
 	if (NULL == data) {
 		hwlog_err("%s: data is NULL!!!\n", __func__);
@@ -794,7 +826,7 @@ static void dp_imonitor_report_info_work(struct work_struct *work)
 		return;
 	}
 
-	report = container_of(work, dp_imonitor_report_info_t, work.work);
+	report = container_of(work, dp_imonitor_report_info_t, imonitor_work.work);
 
 	mutex_lock(&(g_imonitor_report.lock));
 	if (!time_is_after_jiffies(g_imonitor_report.report_jiffies)) {
@@ -836,6 +868,25 @@ static void dp_imonitor_report_info_work(struct work_struct *work)
 	}
 	hwlog_info("%s: imonitor report success(%d).\n", __func__, list_count);
 	mutex_unlock(&(g_imonitor_report.lock));
+}
+
+static void dp_hpd_check_work(struct work_struct *work)
+{
+	dp_imonitor_report_info_t *report = NULL;
+	dp_dsm_priv_t *priv = g_dp_dsm_priv;
+
+	if ((NULL == work) || (NULL == priv)) {
+		hwlog_err("%s: invalid argument!!!\n", __func__);
+		return;
+	}
+
+	report = container_of(work, dp_imonitor_report_info_t, hpd_work.work);
+	if (!report->hpd_existed) {
+		hwlog_err("%s: hpd not existed!\n", __func__);
+		priv->hotplug_retval = -DP_DSM_ERRNO_HPD_NOT_EXISTED;
+		DP_DSM_REPORT_LINK_STATE(priv, DP_LINK_STATE_HPD_NOT_EXISTED);
+		dp_factory_set_link_event_no(priv->last_hotplug_state, false, NULL, priv->hotplug_retval);
+	}
 }
 
 static void dp_clear_timing_info(dp_dsm_priv_t *priv)
@@ -1010,6 +1061,7 @@ static void dp_typec_cable_in(dp_dsm_priv_t *priv, uint8_t mode_type)
 
 	hwlog_info("typec cable in.\n");
 	dp_link_state_event(DP_LINK_STATE_CABLE_IN);
+	dp_factory_set_link_event_no(0, true, NULL, 0);
 	dp_clear_priv_data(priv);
 	dp_reinit_priv_data(priv);
 
@@ -1019,6 +1071,17 @@ static void dp_typec_cable_in(dp_dsm_priv_t *priv, uint8_t mode_type)
 	do_gettimeofday(&(priv->tpyec_in_time));
 #endif
 	priv->tpyec_cable_type = mode_type;
+
+	// delayed work to check whether hpd existed or not
+	if (dp_factory_mode_is_enable()) {
+		if ((0 == g_imonitor_report.hpd_jiffies) || !time_is_after_jiffies(g_imonitor_report.hpd_jiffies)) {
+			cancel_delayed_work_sync(&(g_imonitor_report.hpd_work));
+
+			g_imonitor_report.hpd_jiffies = 0;
+			g_imonitor_report.hpd_existed = false;
+			schedule_delayed_work(&(g_imonitor_report.hpd_work), msecs_to_jiffies(DP_DSM_HPD_DELAYED_TIME));
+		}
+	}
 }
 
 static void dp_typec_cable_out(dp_dsm_priv_t *priv)
@@ -1032,6 +1095,10 @@ static void dp_typec_cable_out(dp_dsm_priv_t *priv)
 
 	hwlog_info("typec cable out.\n");
 	dp_link_state_event(DP_LINK_STATE_CABLE_OUT);
+	if (dp_factory_mode_is_enable()) {
+		cancel_delayed_work_sync(&(g_imonitor_report.hpd_work));
+	}
+
 #ifdef DP_DSM_DEBUG
 	hwlog_info("%s: first_dev_type=%u\n",  __func__, priv->tca_dev_type[0]);
 	hwlog_info("%s: second_dev_type=%u\n", __func__, priv->tca_dev_type[1]);
@@ -1068,8 +1135,8 @@ static void dp_typec_cable_out(dp_dsm_priv_t *priv)
 	}
 
 	// delayed work to avoid report info in irq handler
-	cancel_delayed_work_sync(&(g_imonitor_report.work));
-	schedule_delayed_work(&(g_imonitor_report.work), msecs_to_jiffies(DP_DSM_IMONITOR_DELAYED_TIME));
+	cancel_delayed_work_sync(&(g_imonitor_report.imonitor_work));
+	schedule_delayed_work(&(g_imonitor_report.imonitor_work), msecs_to_jiffies(DP_DSM_IMONITOR_DELAYED_TIME));
 }
 
 static bool dp_is_irq_hpd(uint8_t type)
@@ -1112,7 +1179,9 @@ static void dp_set_irq_info(dp_dsm_priv_t *priv, uint8_t irq_type, uint8_t dev_t
 			// 2. IN/OUT event: the total number reached six times
 			priv->hpd_repeated_num++;
 			if (priv->hpd_repeated_num >= DP_HPD_REPEATED_THRESHOLD) {
-				dp_link_state_event(DP_LINK_STATE_MULTI_HPD);
+				if (!dp_factory_mode_is_enable()) {
+					dp_link_state_event(DP_LINK_STATE_MULTI_HPD);
+				}
 				priv->hpd_repeated_num = 0;
 			}
 
@@ -1154,6 +1223,8 @@ void dp_imonitor_set_pd_event(uint8_t irq_type, uint8_t cur_mode, uint8_t mode_t
 	// dp cable in, start
 	if (!dp_connected_by_typec(cur_mode) && dp_connected_by_typec(mode_type)) {
 		dp_typec_cable_in(priv, mode_type);
+	} else {
+		g_imonitor_report.hpd_existed = true;
 	}
 	dp_set_irq_info(priv, irq_type, dev_type);
 
@@ -1591,6 +1662,9 @@ static void dp_set_param_basic_info(dp_dsm_priv_t *priv, dp_imonitor_param_t par
 		dp_reset_lanes_rate_force(priv, data, NULL);
 #endif
 		hotplug->lanes = *(uint8_t *)data;
+		if (priv->is_hotplug_running) {
+			dp_factory_set_link_rate_lanes(hotplug->rate, hotplug->lanes, hotplug->max_rate, hotplug->max_lanes);
+		}
 		break;
 	case DP_PARAM_TU:
 		dp_set_link_tu(hotplug, *(int *)data);
@@ -1610,21 +1684,23 @@ static void dp_set_param_basic_info(dp_dsm_priv_t *priv, dp_imonitor_param_t par
 		break;
 	case DP_PARAM_SAFE_MODE:
 		hotplug->safe_mode = *(bool *)data;
-		dp_set_hotplug_state(priv, DP_LINK_STATE_SAFE_MODE);
+		dp_set_hotplug_state(DP_LINK_STATE_SAFE_MODE);
 		break;
 	case DP_PARAM_READ_EDID_FAILED:
 		hotplug->read_edid_retval = *(int *)data;
-		dp_set_hotplug_state(priv, DP_LINK_STATE_EDID_FAILED);
+		dp_set_hotplug_state(DP_LINK_STATE_EDID_FAILED);
 		break;
 	case DP_PARAM_LINK_TRAINING_FAILED:
 		priv->link_training_retval = *(int *)data;
 		hotplug->link_training_retval = priv->link_training_retval;
 		if (priv->is_hotplug_running) {
-			dp_set_hotplug_state(priv, DP_LINK_STATE_LINK_FAILED);
+			dp_set_hotplug_state(DP_LINK_STATE_LINK_FAILED);
 		} else {
 			// 1. link retraining failed
 			// 2. aux rw failed
-			dp_link_state_event(DP_LINK_STATE_LINK_FAILED);
+			if (!dp_factory_mode_is_enable()) {
+				dp_link_state_event(DP_LINK_STATE_LINK_FAILED);
+			}
 		}
 		break;
 	default:
@@ -1669,7 +1745,9 @@ static void dp_set_param_hdcp(dp_dsm_priv_t *priv, dp_imonitor_param_t param, vo
 	case DP_PARAM_HDCP_KEY_F:
 		do_gettimeofday(&(priv->hdcp_time));
 		priv->hdcp_key = HDCP_KEY_FAILED;
-		dp_link_state_event(DP_LINK_STATE_HDCP_FAILED);
+		if (!dp_factory_mode_is_enable()) {
+			dp_link_state_event(DP_LINK_STATE_HDCP_FAILED);
+		}
 
 		// hdcp authentication failed
 #ifndef DP_DEBUG_ENABLE
@@ -1743,7 +1821,9 @@ static void dp_set_link_retraining(dp_dsm_priv_t *priv, int *retval)
 
 	// dp link failed in func dp_device_srs()
 	if (priv->link_retraining_retval < 0) {
-		dp_link_state_event(DP_LINK_STATE_LINK_FAILED);
+		if (!dp_factory_mode_is_enable()) {
+			dp_link_state_event(DP_LINK_STATE_LINK_FAILED);
+		}
 
 #ifndef DP_DEBUG_ENABLE
 		DP_DSM_ADD_TO_IMONITOR_LIST(priv, rcf_link_retraining_info, DP_IMONITOR_LINK_TRAINING);
@@ -1838,7 +1918,7 @@ void dp_imonitor_set_param_aux_rw(bool rw, bool i2c, uint32_t addr, uint32_t len
 	priv->aux_rw.retval = retval;
 
 	if (priv->is_hotplug_running) {
-		dp_set_hotplug_state(priv, DP_LINK_STATE_AUX_FAILED);
+		dp_set_hotplug_state(DP_LINK_STATE_AUX_FAILED);
 	}
 }
 EXPORT_SYMBOL_GPL(dp_imonitor_set_param_aux_rw);
@@ -2142,22 +2222,27 @@ int dp_get_hotplug_result(char *buffer, int size)
 					i, "failed", datetime, priv->hotplug_retval);
 			}
 		} else {
-			ret += dp_debug_append_info(buffer, size, "[%02d] %-8s %-10s", i, "success", datetime);
+			if (hotplug->hotplug_retval < 0) {
+				ret += dp_debug_append_info(buffer, size, "[%02d] %-8s %-10s(hotplug failed %d)\n",
+					i,  "failed", datetime, hotplug->hotplug_retval);
+			} else {
+				ret += dp_debug_append_info(buffer, size, "[%02d] %-8s %-10s", i, "success", datetime);
 
-			dp_timeval_to_time_str(hotplug->time[DP_PARAM_TIME_LINK_SUCC - DP_PARAM_TIME],
-				"link_succ_time", datetime, DP_DSM_DATETIME_SIZE);
-			ret += dp_debug_append_info(buffer, size, " %-14s", datetime);
+				dp_timeval_to_time_str(hotplug->time[DP_PARAM_TIME_LINK_SUCC - DP_PARAM_TIME],
+					"link_succ_time", datetime, DP_DSM_DATETIME_SIZE);
+				ret += dp_debug_append_info(buffer, size, " %-14s", datetime);
 
-			dp_timeval_to_time_str(hotplug->time[DP_PARAM_TIME_STOP - DP_PARAM_TIME],
-				"stop_time", datetime, DP_DSM_DATETIME_SIZE);
-			ret += dp_debug_append_info(buffer, size, " %-9s", datetime);
+				dp_timeval_to_time_str(hotplug->time[DP_PARAM_TIME_STOP - DP_PARAM_TIME],
+					"stop_time", datetime, DP_DSM_DATETIME_SIZE);
+				ret += dp_debug_append_info(buffer, size, " %-9s", datetime);
 
-			ret += dp_debug_append_info(buffer, size, " %-6s %-5u %-5u %-5u %-4u %-5u %-5u %-9s %-10s %-6s\n",
-				hotplug->source_mode ? "same" : "diff",
-				hotplug->width, hotplug->high, hotplug->fps, hotplug->rate, hotplug->lanes, hotplug->basic_audio,
-				hotplug->safe_mode ? "safe" : "normal",
-				(0 == hotplug->read_edid_retval) ? "success" : "failed",
-				(hotplug->tu_fail >= DP_DSM_TU_FAIL) ? "reduce" : "normal");
+				ret += dp_debug_append_info(buffer, size, " %-6s %-5u %-5u %-5u %-4u %-5u %-5u %-9s %-10s %-6s\n",
+					hotplug->source_mode ? "same" : "diff",
+					hotplug->width, hotplug->high, hotplug->fps, hotplug->rate, hotplug->lanes, hotplug->basic_audio,
+					hotplug->safe_mode ? "safe" : "normal",
+					(0 == hotplug->read_edid_retval) ? "success" : "failed",
+					(hotplug->tu_fail >= DP_DSM_TU_FAIL) ? "reduce" : "normal");
+			}
 		}
 
 		i++;
@@ -2182,6 +2267,11 @@ int dp_get_hotplug_result(char *buffer, int size)
 	// dp link failed in func dp_device_srs()
 	if (priv->link_retraining_retval < 0) {
 		ret += dp_debug_append_info(buffer, size, "dp resume failed by press powerkey.\n");
+	}
+
+	// hpd not existed
+	if (!g_imonitor_report.hpd_existed) {
+		ret += dp_debug_append_info(buffer, size, "hpd not existed.\n");
 	}
 
 err_out:
@@ -2342,57 +2432,43 @@ static int dp_imonitor_prepare_basic_info(struct imonitor_eventobj *obj, void *d
 	hwlog_info("%s: edid_ext_blocks=0x%02x\n",    __func__, hotplug->edid_check.u32.ext_blocks);
 #endif
 
-#ifdef DP_DSM_USE_DMD_DEBUG
-	dp_dmd_report(DP_DMD_LINK_SUCCESS, "dp basic_info tpyec:%d, %s %s/%s, width/high/fps:%u/%u/%u, rate/lanes:%u/%u/%u/%u, tu:%d/%d, safe_mode:%d/%d/%08x/%08x, vs_pe:%08x",
-		priv->tpyec_cable_type,
-		hotplug->source_mode ? "same" : "diff",
-		hotplug->mid, hotplug->monitor,
-		hotplug->width, hotplug->high, hotplug->fps,
-		hotplug->max_rate, hotplug->max_lanes, hotplug->rate, hotplug->lanes,
-		hotplug->tu, hotplug->tu_fail,
-		hotplug->safe_mode, hotplug->read_edid_retval,
-		hotplug->edid_check.u32.header_flag, hotplug->edid_check.u32.checksum_flag,
-		hotplug->vp.vswing_preemp);
-	ret = -EFAULT;
-#else
-	ret += imonitor_set_param(obj, E936000102_CABLETYPE_TINYINT, (long)priv->tpyec_cable_type);
+	ret += imonitor_set_param_integer_v2(obj, "CableType", (long)priv->tpyec_cable_type);
 
-	ret += imonitor_set_param(obj, E936000102_MID_VARCHAR,       (long)hotplug->mid);
-	ret += imonitor_set_param(obj, E936000102_MONITOR_VARCHAR,   (long)hotplug->monitor);
-	ret += imonitor_set_param(obj, E936000102_WIDTH_SMALLINT,    (long)hotplug->width);
-	ret += imonitor_set_param(obj, E936000102_HIGH_SMALLINT,     (long)hotplug->high);
-	ret += imonitor_set_param(obj, E936000102_MAXWIDTH_SMALLINT, (long)hotplug->max_width);
-	ret += imonitor_set_param(obj, E936000102_MAXHIGH_SMALLINT,  (long)hotplug->max_high);
-	ret += imonitor_set_param(obj, E936000102_PIXELCLK_INT,      (long)hotplug->pixel_clock);
-	ret += imonitor_set_param(obj, E936000102_FPS_TINYINT,       (long)hotplug->fps);
+	ret += imonitor_set_param_string_v2(obj,  "Mid",      hotplug->mid);
+	ret += imonitor_set_param_string_v2(obj,  "Monitor",  hotplug->monitor);
+	ret += imonitor_set_param_integer_v2(obj, "Width",    (long)hotplug->width);
+	ret += imonitor_set_param_integer_v2(obj, "High",     (long)hotplug->high);
+	ret += imonitor_set_param_integer_v2(obj, "MaxWidth", (long)hotplug->max_width);
+	ret += imonitor_set_param_integer_v2(obj, "MaxHigh",  (long)hotplug->max_high);
+	ret += imonitor_set_param_integer_v2(obj, "PixelClk", (long)hotplug->pixel_clock);
+	ret += imonitor_set_param_integer_v2(obj, "Fps",      (long)hotplug->fps);
 
-	ret += imonitor_set_param(obj, E936000102_MAXRATE_TINYINT,   (long)hotplug->max_rate);
-	ret += imonitor_set_param(obj, E936000102_MAXLANES_TINYINT,  (long)hotplug->max_lanes);
-	ret += imonitor_set_param(obj, E936000102_LINKRATE_TINYINT,  (long)hotplug->rate);
-	ret += imonitor_set_param(obj, E936000102_LINKLANES_TINYINT, (long)hotplug->lanes);
-	ret += imonitor_set_param(obj, E936000102_TU_INT,            (long)hotplug->tu);
-	ret += imonitor_set_param(obj, E936000102_TUFAIL_INT,        (long)hotplug->tu_fail);
-	ret += imonitor_set_param(obj, E936000102_VSPE_INT,          (long)hotplug->vp.vswing_preemp);
+	ret += imonitor_set_param_integer_v2(obj, "MaxRate",   (long)hotplug->max_rate);
+	ret += imonitor_set_param_integer_v2(obj, "MaxLanes",  (long)hotplug->max_lanes);
+	ret += imonitor_set_param_integer_v2(obj, "LinkRate",  (long)hotplug->rate);
+	ret += imonitor_set_param_integer_v2(obj, "LinkLanes", (long)hotplug->lanes);
+	ret += imonitor_set_param_integer_v2(obj, "Tu",        (long)hotplug->tu);
+	ret += imonitor_set_param_integer_v2(obj, "TuFail",    (long)hotplug->tu_fail);
+	ret += imonitor_set_param_integer_v2(obj, "VsPe",      (long)hotplug->vp.vswing_preemp);
 
-	ret += imonitor_set_param(obj, E936000102_SRCMODE_BIT,       (long)hotplug->source_mode);
-	ret += imonitor_set_param(obj, E936000102_USERMODE_TINYINT,  (long)hotplug->user_mode);
-	ret += imonitor_set_param(obj, E936000102_USERFMT_TINYINT,   (long)hotplug->user_format);
-	ret += imonitor_set_param(obj, E936000102_AUDIO_TINYINT,     (long)hotplug->basic_audio);
+	ret += imonitor_set_param_integer_v2(obj, "SrcMode",  (long)hotplug->source_mode);
+	ret += imonitor_set_param_integer_v2(obj, "UserMode", (long)hotplug->user_mode);
+	ret += imonitor_set_param_integer_v2(obj, "UserFmt",  (long)hotplug->user_format);
+	ret += imonitor_set_param_integer_v2(obj, "Audio",    (long)hotplug->basic_audio);
 
-	ret += imonitor_set_param(obj, E936000102_EDIDVER_SMALLINT,  (long)hotplug->edid_version);
-	ret += imonitor_set_param(obj, E936000102_DPCDVER_TINYINT,   (long)hotplug->dpcd_revision);
+	ret += imonitor_set_param_integer_v2(obj, "EdidVer", (long)hotplug->edid_version);
+	ret += imonitor_set_param_integer_v2(obj, "DpcdVer", (long)hotplug->dpcd_revision);
 
-	ret += imonitor_set_param(obj, E936000102_SAFEMODE_BIT,      (long)hotplug->safe_mode);
-	ret += imonitor_set_param(obj, E936000102_REDIDRET_INT,      (long)hotplug->read_edid_retval);
+	ret += imonitor_set_param_integer_v2(obj, "SafeMode", (long)hotplug->safe_mode);
+	ret += imonitor_set_param_integer_v2(obj, "RedidRet", (long)hotplug->read_edid_retval);
 
-	ret += imonitor_set_param(obj, E936000102_EDIDNUM_INT,       (long)hotplug->current_edid_num);
-	ret += imonitor_set_param(obj, E936000102_HEADNUM_INT,       (long)hotplug->edid_check.u32.header_num);
-	ret += imonitor_set_param(obj, E936000102_CHKSNUM_INT,       (long)hotplug->edid_check.u32.checksum_num);
-	ret += imonitor_set_param(obj, E936000102_HEADFLAG_INT,      (long)hotplug->edid_check.u32.header_flag);
-	ret += imonitor_set_param(obj, E936000102_CHKSFLAG_INT,      (long)hotplug->edid_check.u32.checksum_flag);
-	ret += imonitor_set_param(obj, E936000102_EXTBLKNUM_TINYINT, (long)hotplug->edid_check.u32.ext_blocks_num);
-	ret += imonitor_set_param(obj, E936000102_EXTBLKS_TINYINT,   (long)hotplug->edid_check.u32.ext_blocks);
-#endif
+	ret += imonitor_set_param_integer_v2(obj, "EdidNum",   (long)hotplug->current_edid_num);
+	ret += imonitor_set_param_integer_v2(obj, "HeadNum",   (long)hotplug->edid_check.u32.header_num);
+	ret += imonitor_set_param_integer_v2(obj, "ChksNum",   (long)hotplug->edid_check.u32.checksum_num);
+	ret += imonitor_set_param_integer_v2(obj, "HeadFlag",  (long)hotplug->edid_check.u32.header_flag);
+	ret += imonitor_set_param_integer_v2(obj, "ChksFlag",  (long)hotplug->edid_check.u32.checksum_flag);
+	ret += imonitor_set_param_integer_v2(obj, "ExtBlkNum", (long)hotplug->edid_check.u32.ext_blocks_num);
+	ret += imonitor_set_param_integer_v2(obj, "ExtBlks",   (long)hotplug->edid_check.u32.ext_blocks);
 
 	return ret;
 }
@@ -2440,19 +2516,14 @@ static int dp_imonitor_prepare_time_info(struct imonitor_eventobj *obj, void *da
 	hwlog_info("%s: source_switch=%s\n",     __func__, source_switch);
 #endif
 
-#ifdef DP_DSM_USE_DMD_DEBUG
-	dp_dmd_report(DP_DMD_LINK_SUCCESS, "dp time_info typec:%s~%s, link:%s/%s", in_time, out_time, same_time, diff_time);
-	ret = -EFAULT;
-#else
-	ret += imonitor_set_param(obj, E936000103_INTIME_DATETIME,   (long)in_time);
-	ret += imonitor_set_param(obj, E936000103_OUTTIME_DATETIME,  (long)out_time);
-	ret += imonitor_set_param(obj, E936000103_LINKTIME_DATETIME, (long)link_time);
-	ret += imonitor_set_param(obj, E936000103_SAMETIME_DATETIME, (long)same_time);
-	ret += imonitor_set_param(obj, E936000103_DIFFTIME_DATETIME, (long)diff_time);
+	ret += imonitor_set_param_string_v2(obj, "InTime",   in_time);
+	ret += imonitor_set_param_string_v2(obj, "OutTime",  out_time);
+	ret += imonitor_set_param_string_v2(obj, "LinkTime", link_time);
+	ret += imonitor_set_param_string_v2(obj, "SameTime", same_time);
+	ret += imonitor_set_param_string_v2(obj, "DiffTime", diff_time);
 
-	ret += imonitor_set_param(obj, E936000103_SWNUM_INT,     (long)priv->source_switch_num);
-	ret += imonitor_set_param(obj, E936000103_SRCSW_VARCHAR, (long)source_switch);
-#endif
+	ret += imonitor_set_param_integer_v2(obj, "SwNum", (long)priv->source_switch_num);
+	ret += imonitor_set_param_string_v2(obj,  "SrcSw", source_switch);
 
 	// the key information of the last day
 	if (g_imonitor_report.report_skip_existed) {
@@ -2479,10 +2550,9 @@ static int dp_imonitor_prepare_extend_info(struct imonitor_eventobj *obj, void *
 	dp_dsm_priv_t *priv = DP_DSM_IMONITOR_PREPARE_PRIV;
 	dp_hotplug_info_t *hotplug = NULL;
 	char edid[DP_DSM_EDID_BLOCK_SIZE * DP_DSM_BIN_TO_STR_TIMES + 1] = {0};
+	char param[DP_DSM_PARAM_NAME_MAX] = {0};
 	int ret = 0;
-#ifndef DP_DSM_USE_DMD_DEBUG
 	int i = 0;
-#endif
 
 	DP_DSM_CHECK_HOTPLUG_PTR_R(priv, obj);
 #ifdef DP_DSM_DEBUG
@@ -2491,24 +2561,21 @@ static int dp_imonitor_prepare_extend_info(struct imonitor_eventobj *obj, void *
 	hwlog_info("%s: edid_checksum_flag=0x%08x\n", __func__, hotplug->edid_check.u32.checksum_flag);
 #endif
 
-#ifdef DP_DSM_USE_DMD_DEBUG
-	//hwlog_info("%s: not need dmd report, skip!!!\n", __func__);
-	ret = -EFAULT;
-#else
-	ret += imonitor_set_param(obj, E936000104_EDIDNUM_INT,  (long)hotplug->current_edid_num);
-	ret += imonitor_set_param(obj, E936000104_HEADFLAG_INT, (long)hotplug->edid_check.u32.header_flag);
-	ret += imonitor_set_param(obj, E936000104_CHKSFLAG_INT, (long)hotplug->edid_check.u32.checksum_flag);
+	ret += imonitor_set_param_integer_v2(obj, "EdidNum",  (long)hotplug->current_edid_num);
+	ret += imonitor_set_param_integer_v2(obj, "HeadFlag", (long)hotplug->edid_check.u32.header_flag);
+	ret += imonitor_set_param_integer_v2(obj, "ChksFlag", (long)hotplug->edid_check.u32.checksum_flag);
 
 	// dp edid block info
 	for (i = 0; i < hotplug->current_edid_num; i++) {
 		dp_data_bin_to_str(edid, DP_DSM_EDID_BLOCK_SIZE * DP_DSM_BIN_TO_STR_TIMES + 1,
 			hotplug->edid[i], DP_DSM_EDID_BLOCK_SIZE, DP_DSM_BIN_TO_STR_SHIFT4);
-		ret += imonitor_set_param(obj, E936000104_EDIDBLK0_VARCHAR + i, (long)edid);
+
+		snprintf(param, (unsigned long)DP_DSM_PARAM_NAME_MAX, "EdidBlk%d", i);
+		ret += imonitor_set_param_string_v2(obj, param, edid);
 #ifdef DP_DSM_DEBUG
 		hwlog_info("%s: edid[%d]=%s\n", __func__, i, edid);
 #endif
 	}
-#endif
 
 	return ret;
 }
@@ -2564,32 +2631,22 @@ static int dp_imonitor_prepare_hpd_info(struct imonitor_eventobj *obj, void *dat
 	hwlog_info("%s: source_switch=%s\n",     __func__, source_switch);
 #endif
 
-#ifdef DP_DSM_USE_DMD_DEBUG
-	dp_dmd_report(DP_DMD_LINK_FAILED, "dp may be display failed %s~%s, event:%u/%d, hpd:%d/%d/%d/%d, dev_type:%u/%u, link_num:%d",
-		in_time, out_time,
-		priv->tpyec_cable_type, priv->event_num,
-		priv->irq_hpd_num, priv->irq_short_num, priv->dp_in_num, priv->dp_out_num,
-		priv->tca_dev_type[0], priv->tca_dev_type[1],
-		priv->link_retraining_num);
-	ret = -EFAULT;
-#else
-	ret += imonitor_set_param(obj, E936000105_INTIME_DATETIME,  (long)in_time);
-	ret += imonitor_set_param(obj, E936000105_OUTTIME_DATETIME, (long)out_time);
+	ret += imonitor_set_param_string_v2(obj, "InTime",  in_time);
+	ret += imonitor_set_param_string_v2(obj, "OutTime", out_time);
 
-	ret += imonitor_set_param(obj, E936000105_EVTNUM_INT,        (long)priv->event_num);
-	ret += imonitor_set_param(obj, E936000105_CABLETYPE_TINYINT, (long)priv->tpyec_cable_type);
-	ret += imonitor_set_param(obj, E936000105_HPDNUM_INT,        (long)priv->irq_hpd_num);
-	ret += imonitor_set_param(obj, E936000105_IRQNUM_INT,        (long)priv->irq_short_num);
-	ret += imonitor_set_param(obj, E936000105_DPINNUM_INT,       (long)priv->dp_in_num);
-	ret += imonitor_set_param(obj, E936000105_DPOUTNUM_INT,      (long)priv->dp_out_num);
-	ret += imonitor_set_param(obj, E936000105_LINKNUM_INT,       (long)priv->link_retraining_num);
-	ret += imonitor_set_param(obj, E936000105_DEVTYPE_VARCHAR,   (long)dev_type);
+	ret += imonitor_set_param_integer_v2(obj, "EvtNum",    (long)priv->event_num);
+	ret += imonitor_set_param_integer_v2(obj, "CableType", (long)priv->tpyec_cable_type);
+	ret += imonitor_set_param_integer_v2(obj, "HpdNum",    (long)priv->irq_hpd_num);
+	ret += imonitor_set_param_integer_v2(obj, "IrqNum",    (long)priv->irq_short_num);
+	ret += imonitor_set_param_integer_v2(obj, "DpInNum",   (long)priv->dp_in_num);
+	ret += imonitor_set_param_integer_v2(obj, "DpOutNum",  (long)priv->dp_out_num);
+	ret += imonitor_set_param_integer_v2(obj, "LinkNum",   (long)priv->link_retraining_num);
+	ret += imonitor_set_param_string_v2(obj,  "DevType",   dev_type);
 
-	ret += imonitor_set_param(obj, E936000105_IRQVECNUM_INT,  (long)priv->irq_vector_num);
-	ret += imonitor_set_param(obj, E936000105_IRQVEC_VARCHAR, (long)irq_vector);
-	ret += imonitor_set_param(obj, E936000105_SWNUM_INT,      (long)priv->source_switch_num);
-	ret += imonitor_set_param(obj, E936000105_SRCSW_VARCHAR,  (long)source_switch);
-#endif
+	ret += imonitor_set_param_integer_v2(obj, "IrqVecNum", (long)priv->irq_vector_num);
+	ret += imonitor_set_param_string_v2(obj,  "IrqVec",    irq_vector);
+	ret += imonitor_set_param_integer_v2(obj, "SwNum",     (long)priv->source_switch_num);
+	ret += imonitor_set_param_string_v2(obj,  "SrcSw",     source_switch);
 
 	return ret;
 }
@@ -2630,35 +2687,26 @@ static int dp_imonitor_prepare_link_training_info(struct imonitor_eventobj *obj,
 	hwlog_info("%s: aux_rw.retval=%d\n", __func__, priv->aux_rw.retval);
 #endif
 
-#ifdef DP_DSM_USE_DMD_DEBUG
-	dp_dmd_report(DP_DMD_LINK_FAILED, "link training failed %d/%d/%d, tpyec:%u, rate_lanes:%u/%u/%u/%u, aux_rw:%d/%d/0x%x/%u/%d",
-		hotplug->link_training_retval, hotplug->safe_mode, hotplug->read_edid_retval,
-		priv->tpyec_cable_type,
-		hotplug->max_rate, hotplug->max_lanes, hotplug->rate, hotplug->lanes,
-		priv->aux_rw.rw, priv->aux_rw.i2c, priv->aux_rw.addr, priv->aux_rw.len, priv->aux_rw.retval);
-	ret = -EFAULT;
-#else
-	ret += imonitor_set_param(obj, E936000106_CABLETYPE_TINYINT, (long)priv->tpyec_cable_type);
+	ret += imonitor_set_param_integer_v2(obj, "CableType", (long)priv->tpyec_cable_type);
 
-	ret += imonitor_set_param(obj, E936000106_MAXWIDTH_SMALLINT, (long)hotplug->max_width);
-	ret += imonitor_set_param(obj, E936000106_MAXHIGH_SMALLINT,  (long)hotplug->max_high);
-	ret += imonitor_set_param(obj, E936000106_PIXELCLK_INT,      (long)hotplug->pixel_clock);
-	ret += imonitor_set_param(obj, E936000106_MAXRATE_TINYINT,   (long)hotplug->max_rate);
-	ret += imonitor_set_param(obj, E936000106_MAXLANES_TINYINT,  (long)hotplug->max_lanes);
-	ret += imonitor_set_param(obj, E936000106_LINKRATE_TINYINT,  (long)hotplug->rate);
-	ret += imonitor_set_param(obj, E936000106_LINKLANES_TINYINT, (long)hotplug->lanes);
-	ret += imonitor_set_param(obj, E936000106_VSPE_INT,          (long)hotplug->vp.vswing_preemp);
+	ret += imonitor_set_param_integer_v2(obj, "MaxWidth",  (long)hotplug->max_width);
+	ret += imonitor_set_param_integer_v2(obj, "MaxHigh",   (long)hotplug->max_high);
+	ret += imonitor_set_param_integer_v2(obj, "PixelClk",  (long)hotplug->pixel_clock);
+	ret += imonitor_set_param_integer_v2(obj, "MaxRate",   (long)hotplug->max_rate);
+	ret += imonitor_set_param_integer_v2(obj, "MaxLanes",  (long)hotplug->max_lanes);
+	ret += imonitor_set_param_integer_v2(obj, "LinkRate",  (long)hotplug->rate);
+	ret += imonitor_set_param_integer_v2(obj, "LinkLanes", (long)hotplug->lanes);
+	ret += imonitor_set_param_integer_v2(obj, "VsPe",      (long)hotplug->vp.vswing_preemp);
 
-	ret += imonitor_set_param(obj, E936000106_SAFEMODE_BIT, (long)hotplug->safe_mode);
-	ret += imonitor_set_param(obj, E936000106_REDIDRET_INT, (long)hotplug->read_edid_retval);
-	ret += imonitor_set_param(obj, E936000106_LINKRET_INT,  (long)hotplug->link_training_retval);
+	ret += imonitor_set_param_integer_v2(obj, "SafeMode", (long)hotplug->safe_mode);
+	ret += imonitor_set_param_integer_v2(obj, "RedidRet", (long)hotplug->read_edid_retval);
+	ret += imonitor_set_param_integer_v2(obj, "LinkRet",  (long)hotplug->link_training_retval);
 
-	ret += imonitor_set_param(obj, E936000106_AUXRW_BIT,   (long)priv->aux_rw.rw);
-	ret += imonitor_set_param(obj, E936000106_AUXI2C_BIT,  (long)priv->aux_rw.i2c);
-	ret += imonitor_set_param(obj, E936000106_AUXADDR_INT, (long)priv->aux_rw.addr);
-	ret += imonitor_set_param(obj, E936000106_AUXLEN_INT,  (long)priv->aux_rw.len);
-	ret += imonitor_set_param(obj, E936000106_AUXRET_INT,  (long)priv->aux_rw.retval);
-#endif
+	ret += imonitor_set_param_integer_v2(obj, "AuxRw",   (long)priv->aux_rw.rw);
+	ret += imonitor_set_param_integer_v2(obj, "AuxI2c",  (long)priv->aux_rw.i2c);
+	ret += imonitor_set_param_integer_v2(obj, "AuxAddr", (long)priv->aux_rw.addr);
+	ret += imonitor_set_param_integer_v2(obj, "AuxLen",  (long)priv->aux_rw.len);
+	ret += imonitor_set_param_integer_v2(obj, "AuxRet",  (long)priv->aux_rw.retval);
 
 	return ret;
 }
@@ -2674,7 +2722,7 @@ static int dp_imonitor_prepare_hotplug_info(struct imonitor_eventobj *obj, void 
 	}
 
 #ifndef DP_DSM_DEBUG
-	if (0 == priv->aux_rw.retval) { // unkown error
+	if (!(priv->aux_rw.retval < 0 || priv->hotplug_retval <= -DP_DSM_ERRNO_DSS_PWRON_FAILED)) { // unkown error
 		return -EFAULT;
 	}
 #else
@@ -2688,19 +2736,12 @@ static int dp_imonitor_prepare_hotplug_info(struct imonitor_eventobj *obj, void 
 	hwlog_info("%s: aux_rw.retval=%d\n",  __func__, priv->aux_rw.retval);
 #endif
 
-#ifdef DP_DSM_USE_DMD_DEBUG
-	dp_dmd_report(DP_DMD_LINK_FAILED, "hotplug failed %d, aux rw:%d, i2c:%d, addr:0x%x, len:%u, retval:%d",
-		priv->hotplug_retval,
-		priv->aux_rw.rw, priv->aux_rw.i2c, priv->aux_rw.addr, priv->aux_rw.len, priv->aux_rw.retval);
-	ret = -EFAULT;
-#else
-	ret += imonitor_set_param(obj, E936000107_HPRET_INT,   (long)priv->hotplug_retval);
-	ret += imonitor_set_param(obj, E936000107_AUXRW_BIT,   (long)priv->aux_rw.rw);
-	ret += imonitor_set_param(obj, E936000107_AUXI2C_BIT,  (long)priv->aux_rw.i2c);
-	ret += imonitor_set_param(obj, E936000107_AUXADDR_INT, (long)priv->aux_rw.addr);
-	ret += imonitor_set_param(obj, E936000107_AUXLEN_INT,  (long)priv->aux_rw.len);
-	ret += imonitor_set_param(obj, E936000107_AUXRET_INT,  (long)priv->aux_rw.retval);
-#endif
+	ret += imonitor_set_param_integer_v2(obj, "HpRet",   (long)priv->hotplug_retval);
+	ret += imonitor_set_param_integer_v2(obj, "AuxRw",   (long)priv->aux_rw.rw);
+	ret += imonitor_set_param_integer_v2(obj, "AuxI2c",  (long)priv->aux_rw.i2c);
+	ret += imonitor_set_param_integer_v2(obj, "AuxAddr", (long)priv->aux_rw.addr);
+	ret += imonitor_set_param_integer_v2(obj, "AuxLen",  (long)priv->aux_rw.len);
+	ret += imonitor_set_param_integer_v2(obj, "AuxRet",  (long)priv->aux_rw.retval);
 
 	return ret;
 }
@@ -2720,14 +2761,8 @@ static int dp_imonitor_prepare_hdcp_info(struct imonitor_eventobj *obj, void *da
 	hwlog_info("%s: hdcp_key=%u\n",     __func__, priv->hdcp_key);
 #endif
 
-#ifdef DP_DSM_USE_DMD_DEBUG
-	dp_dmd_report(DP_DMD_LINK_FAILED, "hdcp %u authentication %s.",
-		priv->hdcp_version, (HDCP_KEY_FAILED == priv->hdcp_key) ? "failed" : "success");
-	ret = -EFAULT;
-#else
-	ret += imonitor_set_param(obj, E936000108_HDCPVER_TINYINT, (long)priv->hdcp_version);
-	ret += imonitor_set_param(obj, E936000108_HDCPKEY_TINYINT, (long)priv->hdcp_key);
-#endif
+	ret += imonitor_set_param_integer_v2(obj, "HdcpVer", (long)priv->hdcp_version);
+	ret += imonitor_set_param_integer_v2(obj, "HdcpKey", (long)priv->hdcp_key);
 
 	return ret;
 }
@@ -2761,18 +2796,12 @@ void dp_imonitor_report(dp_imonitor_type_t type, void *data)
 	unsigned int event_id = 0;
 	int ret = 0;
 
-#ifndef DP_DSM_USE_DMD_DEBUG
 	hwlog_info("%s enter...\n", __func__);
-#endif
 	event_id = dp_imonitor_get_event_id(type, &prepare);
 	if ((0 == event_id) || (NULL == prepare)) {
 		hwlog_err("%s: invalid type %d, event_id %u or prepare %pK!!!\n", __func__, type, event_id, prepare);
 		return;
 	}
-#ifdef DP_DSM_USE_DMD_DEBUG
-	prepare(1, data);
-	return;
-#endif
 
 	obj = imonitor_create_eventobj(event_id);
 	if (NULL == obj) {
@@ -2862,7 +2891,8 @@ EXPORT_SYMBOL_GPL(dp_dmd_report);
 
 static void dp_dsm_release(dp_dsm_priv_t *priv, struct dsm_client *client)
 {
-	cancel_delayed_work_sync(&(g_imonitor_report.work));
+	cancel_delayed_work_sync(&(g_imonitor_report.imonitor_work));
+	cancel_delayed_work_sync(&(g_imonitor_report.hpd_work));
 
 	if (client != NULL) {
 		dsm_unregister_client(client, &dp_dsm);
@@ -2909,7 +2939,9 @@ static int __init dp_dsm_init(void)
 	memset(&g_imonitor_report, 0, sizeof(dp_imonitor_report_info_t));
 	INIT_LIST_HEAD(&(g_imonitor_report.list_head));
 	mutex_init(&(g_imonitor_report.lock));
-	INIT_DELAYED_WORK(&(g_imonitor_report.work), dp_imonitor_report_info_work);
+	INIT_DELAYED_WORK(&(g_imonitor_report.imonitor_work), dp_imonitor_report_info_work);
+	INIT_DELAYED_WORK(&(g_imonitor_report.hpd_work), dp_hpd_check_work);
+	g_imonitor_report.hpd_jiffies = jiffies + msecs_to_jiffies(DP_DSM_HPD_TIME_INTERVAL);
 	g_imonitor_report.report_jiffies = jiffies + msecs_to_jiffies(DP_DSM_REPORT_TIME_INTERVAL);
 
 	g_dp_dsm_priv   = priv;

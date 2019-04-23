@@ -107,6 +107,7 @@ static int himos_stats_report_start(struct sk_buff *skb, struct genl_info *info)
 		ret = himos_start_udp_stats(info);
 		break;
 	case HIMOS_STATS_TYPE_AWEME:
+	case HIMOS_STATS_TYPE_KWAI:
 		ret = himos_start_aweme_detect(info);
 		break;
 	default:
@@ -142,6 +143,7 @@ static int himos_stats_report_stop(struct sk_buff *skb, struct genl_info *info)
 		ret = himos_stop_udp_stats(info);
 		break;
 	case HIMOS_STATS_TYPE_AWEME:
+	case HIMOS_STATS_TYPE_KWAI:
 		ret = himos_stop_aweme_detect(info);
 		break;
 	default:
@@ -184,6 +186,7 @@ static int himos_stats_report_keepalive(struct sk_buff *skb, struct genl_info *i
 		ret = himos_keepalive_udp_stats(info);
 		break;
 	case HIMOS_STATS_TYPE_AWEME:
+	case HIMOS_STATS_TYPE_KWAI:
 		ret = himos_keepalive_aweme_detect(info);
 		break;
 	default:

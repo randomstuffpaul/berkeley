@@ -681,6 +681,9 @@
 		hw_lm36923,lcdkit-bl-ic-bl-enhance-cur-ramp-cmd = <0x00 0x00 0x00 0x00>;
 		hw_lm36923,lcdkit-bl-ic-bl-enhance-boost-cur-cmd = <0x00 0x00 0x00 0x00>;
 		hw_lm36923,lcdkit-bl-ic-bl-enhance-sink-cmd = <0x00 0x00 0x00 0x00>;
+		hw_lm36923,lcdkit-bl-ovp-bit = <0>;
+		hw_lm36923,lcdkit-bl-ocp-bit = <0>;
+		hw_lm36923,lcdkit-bl-tsd-bit = <0>;
 		hw_mp3313,lcdkit-bl-ic-level = <2047>;
 		hw_mp3313,lcdkit-bl-ic-ctrl-mode = <0>;
 		hw_mp3313,lcdkit-bl-ic-type = <0>;
@@ -728,5 +731,8 @@
 		hw_mp3313,lcdkit-bl-ic-bl-enhance-cur-ramp-cmd = <0x00 0x00 0x00 0x00>;
 		hw_mp3313,lcdkit-bl-ic-bl-enhance-boost-cur-cmd = <0x00 0x00 0x00 0x00>;
 		hw_mp3313,lcdkit-bl-ic-bl-enhance-sink-cmd = <0x00 0x00 0x00 0x00>;
+		hw_mp3313,lcdkit-bl-ovp-bit = <0>;
+		hw_mp3313,lcdkit-bl-ocp-bit = <0>;
+		hw_mp3313,lcdkit-bl-tsd-bit = <0>;
     };
 };

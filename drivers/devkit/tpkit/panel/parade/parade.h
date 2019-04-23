@@ -450,7 +450,7 @@ struct parade_core_platform_data {
 	int irq_gpio;
 	int rst_gpio;
 	int level_irq_udelay;
-	u16 hid_desc_register;
+	int hid_desc_register;
 	u16 vendor_id;
 	u16 product_id;
 	struct touch_settings *sett[CY_TOUCH_SETTINGS_MAX];

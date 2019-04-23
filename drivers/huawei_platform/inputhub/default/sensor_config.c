@@ -66,6 +66,7 @@ static uint8_t gyro_temperature_calibrate_data[GYRO_TEMP_CALI_NV_SIZE];
 static uint8_t handpress_calibrate_data[MAX_SENSOR_CALIBRATE_DATA_LENGTH];
 static char vib_calib[VIB_CALIDATA_NV_SIZE] = { 0 };
 struct airpress_touch_calibrate_data pressure_touch_calibrate_data;
+struct als_under_tp_calidata als_under_tp_cal_data;
 
 extern int first_start_flag;
 extern int ps_first_start_flag;
@@ -99,6 +100,8 @@ extern int  vishay_vcnl36658_ps_flag;
 extern int ams_tof_flag;
 extern int sharp_tof_flag;
 extern int apds9253_006_ps_flag;
+extern int ams_tcs3701_rgb_flag;
+extern int ams_tcs3701_ps_flag;
 
 extern struct airpress_platform_data airpress_data;
 extern struct sar_platform_data sar_pdata;
@@ -625,16 +628,17 @@ void reset_calibrate_data(void)
 	} else {
 		send_calibrate_data_to_mcu(TAG_MAG, SUB_CMD_SET_OFFSET_REQ, msensor_calibrate_data, MAG_CALIBRATE_DATA_NV_SIZE, true);
 	}
-	if (txc_ps_flag == 1 || ams_tmd2620_ps_flag == 1 || avago_apds9110_ps_flag == 1 || ams_tmd3725_ps_flag == 1 
+	if (txc_ps_flag == 1 || ams_tmd2620_ps_flag == 1 || avago_apds9110_ps_flag == 1 || ams_tmd3725_ps_flag == 1
 		|| liteon_ltr582_ps_flag == 1 || apds9999_ps_flag == 1 || ams_tmd3702_ps_flag == 1 || vishay_vcnl36658_ps_flag == 1
-		|| apds9253_006_ps_flag ==1) {
+		|| apds9253_006_ps_flag ==1 || ams_tcs3701_ps_flag == 1) {
 		send_calibrate_data_to_mcu(TAG_PS, SUB_CMD_SET_OFFSET_REQ, ps_sensor_calibrate_data, PS_CALIDATA_NV_SIZE, true);
 	}
 	if (ams_tof_flag == 1 || sharp_tof_flag == 1) {
 		send_calibrate_data_to_mcu(TAG_TOF, SUB_CMD_SET_OFFSET_REQ, tof_sensor_calibrate_data, TOF_CALIDATA_NV_SIZE, true);
 	}
 	if (rohm_rgb_flag == 1 || avago_rgb_flag == 1 || ams_tmd3725_rgb_flag == 1 || liteon_ltr582_rgb_flag == 1 || is_cali_supported == 1
-		|| apds9999_rgb_flag == 1 || ams_tmd3702_rgb_flag == 1 || apds9253_rgb_flag == 1|| vishay_vcnl36658_als_flag ==1) {
+		|| apds9999_rgb_flag == 1 || ams_tmd3702_rgb_flag == 1 || apds9253_rgb_flag == 1|| vishay_vcnl36658_als_flag ==1
+		|| tsl2591_flag == 1 || ams_tcs3701_rgb_flag == 1) {
 		if (als_data.als_phone_type == LAYA)
 			send_calibrate_data_to_mcu(TAG_ALS, SUB_CMD_SET_OFFSET_REQ, als_sensor_calibrate_data, ALS_CALIDATA_NV_SIZE_WITH_DARK_NOISE_OFFSET, true);
 		else
@@ -1125,6 +1129,30 @@ static void select_ams_tmd3702_als_data(void)
 		     als_para_table, phone_color, als_data.als_phone_type, als_data.als_phone_version);
 }
 
+static void select_ams_tcs3701_als_data(void)
+{
+	int i = 0;
+
+	for (i = 0; i < ARRAY_SIZE(tcs3701_als_para_diff_tp_color_table); i++) {
+		if ((tcs3701_als_para_diff_tp_color_table[i].phone_type == als_data.als_phone_type)
+		    && (tcs3701_als_para_diff_tp_color_table[i].phone_version == als_data.als_phone_version)
+		    && (tcs3701_als_para_diff_tp_color_table[i].tp_lcd_manufacture == tplcd_manufacture
+			|| tcs3701_als_para_diff_tp_color_table[i].tp_lcd_manufacture == DEFAULT_TPLCD)
+		    && (tcs3701_als_para_diff_tp_color_table[i].tp_color == phone_color)) {
+			als_para_table = i;
+			break;
+		}
+	}
+	memcpy(als_data.als_extend_data, tcs3701_als_para_diff_tp_color_table[als_para_table].tcs3701_para,
+		       sizeof(tcs3701_als_para_diff_tp_color_table[als_para_table].tcs3701_para) >
+		       SENSOR_PLATFORM_EXTEND_ALS_DATA_SIZE ? SENSOR_PLATFORM_EXTEND_ALS_DATA_SIZE :
+		       sizeof(tcs3701_als_para_diff_tp_color_table[als_para_table].tcs3701_para));
+	minThreshold_als_para = tcs3701_als_para_diff_tp_color_table[als_para_table].tcs3701_para[TCS3701_MIN_ThRESHOLD_NUM];
+	maxThreshold_als_para = tcs3701_als_para_diff_tp_color_table[als_para_table].tcs3701_para[TCS3701_MAX_ThRESHOLD_NUM];
+	hwlog_info("als_para_tabel=%d tcs3701 phone_color=0x%x phone_type=%d,phone_version=%d\n",
+		     als_para_table, phone_color, als_data.als_phone_type, als_data.als_phone_version);
+}
+
 static void select_vishay_vcnl36658_als_data(void)
 {
 	int i = 0;
@@ -1190,6 +1218,8 @@ void select_als_para(struct device_node *dn)
 		select_ams_tmd3725_als_data();
 	}else if (ams_tmd3702_rgb_flag == 1) {
 		select_ams_tmd3702_als_data();
+	}else if (ams_tcs3701_rgb_flag == 1) {
+		select_ams_tcs3701_als_data();
 	}else if (liteon_ltr582_rgb_flag == 1) {
 		select_liteon_ltr582_als_data();
 	}else if (vishay_vcnl36658_als_flag ==1){

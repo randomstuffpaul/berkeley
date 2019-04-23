@@ -1847,10 +1847,10 @@ static int focal_8201_get_cb_data_format(struct focal_test_8201 *ft8201, int *da
 	struct cs_chip_addr_mgr mgr;
 	int *buffer_master = NULL;
 	int *buffer_slave = NULL;
-	int master_tx = get_master_tx(ft8201->cs_info);
-	int master_rx = get_master_rx(ft8201->cs_info);
-	int slave_tx = get_slave_tx(ft8201->cs_info);
-	int slave_rx = get_slave_rx(ft8201->cs_info);
+	int master_tx = 0;
+	int master_rx = 0;
+	int slave_tx = 0;
+	int slave_rx = 0;
 	int master_buf_size = 0;
 	int slave_buf_size = 0;
 	int master_buf_num = 0;
@@ -1859,6 +1859,10 @@ static int focal_8201_get_cb_data_format(struct focal_test_8201 *ft8201, int *da
 		TS_LOG_ERR("%s: parameter error\n",  __func__);
 		return -ENODEV;
 	}
+	master_tx = get_master_tx(ft8201->cs_info);
+	master_rx = get_master_rx(ft8201->cs_info);
+	slave_tx = get_slave_tx(ft8201->cs_info);
+	slave_rx = get_slave_rx(ft8201->cs_info);
 	/*judge ic type is cascade connection*/
 	if (chip_has_two_heart(ft8201)) {
 		master_buf_size = sizeof(int)*(master_tx + 1) * master_rx;
@@ -2050,6 +2054,7 @@ static int focal_cb_uniformity_test(
 			max = focal_get_max(srcresult->values[i], srcresult->values[i - 1]);
 			if (0 == max) {
 				TS_LOG_ERR("%s:CB x value max is zero,not normal value return fail\n",__func__);
+				*result = test_result;
 				return -EINVAL;
 			}
 			test_result->values[i] = 100 * deviation / max;
@@ -2066,6 +2071,7 @@ static int focal_cb_uniformity_test(
 			max = focal_get_max(srcresult->values[i], srcresult->values[ver_index]);
 			if (0 == max) {
 				TS_LOG_ERR("%s:CB y value max is zero,not normal value return fail\n",__func__);
+				*result = test_result;
 				return -EINVAL;
 			}
 			test_result->values[cb_index] = 100 * deviation / max;
@@ -2385,33 +2391,37 @@ static int focal_8201_noise_test(
 	if (ret) {
 		TS_LOG_ERR("%s:enter factory mode fail, ret=%d\n", __func__, ret);
 		test_result->result = false;
-		return ret;
+		goto test_finish;
 	}
 	TS_LOG_INFO("%s:focal_enter_factory\n", __func__);
 	/*read old data type,after lcd noise test,need write oldmode value to REG_DATA_TYPE*/
 	ret = focal_read_reg(REG_DATA_TYPE, &oldmode);
 	if (ret) {
 		TS_LOG_ERR("%s:read reg dats read  fail, ret=%d\n", __func__, ret);
-		return ret;
+		test_result->result = false;
+		goto test_finish;
 	}
 	/*read old data,after lcd noise test,need write regdata value to 0x5E*/
 	ret = focal_read_reg(REG_CA_FILTER, &regdata);
 	if (ret) {
 		TS_LOG_ERR("%s:read reg dats read  fail, ret=%d\n", __func__, ret);
-		return ret;
+		test_result->result = false;
+		goto test_finish;
 	}
 
 	/*set the upper limit of CA filter*/
 	ret = focal_8201_write_reg(ft8201, REG_CA_FILTER, CA_FILTER_UPPER_LIMIT_VALUE);
 	if (ret) {
 		TS_LOG_ERR("%s:write reg dats read  fail, ret=%d\n", __func__, ret);
-		return ret;
+		test_result->result = false;
+		goto test_finish;
 	}
 	/*write diff mode*/
 	ret = focal_8201_write_reg(ft8201, REG_DATA_TYPE, IS_DIFFER_MODE);
 	if (ret) {
 		TS_LOG_ERR("%s:write reg dats read  fail, ret=%d\n", __func__, ret);
-		return ret;
+		test_result->result = false;
+		goto test_finish;
 	}
 	msleep(FTS_LCD_NOISE_TEST_DELAY_TIME);
 	/*read new data type*/
@@ -2877,10 +2887,10 @@ static int focal_8201_get_adc_data(struct focal_test_8201 *ft8201, int *data, si
 	int slave_adc_num = 0;
 	int *buffer_master = NULL;
 	int *buffer_slave = NULL;
-	int master_tx = get_master_tx(ft8201->cs_info);
-	int master_rx = get_master_rx(ft8201->cs_info);
-	int slave_tx = get_slave_tx(ft8201->cs_info);
-	int slave_rx = get_slave_rx(ft8201->cs_info);
+	int master_tx = 0;
+	int master_rx = 0;
+	int slave_tx = 0;
+	int slave_rx = 0;
 	int master_buf_size = 0;
 	int slave_buf_size = 0;
 
@@ -2888,6 +2898,10 @@ static int focal_8201_get_adc_data(struct focal_test_8201 *ft8201, int *data, si
 		TS_LOG_ERR("%s: parameter error\n",  __func__);
 		return -ENODEV;
 	}
+	master_tx = get_master_tx(ft8201->cs_info);
+	master_rx = get_master_rx(ft8201->cs_info);
+	slave_tx = get_slave_tx(ft8201->cs_info);
+	slave_rx = get_slave_rx(ft8201->cs_info);
 	/*judge ic type is cascade connection*/
 	if ( chip_has_two_heart(ft8201) ) {
 		master_buf_size = sizeof(int)*(master_tx + 1) * master_rx;

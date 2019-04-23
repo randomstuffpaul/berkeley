@@ -69,6 +69,7 @@
 #define HHEE_PMFBUFLOG_INFO             0xC9000011
 
 #define HHEE_UNKNOWN_HVC                0xC90000ff
+
 /*
  * Defines for psci
  */
@@ -88,6 +89,7 @@
 #define PSCI_SYSTEM_OFF                 0x84000008
 #define PSCI_SYSTEM_RESET               0x84000009
 #define PSCI_FEATURES                   0x8400000A
+
 
 #define HHEE_ENABLE    1
 #define HHEE_DISABLE   0

@@ -80,6 +80,13 @@ static int g_rsrp = 0;
 static int g_dbm = 0;
 static unsigned int g_app_rtt;
 
+/*network_slow chr statistic variable*/
+static int g_network_detect_window = 5;/*seconds*/
+static int g_network_status = NETWORK_STATUS_NETWORK_NORMAL;
+static int g_slow_count = 0;
+static int g_no_rx_count = 0;
+static int g_normal_count = 0;
+
 /********************************
 *	Function variables
 *********************************/
@@ -643,6 +650,99 @@ static void hidata_app_qoe_ai_predict(void)
 }
 #endif
 
+/* fnetwork_slow_chr */
+static void predict_network_normal_or_slow(void)
+{
+	int para[10] = {0};
+	int sum_num = 0;
+	unsigned int i = 0;
+	unsigned int j = 0;
+	unsigned int loop_max = 5;
+	unsigned int idx_tmp = 0;
+	unsigned int *ptr = NULL;
+	unsigned int *ptr1 = NULL;
+	struct pkt_cnt_swth stat = {0};
+	struct report_slow_para report_para = {0};
+	/*point to gIntFixParam[SUB_CLFS_NUM_MAX][4], i.e g_int_fix_param: global variable.
+	  array pointer from clf_params.h.*/
+	int (*ppg_int_fix_param)[4] = g_int_fix_param;
+	classifier_info_int_exp_type clf_info = (classifier_info_int_exp_type){ppg_int_fix_param, ADA_SUB_CLFS_NUM};
+	/*meaning: FALSE: not fakeBts; 1.0: all as trueBts.*/
+	judge_rlt_info_int_calc_type rlt_info1 = {FALSE, 0, 0.0, 1.0, 0, ADA_SUB_CLFS_NUM};
+
+	sum_num = loop_max;
+	ptr = &(stat.in_pkt);
+	for (i = 1; i <= loop_max; i++) {
+		idx_tmp = idx_check(g_stat.idx - i);
+		ptr1 = &(g_stat.stat[idx_tmp].in_pkt);
+		if ((g_stat.stat[idx_tmp].in_pkt + g_stat.stat[idx_tmp].out_pkt
+			+ g_stat.stat[idx_tmp].syn) == 0) {
+			sum_num--;
+			continue;
+		}
+		for (j = 0; j < (sizeof(struct pkt_cnt_swth)/sizeof(unsigned int)); j++) {
+			*(ptr + j) += *(ptr1 + j);
+		}
+	}
+	if (sum_num <= 0) {
+		g_normal_count  = 0;
+		g_slow_count  = 0;
+		g_no_rx_count  = 0;
+		return;
+	}
+	for (j = 0; j < (sizeof(struct pkt_cnt_swth)/sizeof(unsigned int)); j++) {
+		unsigned int temp = *(ptr+j);
+		if (temp >= sum_num || 0 == temp) {
+			*(ptr+j) = temp/sum_num;
+		} else {
+			*(ptr+j) = 1;
+		}
+	}
+	/*10 parameters: RTT,in,inpkt,out,outpkt,dack,rts,syn,3Gsignal,4Gsignal
+	*/
+	para[0] = stat.rtt;
+	para[1] = stat.in_len;
+	para[2] = stat.in_pkt;
+	para[3] = stat.out_len;
+	para[4] = stat.out_pkt;
+	para[5] = stat.dupack;
+	para[6] = stat.rts;
+	para[7] = stat.syn;
+	para[8] = g_dbm;//3Gsingnal
+	para[9] = g_rsrp;
+
+	rlt_info1 = judge_single_smp_using_clf_info_int_exp(clf_info, para, g_network_status );
+
+	if ((stat.out_pkt + stat.syn) > 0 && stat.in_pkt == 0) {
+		pr_info("ai_predict no rx");
+		g_no_rx_count++;
+		g_slow_count = 0;
+		g_normal_count = 0;
+		rlt_info1.is_ps_slow = TRUE;
+	} else if (TRUE == rlt_info1.is_ps_slow) {
+		g_slow_count++;
+		g_normal_count = 0;
+		g_no_rx_count = 0;
+	} else if (FALSE == rlt_info1.is_ps_slow) {
+		g_normal_count++;
+		g_slow_count = 0;
+		g_no_rx_count = 0;
+	}
+
+	if ((2*g_network_detect_window <= g_no_rx_count && NETWORK_STATUS_NETWORK_SLOW != g_network_status )
+		|| (g_network_detect_window <= g_slow_count && NETWORK_STATUS_NETWORK_SLOW != g_network_status )
+		|| (g_network_detect_window <= g_normal_count && NETWORK_STATUS_NETWORK_NORMAL != g_network_status )) {
+		g_network_status  = (rlt_info1.is_ps_slow == TRUE ?
+			NETWORK_STATUS_NETWORK_SLOW : NETWORK_STATUS_NETWORK_NORMAL);
+		report_para.slowType = g_network_status ;
+		nb_notify_event(NBMSG_KSI_EVT, &report_para,sizeof(report_para));
+		g_normal_count  = 0;
+		g_slow_count = 0;
+		g_no_rx_count = 0;
+		pr_info("predict_network_normal_or_slow,slowType=%d\n", report_para.slowType);
+	}
+}
+
 /*Update the index for the statistics array*/
 static unsigned int idx_update(struct pkt_stat_swth *stat_ptr)
 {
@@ -680,6 +780,10 @@ static unsigned int idx_update(struct pkt_stat_swth *stat_ptr)
 			hidata_app_qoe_ai_predict();
 		}
 #endif
+        /* network_slow_chr */
+        if (&g_stat == stat_ptr) {
+            predict_network_normal_or_slow();
+        }
 		stat_ptr->idx = index;
 		stat_ptr->time_stamp = time_stamp;
 

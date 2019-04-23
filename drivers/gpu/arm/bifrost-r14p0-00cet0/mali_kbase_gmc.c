@@ -25,6 +25,8 @@
  * You should have received a copy of the GNU General Public License
  * along with "Midgard GMC".  If not, see <http://www.gnu.org/licenses/>.
  */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeclaration-after-statement"
 
 #define pr_fmt(fmt) "kbase-gmc: " fmt
 
@@ -49,7 +51,7 @@ static DECLARE_WAIT_QUEUE_HEAD(gmc_wait);
 
 #define GMC_MAX_COMPRESS_SIZE_IN_MEGA	MALI_GMC_COMPRESS_SIZE
 #define GMC_PAGES_PER_MEGA	((0x100000)>> PAGE_SHIFT)
-#define GPU_MEMORY_SEQ_BUF_SIZE 8*PAGE_SIZE
+#define GPU_MEMORY_SEQ_BUF_SIZE 8*PAGE_SIZE//lint !e773
 
 static inline bool is_region_growable(struct kbase_va_region *reg)
 {
@@ -348,9 +350,6 @@ void kbase_gmc_dma_unmap_page(struct kbase_device *kbdev, struct page *page)
 {
 	dma_unmap_page(kbdev->dev, kbase_dma_addr(page),
 			PAGE_SIZE, DMA_FROM_DEVICE);
-	lock_page(page);
-	ClearPagePrivate(page);
-	unlock_page(page);
 }
 
 dma_addr_t kbase_gmc_dma_map_page(struct kbase_device *kbdev, struct page *page)
@@ -362,10 +361,6 @@ dma_addr_t kbase_gmc_dma_map_page(struct kbase_device *kbdev, struct page *page)
 		pr_alert("%s: dma_mapping_error!\n", __func__);
 		return (dma_addr_t)(0ULL);
 	}
-	lock_page(page);
-	SetPagePrivate(page);
-	kbase_set_dma_addr(page, dma_addr);
-	unlock_page(page);
 	return dma_addr;
 }
 
@@ -374,16 +369,19 @@ dma_addr_t kbase_gmc_dma_map_page(struct kbase_device *kbdev, struct page *page)
  *
  * @phys_addr_t:        Physical page address
  * @kbdev:              Kbase device
+ * @policy_id:          Cache policy id.
  *
  * Return: 0 if page was decompressed or error code if something is wrong.
  */
-static int kbase_gmc_page_decompress(struct tagged_addr *p, struct kbase_device *kbdev)
+static int kbase_gmc_page_decompress(struct tagged_addr *p, struct kbase_device *kbdev, u8 policy_id)
 {
 	struct page *page;
 	dma_addr_t dma_addr;
 	int err;
 	gfp_t flags;
 	struct gmc_storage_handle *handle;
+	struct memory_group_manager_ops *mgm_ops = kbdev->hisi_dev_data.mgm_ops;
+	KBASE_DEBUG_ASSERT(mgm_ops);
 
 	BUG_ON(!kbase_is_entry_compressed(*p));
 
@@ -393,7 +391,8 @@ static int kbase_gmc_page_decompress(struct tagged_addr *p, struct kbase_device 
 #else
 	flags = GFP_HIGHUSER | __GFP_ZERO;
 #endif
-	page = alloc_page(flags);
+	page = mgm_ops->mgm_alloc_pages(kbdev->hisi_dev_data.mgm_dev,
+	                                policy_id, flags, 0);
 	if (!page) {
 		pr_err("Unable to allocate a page for decompression.\n");
 		return -ENOMEM;
@@ -402,7 +401,8 @@ static int kbase_gmc_page_decompress(struct tagged_addr *p, struct kbase_device 
 	if (err) {
 		pr_alert("%s: can't get page for handle: %pK err: %d\n", __func__,
 				handle, (int)err);
-		__free_page(page);
+		mgm_ops->mgm_free_pages(kbdev->hisi_dev_data.mgm_dev,
+		                        policy_id, page, 0);
 		return -EINVAL;
 	}
 	dma_addr = kbase_gmc_dma_map_page(kbdev, page);
@@ -590,7 +590,7 @@ static int kbase_gmc_decompress_alloc(struct kbase_mem_phy_alloc *alloc, s64 sta
 		if(is_huge(alloc->pages[i]))		//bypass huge head because we didn't  compress it
 			continue;
 		if (as_phys_addr_t(*tagged_page) && kbase_is_entry_compressed(*tagged_page)) {
-			ret = kbase_gmc_page_decompress(tagged_page, alloc->imported.kctx->kbdev);
+			ret = kbase_gmc_page_decompress(tagged_page, alloc->imported.kctx->kbdev, alloc->lb_policy_id);
 			if (ret) {
 				pr_err("can't decompress page, physaddr %llu\n", (unsigned long long) as_phys_addr_t(*tagged_page));
 				return ret;
@@ -854,3 +854,4 @@ int kbase_gmc_meminfo_open(struct inode *in, struct file *file)
 {
 	return single_open_size(file, gmc_memory_info_show, NULL,GPU_MEMORY_SEQ_BUF_SIZE);
 }
+#pragma GCC diagnostic pop

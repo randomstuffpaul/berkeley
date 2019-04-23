@@ -74,16 +74,29 @@ struct bg_ctrl_policy_t{
 };
 
 static struct bg_ctrl_policy_t s_AwareNetBgCtrlPolicy[] = {
-    {20, 100},
-    {50, 100},
-    {100, 100},
-    {200, 100},
-    {500, 100},
+    {20, 1},
+    {50, 10},
+    {100, 25},
+    {200, 10},
+    {500, 25},
+    {1000, 50},
     {1000, 100},
     {0x1fffffff, 100}
 };
 
-
+static bool is_bg_limit_enabled(void) {
+    bool ret;
+    ret = true;
+    if (s_AwareNetCtrl.enable == 0){
+        ret = false;
+    }
+    spin_lock(&(netinfo.fg_lock));
+    if (netinfo.fg_uids[0] < 0){
+        ret = false;
+    }
+    spin_unlock(&(netinfo.fg_lock));
+    return ret;
+}
 
 static bool is_fg(int uid) {
     int i;
@@ -118,28 +131,35 @@ static bool is_bg(int uid) {
 // if fg net read or write count is beyond RANGE_COUNT, limit bg network
 static void limit_bg(void) {
     int i;
+    int level = 0;
     unsigned long cur_time;
     unsigned long network_sum = 0;
     unsigned int sleep_long = SLEEP_TIME_MS;
 
-    cur_time = jiffies;
-    spin_lock(&(netinfo.fg_lock));
-    for (i = 0; i < MAX_FG_NET_STAT; i++) {
-        struct net_stat *tmp_for_cnt = &netinfo.fg_net_stat[i];
-        if (tmp_for_cnt->time + MAX_FG_NET_STAT * PERIOD_TIME < cur_time) {
-            continue;
-        }
-        network_sum += tmp_for_cnt->read_count;
-        network_sum += tmp_for_cnt->write_count;
-    }
-    spin_unlock(&(netinfo.fg_lock));
-    total_fg_rxtx_count = network_sum;
-    if (total_fg_rxtx_count == 0){
+    if (!is_bg_limit_enabled()) {
         return;
     }
 
-    if (s_AwareNetCtrl.mode  == 1){
-        int count;
+    cur_time = jiffies;
+    if (s_AwareNetCtrl.mode < 7){
+        level = s_AwareNetCtrl.mode-1;
+        sleep_long = s_AwareNetBgCtrlPolicy[level].sleep_long;
+    }else{
+        spin_lock(&(netinfo.fg_lock));
+        for (i = 0; i < MAX_FG_NET_STAT; i++) {
+            struct net_stat *tmp_for_cnt = &netinfo.fg_net_stat[i];
+            if (tmp_for_cnt->time + MAX_FG_NET_STAT * PERIOD_TIME < cur_time) {
+                continue;
+            }
+            network_sum += tmp_for_cnt->read_count;
+            network_sum += tmp_for_cnt->write_count;
+        }
+        spin_unlock(&(netinfo.fg_lock));
+        total_fg_rxtx_count = network_sum;
+        if (total_fg_rxtx_count == 0){
+            return;
+        }
+
         unsigned long oldest_time;
         unsigned long last_time = 0;
         unsigned long total_len_sum = 0;
@@ -175,13 +195,8 @@ static void limit_bg(void) {
             return;
         }
 
-        count = sizeof(s_AwareNetBgCtrlPolicy)/sizeof(s_AwareNetBgCtrlPolicy[0]);
-        for (i = 0; i < count; i++) {
-            if (network_sum < s_AwareNetBgCtrlPolicy[i].package_count){
-                sleep_long = s_AwareNetBgCtrlPolicy[i].sleep_long;
-                break;
-            }
-        }
+        level = s_AwareNetCtrl.mode - 1;
+        sleep_long = s_AwareNetBgCtrlPolicy[level].sleep_long;
     }
     atomic_inc_unless_negative(&netinfo.bg_limit);
     msleep_interruptible(sleep_long);
@@ -272,9 +287,6 @@ void stat_bg_network_flow_x(bool isRecving, int len)
     unsigned long period;
     unsigned long cur_time;
     struct net_stat_x *temp_net_stat_x;
-    if (s_AwareNetCtrl.mode != 1){
-        return;
-    }
 
     // first time, starts at 0
     spin_lock(&(netinfo.bg_lock));

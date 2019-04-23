@@ -381,6 +381,8 @@ typedef enum {
 	CMD_MOTION_ATTR_DISABLE_RESP,
 	CMD_MOTION_REPORT_REQ,
 	CMD_MOTION_REPORT_RESP,
+	CMD_MOTION_SET_PARA_REQ,
+	CMD_MOTION_SET_PARA_RESP,
 
 	//ca
 	CMD_CA_OPEN_REQ = CMD_CMN_OPEN_REQ,
@@ -1319,7 +1321,7 @@ enum {
 	FILE_YAS537_DOE_MAG,            //73
 	FILE_AKM09918_DOE_MAG,          /*74*/
 	FILE_BMA2X2_ACC,                /*75*/
-	FILE_MC34XX_ACC,                /*76*/
+	FILE_N2DM_ACC,                /*76*/
 	FILE_ID_MAX = 79,                       /* MAX VALID FILE ID */
 };
 

@@ -43,7 +43,7 @@ static int kcode_verify_ranges(void)
 	memrange_size = 0;
 	for (range = ranges; range->start != NULL; range++) {
 		if (range->end <= range->start) {
-			RSLogError(TAG, "range error 1, start=%p, end=%p",
+			RSLogError(TAG, "range error 1, start=%pK, end=%pK",
 						range->start, range->end);
 			return 1;
 		}
@@ -51,13 +51,13 @@ static int kcode_verify_ranges(void)
 		if ((unsigned)((range->end - range->start) - 1) > MAX_CODE_SIZE ||
 		    (uintptr_t)range->start % 4 ||
 		    (uintptr_t)range->end % 4) {
-			RSLogError(TAG, "range error 2, start=%p, end=%p",
+			RSLogError(TAG, "range error 2, start=%pK, end=%pK",
 						range->start, range->end);
 			return 1;
 		}
 
 		if ((NULL != ptr) && range->start <= ptr) {
-			RSLogError(TAG, "range error 3, prev=%p, start=%p",
+			RSLogError(TAG, "range error 3, prev=%pK, start=%pK",
 						ptr, range->start);
 			return 1;
 		}
@@ -77,19 +77,20 @@ int kcode_scan(uint8_t *hash)
 {
 	int i;
 	int err;
-
-	if (memrange_size == 0)
-		if (kcode_verify_ranges())
-			return -ENOMEM;
-
 	struct crypto_shash *tfm = crypto_alloc_shash("sha256", 0, 0);
-
 	SHASH_DESC_ON_STACK(shash, tfm);
 
 	if (IS_ERR(tfm)) {
 		RSLogError(TAG, "crypto_alloc_hash(sha256) error %ld",
 							PTR_ERR(tfm));
 		return -ENOMEM;
+	}
+
+	if (memrange_size == 0){
+			if (kcode_verify_ranges()){
+					crypto_free_shash(tfm);
+					return -ENOMEM;
+			}
 	}
 
 	shash->tfm = tfm;
@@ -125,6 +126,7 @@ void kcode_copy(char *buffer)
 
 int kcode_syscall_scan(uint8_t *hash)
 {
+	size_t size;
 	void *ptr = (void *)sys_call_table;
 	int err;
 	struct crypto_shash *tfm = crypto_alloc_shash("sha256", 0, 0);
@@ -148,7 +150,7 @@ int kcode_syscall_scan(uint8_t *hash)
 	}
 
 	/* define NR_syscalls as 326 */
-	size_t size = NR_syscalls * sizeof(void *);
+	size = NR_syscalls * sizeof(void *);
 
 	crypto_shash_update(shash, (char *)ptr, (unsigned int)size);
 	err = crypto_shash_final(shash, (u8 *)hash);

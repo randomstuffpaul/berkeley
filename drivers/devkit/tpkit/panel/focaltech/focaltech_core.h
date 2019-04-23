@@ -122,6 +122,8 @@ enum focal_ic_type {
 	FOCAL_FT8719,
 	FOCAL_FT8201,
 	FOCAL_FT8006U,
+	FOCAL_FT5422U,
+	FOCAL_FT3528,
 };
 
 enum roi_data_status {
@@ -222,11 +224,21 @@ struct focal_platform_data {
 	u8 touch_switch_fm_reg;
 	u8 read_debug_reg_and_differ;
 	u32 fts_use_pinctrl;
+	u32 use_dma_download_firmware;
 	u32 palm_iron_support;
 	struct mutex spilock;
 	unsigned int fw_update_duration_check;
+	/*in the Jordan2 project, the FT3528 IC is a single-layer multi-point scheme,
+	the ITO pattern is a V3 pattern, and the number of channels of tx and rx is exchanged.*/
+	bool is_v3_pattern;
+	u32 support_get_debug_info_from_ic;
+	u8 get_debug_info_reg_addr;
 };
-
+enum SPI_COM_MODE {
+	INTERRUPT_MODE = 0,
+	POLLING_MODE,
+	DMA_MODE,
+};
 /* spi interface communication*/
 int fts_read(u8 *writebuf, u32 writelen, u8 *readbuf, u32 readlen);
 int fts_write(u8 *writebuf, u32 writelen);

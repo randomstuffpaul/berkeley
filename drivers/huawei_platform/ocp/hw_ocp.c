@@ -13,6 +13,7 @@
 #include <huawei_platform/log/log_exception.h>
 #include "hw_ocp.h"
 #include <huawei_platform/ocp/hw_ocp_ext.h>
+#include <securec.h>
 
 static struct hw_ocp_info g_ocp_info;
 static struct hw_ocp_conf *g_ocp_conf = NULL;
@@ -126,7 +127,7 @@ static int hw_ocp_parse_dts(struct device_node *np)
 	}
 
 	g_ocp_conf = (struct hw_ocp_conf *)kmalloc(sizeof(struct hw_ocp_conf) * g_ocp_info.num, GFP_KERNEL);
-	memset(g_ocp_conf, 0, sizeof(struct hw_ocp_conf) * g_ocp_info.num);
+	(void)memset_s(g_ocp_conf, sizeof(struct hw_ocp_conf) * g_ocp_info.num, 0, sizeof(struct hw_ocp_conf) * g_ocp_info.num);
 
 	p_ocp = g_ocp_conf;
 	for (i = 0;i < g_ocp_info.num;i++) {
@@ -179,7 +180,7 @@ static int __init hw_ocp_init(void)
 	struct device_node *np = NULL;
 	int ret = -EIO;
 
-	memset(&g_ocp_info, 0, sizeof(struct hw_ocp_info));
+	(void)memset_s(&g_ocp_info, sizeof(struct hw_ocp_info), 0, sizeof(struct hw_ocp_info));
 	np = of_find_compatible_node(NULL, NULL, DTS_COMP_OCP);
 	if (!np) {
 		g_ocp_info.ocp_support = 0;

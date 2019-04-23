@@ -109,6 +109,15 @@ enum SVC_SECBOOT_IMG_TYPE {
     CAS,
     MODEM_DTB,
     ISP,
+/*
+miami c30上需要支持冷补丁特性，chicago_c50 AP侧代码与miami_c30 AP侧代码共分支；
+增加的枚举在chicago c50上不生效；
+分支对应关系链接：http://3ms.huawei.com/hi/group/8729/wiki_5190309.html
+*/
+#ifdef CONFIG_COLD_PATCH
+    MODEM_COLD_PATCH,
+    DSP_COLD_PATCH,
+#endif
     SOC_MAX
 };
 #endif

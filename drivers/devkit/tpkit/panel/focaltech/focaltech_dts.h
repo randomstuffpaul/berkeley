@@ -49,6 +49,8 @@
 #define FTS_ROI_SWITCH_ADDR		"roi_switch_addr"
 #define FTS_ROI_PKG_NUM_ADDR	"roi_pkg_num_addr"
 #define FTS_PALM_IRON_SUPPORT	"palm_iron_support"
+#define FTS_SUPPORT_GET_DEBUG_INFO_FROM_IC    "support_get_debug_info_from_ic"
+#define FTS_GET_DEBUG_INFO_REG_ADDR    "get_debug_info_reg_addr"
 
 #define FTS_VCI_LDO_VALUE		"vci_value"
 #define FTS_VDDIO_LDO_VALUE		"vddio_value"
@@ -87,6 +89,8 @@
 #define DTS_RAW_DATA_MAX		"threshold,raw_data_max"
 #define DTS_CB_TEST_MIN			"threshold,cb_test_min"
 #define DTS_CB_TEST_MAX			"threshold,cb_test_max"
+#define DTS_PANEL_DIFFER_MIN_ARRAY	"threshold,panel_differ_min_array"
+#define DTS_PANEL_DIFFER_MAX_ARRAY	"threshold,panel_differ_max_array"
 
 #define DTS_SHORT_CIRCUIT_RES_MIN	"threshold,short_circuit_min"
 #define DTS_LCD_NOISE_MAX	"threshold,lcd_noise_max"
@@ -110,6 +114,7 @@
 #define FTS_CB_UNIFORMITY_TEST_CSV			"cb_uniformity_test_threshold"
 #define FTS_CB_INCREASE_CSV			"cb_increase_test_threshold"
 #define IS_IC_RAWDATA_PROC_PRINTF	"is_ic_rawdata_proc_printf"
+#define FTS_PANEL_DIFF_TEST_CSV		"panel_diff_threshold"
 
 #define FTS_TEST_TYPE_DEFAULT	"Normalize_type:judge_last_result"
 

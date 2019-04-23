@@ -16,6 +16,7 @@
 #define HISEE_MAX_MISC_IMAGE_NUMBER  (5)
 #define HISEE_MISC_NO_UPGRADE_NUMBER (1)
 #endif
+#define HISEE_SMX_MISC_IMAGE_NUMBER  (10)
 
 #define HISEE_FS_PARTITION_NAME         "/mnt/hisee_fs/"
 #define HISEE_COS_FLASH_IMG_NAME        "cos_flash.img"

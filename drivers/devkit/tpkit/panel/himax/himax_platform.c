@@ -70,7 +70,7 @@ int i2c_himax_write(uint8_t command,uint8_t *data, uint16_t length, uint16_t lim
 	if(data == NULL) {
 		return retval;
 	}
-	if((length > limit_len)||(length > HX_I2C_MAX_SIZE)){
+	if((length > limit_len)||(length >= HX_I2C_MAX_SIZE)){
 		TS_LOG_ERR("%s: i2c_read_block size error %d, over array size%d\n",
 			__func__, length, limit_len);
 		return retval;
@@ -170,6 +170,10 @@ static int himax_power_regulator_config(void)
 {
 	int ret = NO_ERR;
 	TS_LOG_INFO("%s:called\n", __func__);
+	if(!g_himax_ts_data || !g_himax_ts_data->ts_dev || !g_himax_ts_data->tskit_himax_data) {
+		TS_LOG_ERR("%s, param invalid\n", __func__);
+		return -EINVAL;
+	}
 
 	g_himax_ts_data->vdda = regulator_get(&g_himax_ts_data->ts_dev->dev,"vdda");
 
@@ -186,7 +190,9 @@ static int himax_power_regulator_config(void)
 	}
 
 	/*set voltage for vddd and vdda*/
-	ret = regulator_set_voltage(g_himax_ts_data->vdda,2850000, 2850000);
+	ret = regulator_set_voltage(g_himax_ts_data->vdda,
+			g_himax_ts_data->tskit_himax_data->regulator_ctr.vci_value,
+			g_himax_ts_data->tskit_himax_data->regulator_ctr.vci_value);
 	if (ret < 0) {
 		TS_LOG_ERR("%s:set vdda voltage failed\n", __func__);
 		goto set_vdda_fail_out;
@@ -313,12 +319,13 @@ int himax_gpio_power_on(struct himax_i2c_platform_data *pdata)
 				TS_LOG_ERR("%s, failed to enable himax vdda, rc = %d\n", __func__, err);
 				return err;
 			}
-
+			usleep_range(VCCA_DELAY_TIME, VCCA_DELAY_TIME);
 			err = regulator_enable(g_himax_ts_data->vddd);
 			if (err < 0) {
 				TS_LOG_ERR("%s, failed to enable himax vddd, rc = %d\n", __func__, err);
 				return err;
 			}
+			msleep(VCCD_DELAY_TIME);
 		}
 	}
 

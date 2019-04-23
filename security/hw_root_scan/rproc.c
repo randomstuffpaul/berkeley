@@ -224,13 +224,13 @@ void rprocs_strip_whitelist(char *rprocs, ssize_t rprocs_len)
 
 	tokens = vmalloc((ulong)MAX_PROC_NUM * sizeof(char *));
 	if (NULL == tokens) {
-		RSLogError(TAG, "no enough memory for tokens");
+		RSLogError(TAG, "no enough memory for allocation");
 		return;
 	}
 
 	final_tokens = vmalloc((ulong)MAX_PROC_NUM * sizeof(char *));
 	if (NULL == final_tokens) {
-		RSLogError(TAG, "no enough memory for final_tokens");
+		RSLogError(TAG, "no enough memory for allocation");
 		vfree(tokens);
 		tokens = NULL;
 		return;

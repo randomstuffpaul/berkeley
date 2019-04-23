@@ -1,8 +1,10 @@
 #include "dm-verity.h"
 #include "dm-verity-fec.h"
 #include "verity_handle.h"
+#if defined (CONFIG_DM_VERITY_HW_RETRY)
 #include <linux/mtd/hisi_nve_interface.h>
 #include <linux/mtd/hisi_nve_number.h>
+#endif
 #include <linux/delay.h>
 
 #define DM_MSG_PREFIX "oem_verity"

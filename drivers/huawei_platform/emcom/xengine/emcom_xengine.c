@@ -24,7 +24,7 @@
 #include <huawei_platform/emcom/network_evaluation.h>
 
 #ifdef CONFIG_HUAWEI_BASTET
-#include <huawei_platform/power/bastet/bastet_utils.h>
+#include <huawei_platform/net/bastet/bastet_utils.h>
 #endif
 #include <huawei_platform/emcom/emcom_xengine.h>
 #include <linux/version.h>
@@ -1192,6 +1192,25 @@ void Emcom_Xengine_SmartMpOnDK_Connect(void)
 	Emcom_Xengine_SmartMpClear();
 }
 EXPORT_SYMBOL(Emcom_Xengine_SmartMpOnDK_Connect);
+#endif
+#ifdef CONFIG_MPTCP
+void Emcom_Xengine_MptcpSocketClosed(void *data, int len)
+{
+	emcom_send_msg2daemon(NETLINK_EMCOM_KD_MPTCP_SOCKET_CLOSED, data, len);
+}
+EXPORT_SYMBOL(Emcom_Xengine_MptcpSocketClosed);
+
+void Emcom_Xengine_MptcpSocketSwitch(void *data, int len)
+{
+	emcom_send_msg2daemon(NETLINK_EMCOM_KD_MPTCP_SOCKET_SWITCH, data, len);
+}
+EXPORT_SYMBOL(Emcom_Xengine_MptcpSocketSwitch);
+
+void Emcom_Xengine_MptcpProxyFallback(void *data, int len)
+{
+	emcom_send_msg2daemon(NETLINK_EMCOM_KD_MPTCP_PROXY_FALLBACK, data, len);
+}
+EXPORT_SYMBOL(Emcom_Xengine_MptcpProxyFallback);
 #endif
 
 

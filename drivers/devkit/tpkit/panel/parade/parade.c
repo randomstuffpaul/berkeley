@@ -407,9 +407,9 @@ static int parade_get_capacitance_test_type(struct ts_test_type_info *info)
 	}
 
 	if(0 !=strlen(tskit_parade_data->parade_chip_data->tp_test_type)){
-		strncpy(info->tp_test_type,tskit_parade_data->parade_chip_data->tp_test_type, TS_CAP_TEST_TYPE_LEN);
+		strncpy(info->tp_test_type,tskit_parade_data->parade_chip_data->tp_test_type, TS_CAP_TEST_TYPE_LEN - 1);
 	}else{
-		strncpy(info->tp_test_type, "Normalize_type:judge_different_reslut", TS_CAP_TEST_TYPE_LEN);
+		strncpy(info->tp_test_type, "Normalize_type:judge_different_reslut", TS_CAP_TEST_TYPE_LEN - 1);
 	}
 	TS_LOG_INFO("%s:info->tp_test_type :%s.\n", __func__,info->tp_test_type);
 	return NO_ERR;
@@ -545,21 +545,22 @@ static int parade_oem_write_nv_one_row_(struct parade_oem_data *parade_oem_data,
 
 static int parade_oem_write_nv_data(struct parade_oem_data *parade_oem_data, u8 buf[], int offset,int length)
 {
-	u8 flash_size;
-	u8 row_setting;
+	u8 flash_size= 0;
+	u8 row_setting = 0;
 	u8 write_buf[1024];
 	int cmd_offset = 0;
-	u16 crc;
-	int row_index, column_index;
-	int i;
+	u16 crc = 0;
+	int row_index = 0;
+	int column_index = 0;
+	int i = 0;
 	u8 *response = NULL;
-	int start_row;
-	int end_row;
+	int start_row = 0;
+	int end_row = 0;
 	u8 uLastRowChanged = 0;
 	u8 uThisRowChanged = 0;
 	int offset_start = 0;
 	int offset_end = 0;
-	int rc;
+	int rc = 0;
 
 	parade_oem_data->stored_flash_data = NULL;
 	struct parade_hid_output hid_output = {
@@ -619,48 +620,41 @@ static int parade_oem_write_nv_data(struct parade_oem_data *parade_oem_data, u8 
 	uLastRowChanged = 0;
 	/*check whether data changed in block 0 and 1*/
 	for(row_index = start_row ; row_index < end_row ; row_index++) {
-                   TS_LOG_INFO("%s check row=%d\n", __func__, row_index);
-			uThisRowChanged = 0;
-                   for(column_index = 0; column_index < PARADE_OEM_FLASH_ONE_ROW_SIZE; column_index++) {
-                            if(buf[(row_index - start_row) * PARADE_OEM_FLASH_ONE_ROW_SIZE + column_index] !=
-                                     parade_oem_data->stored_flash_data[row_index * PARADE_OEM_FLASH_ONE_ROW_SIZE + column_index])
-                                     /*overwrite this row which contain different flash data
-                                     * and jump to the next row
-                                     */
-                                     //if(uLastRowChanged)
-                                     uThisRowChanged = 1;
-                                     TS_LOG_INFO("%s row=%d, data changed\n", __func__, row_index);
-                                     //parade_oem_write_nv_one_row_(parade_oem_data, &buf[(row_index -start_row) * PARADE_OEM_FLASH_ONE_ROW_SIZE], row_index);
-                                     break;
-                   }
-			if((uLastRowChanged == 0) && (uThisRowChanged == 1))
-			{
-				offset_start = (row_index -start_row)* PARADE_OEM_FLASH_ONE_ROW_SIZE;
+		TS_LOG_INFO("%s check row=%d\n", __func__, row_index);
+		uThisRowChanged = 0;
+		if(buf[(row_index - start_row) * PARADE_OEM_FLASH_ONE_ROW_SIZE] !=
+                      parade_oem_data->stored_flash_data[row_index * PARADE_OEM_FLASH_ONE_ROW_SIZE]) {
+			uThisRowChanged = 1;
 			}
-			else if ((uLastRowChanged == 1) && (uThisRowChanged == 0))
-			{
-				offset_end = (row_index -start_row)*PARADE_OEM_FLASH_ONE_ROW_SIZE;
-				TS_LOG_INFO("%s overwrite offset from=%d to = %d \n", __func__, offset_start, offset_end);
-				rc = parade_oem_write_nv_any_data_(parade_oem_data, &buf[offset_start], offset_start, offset_end - offset_start);
-				if(rc != 0) {
-			         TS_LOG_ERR("%s write nv data failed, with block row index:%d\n", __func__, row_index);
-			         rc = -1;
-					 goto exit;
-			    }
+		TS_LOG_INFO("%s row=%d, data changed\n", __func__, row_index);
+		if((uLastRowChanged == 0) && (uThisRowChanged == 1))
+		{
+			offset_start = (row_index -start_row)* PARADE_OEM_FLASH_ONE_ROW_SIZE;
+		}
+		else if ((uLastRowChanged == 1) && (uThisRowChanged == 0))
+		{
+			offset_end = (row_index -start_row)*PARADE_OEM_FLASH_ONE_ROW_SIZE;
+			TS_LOG_INFO("%s overwrite offset from=%d to = %d \n", __func__, offset_start, offset_end);
+			rc = parade_oem_write_nv_any_data_(parade_oem_data, &buf[offset_start], offset_start, offset_end - offset_start);
+			if(rc != 0) {
+				TS_LOG_ERR("%s write nv data failed, with block row index:%d\n", __func__, row_index);
+				rc = -1;
+				goto exit;
 			}
-			if((uThisRowChanged == 1) && (row_index == end_row - 1))
-			{
-				offset_end = (end_row -start_row)*PARADE_OEM_FLASH_ONE_ROW_SIZE;
-				TS_LOG_INFO("%s last row overwrite offset from=%d to = %d \n", __func__, offset_start, offset_end);
-				rc = parade_oem_write_nv_any_data_(parade_oem_data, &buf[offset_start], offset_start, offset_end - offset_start);
-				if(rc != 0) {
-			         TS_LOG_ERR("%s write nv data failed, with block row index:%d\n", __func__, row_index);
-			         rc = -1;
-					 goto exit;
-			    }
+		}
+		if((uThisRowChanged == 1) && (row_index == end_row - 1))
+		{
+			offset_end = (end_row -start_row)*PARADE_OEM_FLASH_ONE_ROW_SIZE;
+			TS_LOG_INFO("%s last row overwrite offset from=%d to = %d \n", __func__, offset_start, offset_end);
+			rc = parade_oem_write_nv_any_data_(parade_oem_data, &buf[offset_start], offset_start, offset_end - offset_start);
+			if(rc != 0) {
+				TS_LOG_ERR("%s write nv data failed, with block row index:%d\n", __func__, row_index);
+				rc = -1;
+				goto exit;
 			}
-			uLastRowChanged = uThisRowChanged;
-         }
+		}
+		uLastRowChanged = uThisRowChanged;
+	}
 
 	  /*read flash again to make sure that the stored flash data and written data are consistent*/
          rc = parade_oem_read_nv_data(parade_oem_data, parade_oem_data->stored_flash_data, 0, parade_oem_data->flash_size);
@@ -733,7 +727,6 @@ static int parade_oem_read_nv_data(struct parade_oem_data *parade_oem_data, u8 b
 				   status = response[5];
                    if(status) {
                             TS_LOG_ERR("%s read failed, offset=%d", __func__, offset);
-							rc = -1;
                             goto exit;
                    }
                    actual_read_len = response[7] + 256 * response[8];
@@ -741,7 +734,6 @@ static int parade_oem_read_nv_data(struct parade_oem_data *parade_oem_data, u8 b
                    if(actual_read_len % PARADE_OEM_FLASH_ONE_ROW_SIZE != 0) {
                             TS_LOG_ERR("%s actual read length not aligned with 16 bytes", __func__);
                             status = -1;
-							rc = -1;
                             goto exit;
                    }
                    offset += actual_read_len;
@@ -789,8 +781,8 @@ static int parade_get_nv_info(struct parade_oem_data *parade_oem_data){
          row_setting = response[8];
          info->row0_set = (row_setting & (3<<0)) >> 0;
          info->row1_set = (row_setting & (3<<2)) >> 2;
-         info->row0_set = (row_setting & (3<<4)) >> 4;
-         info->row0_set = (row_setting & (3<<6)) >> 6;
+         info->row2_set = (row_setting & (3<<4)) >> 4;
+         info->row3_set = (row_setting & (3<<6)) >> 6;
          TS_LOG_INFO("%s row0_set=%d\n", __func__, info->row0_set);
          TS_LOG_INFO("%s row1_set=%d\n", __func__, info->row1_set);
          TS_LOG_INFO("%s row2_set=%d\n", __func__, info->row2_set);
@@ -1583,11 +1575,9 @@ static int parade_get_diff_data(void)
 				/*start get mutual raw data*/
 				dad->heatmap.data_type = CY_MUT_DIFF;
 				elem = si->sensing_conf_data.electrodes_x * si->sensing_conf_data.electrodes_y;
-			} else if(iLoop == 0){
+			} else {
 				dad->heatmap.data_type = CY_SELF_DIFF;
 				elem = si->sensing_conf_data.electrodes_x + si->sensing_conf_data.electrodes_y;
-			} else{
-				continue;
 			}
 
 			if (elem > max_read_len) {
@@ -3036,7 +3026,7 @@ static int parade_hid_output_validate_bl_response(
 	if (hid_output->reset_expected && !size)
 		return 0;
 
-	if(size -PARADE_BOOTLOADER_COMMAND_RESPONSE_LOW_CRC >= CY_MAX_INPUT || size <= PARADE_HID_OUTPUT_VALIDATE_BL_RESPONSE_COUNT ){
+	if(size >= CY_MAX_INPUT || size <= PARADE_HID_OUTPUT_VALIDATE_BL_RESPONSE_COUNT ){
 		TS_LOG_ERR("%s: HID output response, wrong size\n",__func__);
 		return -EPROTO;
 	}
@@ -4644,6 +4634,7 @@ static int parade_get_config_ver_(struct parade_core_data *cd)
 {
 	struct parade_sysinfo *si = &cd->sysinfo;
 	int rc;
+	int ret = 0;
 	u16 config_ver = 0;
 
 	rc = parade_hid_output_suspend_scanning_(cd);
@@ -4657,7 +4648,10 @@ static int parade_get_config_ver_(struct parade_core_data *cd)
 	si->cydata.fw_ver_conf = config_ver;
 
 exit:
-	parade_hid_output_resume_scanning_(cd);
+	ret = parade_hid_output_resume_scanning_(cd);
+	if (ret) {
+		TS_LOG_ERR("%s: resume_scanning failed\n", __func__);
+	}
 error:
 	TS_LOG_DEBUG("%s: CONFIG_VER:%04X\n", __func__, config_ver);
 	return rc;
@@ -4688,6 +4682,7 @@ static int parade_hid_output_read_color_info_(struct parade_core_data *cd,
 static int parade_get_color_info(struct parade_core_data *cd)
 {
 	int rc = NO_ERR;
+	int ret = 0;
 	u8 color_info = 0;
 
 	if (cd == NULL ) {
@@ -4706,7 +4701,10 @@ static int parade_get_color_info(struct parade_core_data *cd)
 	}
 	 cypress_ts_kit_color[0]= color_info;
 exit:
-	parade_hid_output_resume_scanning_(cd);
+	ret = parade_hid_output_resume_scanning_(cd);
+	if (ret) {
+		TS_LOG_ERR("%s: resume_scanning failed\n", __func__);
+	}
 error:
 	TS_LOG_INFO("%s: color_info:%04X\n", __func__, color_info);
 	return rc;
@@ -5290,9 +5288,6 @@ static int  parade_watchdog_work_check(void)
 		TS_LOG_ERR(
 			"%s: failed to access device in watchdog timer r=%d\n",
 			__func__, rc);
-#if defined (CONFIG_HUAWEI_DSM)
-		ts_dmd_report(DSM_TP_ESD_ERROR_NO, "parade ESD reset.\n");
-#endif
 		parade_esd_reset_function();
 	}
 	parade_finish_cmd();
@@ -5303,6 +5298,7 @@ static int parade_esd_reset_function(void)
 	struct parade_core_data *cd =  tskit_parade_data;
 	int rc = NO_ERR;
 
+	TS_LOG_INFO( "%s: enter\n",__func__);
 	/* power on-off */
 	parade_power_off();
 	mdelay(1000);
@@ -5310,9 +5306,13 @@ static int parade_esd_reset_function(void)
 	mdelay(200);
 
 	rc = parade_startup(cd, true);
-	if (rc < 0)
+	if (rc < 0) {
 		TS_LOG_ERR( "%s: Fail queued startup r=%d\n",
 			__func__, rc);
+#if defined (CONFIG_HUAWEI_DSM)
+		ts_dmd_report(DSM_TP_ESD_ERROR_NO, "parade ESD reset fail.\n");
+#endif
+	}
 	return rc;
 }
 
@@ -5422,8 +5422,6 @@ reset:
 	if (!rc)
 		cd->startup_retry_count = 0;
 
-	if (!detected)
-		rc = -ENODEV;
 exit:
 	TS_LOG_INFO("%s: call startup end\n", __func__);
 #ifdef TTHE_TUNER_SUPPORT
@@ -6039,11 +6037,11 @@ void parade_need_delay_after_power_off(struct device_node *core_node, struct ts_
 		return -EINVAL;
 	}
 	int retval = NO_ERR;
-	int value;
+	int value = 0;
 	int rc = NO_ERR;
-	struct parade_core_platform_data *core_pdata;
-	struct parade_mt_platform_data *mt_pdata;
-	struct parade_loader_platform_data *loader_pdata;
+	struct parade_core_platform_data *core_pdata = NULL;
+	struct parade_mt_platform_data *mt_pdata = NULL;
+	struct parade_loader_platform_data *loader_pdata = NULL;
 	struct device_node *core_node = device;
 	TS_LOG_INFO("%s, parade parse config called\n", __func__);
 	//memset(tskit_parade_data, 0, sizeof(parade_core_data));
@@ -6741,13 +6739,6 @@ static void parade_mt_process_touch(struct parade_mt_data *md,
 				touch->abs[CY_TCH_Y] - 1;
 		touch->abs[CY_TCH_OR] *= -1;
 	}
-
-	TS_LOG_DEBUG("%s: flip=%s inv-x=%s inv-y=%s x=%04X(%d) y=%04X(%d)\n",
-		__func__, flipped ? "true" : "false",
-		tskit_parade_data->mt_pdata->flags & CY_MT_FLAG_INV_X ? "true" : "false",
-		tskit_parade_data->mt_pdata->flags & CY_MT_FLAG_INV_Y ? "true" : "false",
-		touch->abs[CY_TCH_X], touch->abs[CY_TCH_X],
-		touch->abs[CY_TCH_Y], touch->abs[CY_TCH_Y]);
 }
 
 static void parade_get_mt_touches(struct parade_mt_data *md,
@@ -6813,20 +6804,6 @@ static void parade_get_mt_touches(struct parade_mt_data *md,
 		info->fingers[touch_id].ewy = tch->abs[CY_TCH_MIN];
 		info->fingers[touch_id].orientation = tch->abs[CY_TCH_OR];
 
-		TS_LOG_DEBUG("outdata: x = %d, y = %d, pressure = %d\n", info->fingers[touch_id].x,
-			info->fingers[touch_id].y, info->fingers[touch_id].pressure);
-
-		TS_LOG_DEBUG("%s: t=%d x=%d y=%d z=%d M=%d m=%d o=%d e=%d obj=%d tip=%d\n",
-			__func__, t,
-			tch->abs[CY_TCH_X],
-			tch->abs[CY_TCH_Y],
-			tch->abs[CY_TCH_P],
-			tch->abs[CY_TCH_MAJ],
-			tch->abs[CY_TCH_MIN],
-			tch->abs[CY_TCH_OR],
-			tch->abs[CY_TCH_E],
-			tch->abs[CY_TCH_O],
-			tch->abs[CY_TCH_TIP]);
 	}
 
 	md->num_prv_rec = num_cur_tch;
@@ -6842,7 +6819,7 @@ static int parade_xy_worker(struct parade_core_data *cd, struct ts_fingers *info
 	struct parade_touch tch;
 	u8 num_cur_tch;
 	int rc = 0;
-
+	memset(&tch, 0, sizeof(struct parade_touch));
 	parade_get_touch_hdr(md, &tch, si->xy_mode + 3);
 
 	num_cur_tch = tch.hdr[CY_TCH_NUM];
@@ -7403,8 +7380,10 @@ static int parade_register_algo(struct ts_kit_device_data *chip_data)
 	TS_LOG_INFO("%s: parade_reg_algo called\n", __func__);
 
 	rc = register_ts_algo_func(chip_data, &parade_algo_f1);	/*put algo_f1 into list contained in chip_data, named algo_t1*/
-	if (rc)
-		goto out;
+	if (rc) {
+		TS_LOG_ERR("%s: register ts algo fail\n", __func__);
+	}
+
 out:
 	return rc;
 }
@@ -8590,7 +8569,10 @@ status_success:
 	status = STATUS_SUCCESS;
 
 resume_scan:
-	parade_hid_output_resume_scanning_(cd);
+	rc = parade_hid_output_resume_scanning_(cd);
+	if (rc) {
+		TS_LOG_ERR("%s: resume_scanning failed\n", __func__);
+	}
 
 exit:
 	mutex_unlock(&cd->dad.sysfs_lock);
@@ -10433,9 +10415,6 @@ static int parade_get_rawdata(struct ts_rawdata_info *info, struct ts_cmd_node *
 		if(result->change_report_rate_pass){
 			strncat(buf_parademmitest_result, CY_REPORT_RATE_PASS, strlen(CY_REPORT_RATE_PASS));
 		}
-		else{
-			strncat(buf_parademmitest_result, CY_REPORT_RATE_FAIL, strlen(CY_REPORT_RATE_FAIL));
-		}
 	}
 	else{
 		strncat(buf_parademmitest_result, CY_REPORT_RATE_PASS, strlen(CY_REPORT_RATE_PASS));
@@ -10545,7 +10524,10 @@ exit:
 	if(rc!=NO_ERR)
 		info->status = TS_ACTION_FAILED;
 
-	parade_hid_output_resume_scanning_(tskit_parade_data);
+	rc = parade_hid_output_resume_scanning_(tskit_parade_data);
+	if (rc){
+		TS_LOG_ERR("%s: resume_scanning failed\n", __func__);
+	}
 	g_ts_kit_platform_data.chip_data->isbootupdate_finish = true;
 	parade_finish_cmd();
 	return rc;
@@ -10719,8 +10701,12 @@ static int parade_power_on(void)
 	return 0;
 
 ts_vddd_out:
-	if (1 == tskit_parade_data->parade_chip_data->vci_regulator_type)
-		regulator_disable(tskit_parade_data->vdda);
+	if (1 == tskit_parade_data->parade_chip_data->vci_regulator_type) {
+		rc = regulator_disable(tskit_parade_data->vdda);
+		if (rc < 0) {
+			TS_LOG_ERR("%s, failed to disable parade vdda, rc = %d\n", __func__, rc);
+		}
+	}
 	return -1;
 }
 
@@ -10778,18 +10764,37 @@ static int parade_power_off(void)
 
 static void parade_power_off_gpio_set(void)
 {
+	int rc = 0;
+
 	TS_LOG_INFO("%s: suspend RST\n", __func__);
-	gpio_direction_output(tskit_parade_data->parade_chip_data->ts_platform_data->reset_gpio, 0);
-	gpio_direction_input(tskit_parade_data->parade_chip_data->ts_platform_data->reset_gpio);
+	rc = gpio_direction_output(tskit_parade_data->parade_chip_data->ts_platform_data->reset_gpio, 0);
+	if (rc) {
+		TS_LOG_ERR("%s: gpio_direction_output for reset gpio failed\n", __func__);
+	}
+
+	rc = gpio_direction_input(tskit_parade_data->parade_chip_data->ts_platform_data->reset_gpio);
+	if (rc) {
+		TS_LOG_ERR("%s: gpio_direction_input for reset gpio failed\n", __func__);
+	}
+
 	mdelay(1);
 
 }
 
 static void parade_power_on_gpio_set(void)
 {
+	int rc = 0;
+
 	TS_LOG_INFO("%s: resume gpio\n", __func__);
-	gpio_direction_input(tskit_parade_data->parade_chip_data->ts_platform_data->irq_gpio);
-	gpio_direction_output(tskit_parade_data->parade_chip_data->ts_platform_data->reset_gpio, 1);
+	rc = gpio_direction_input(tskit_parade_data->parade_chip_data->ts_platform_data->irq_gpio);
+	if (rc) {
+		TS_LOG_ERR("%s: gpio_direction_input for irq gpio failed\n", __func__);
+	}
+
+	rc = gpio_direction_output(tskit_parade_data->parade_chip_data->ts_platform_data->reset_gpio, 1);
+	if (rc) {
+		TS_LOG_ERR("%s: gpio_direction_output for reset gpio failed\n", __func__);
+	}
 }
 
 static int parade_file_open_firmware(u8 *file_path, u8 *databuf,
@@ -11093,10 +11098,19 @@ static int parade_chip_detect(struct ts_kit_platform_data *platform_data)
 	}
 	/*irq and rst direciton set*/
 	if(false == tskit_parade_data->need_set_rst_after_iovcc_flag) {
-		gpio_direction_output(tskit_parade_data->parade_chip_data->ts_platform_data->reset_gpio, 1);
-		gpio_direction_input(tskit_parade_data->parade_chip_data->ts_platform_data->irq_gpio);
+		rc = gpio_direction_output(tskit_parade_data->parade_chip_data->ts_platform_data->reset_gpio, 1);
+		if (rc) {
+			TS_LOG_ERR("%s: gpio_direction_output for reset gpio failed\n", __func__);
+		}
+		rc = gpio_direction_input(tskit_parade_data->parade_chip_data->ts_platform_data->irq_gpio);
+		if (rc) {
+			TS_LOG_ERR("%s: gpio_direction_input for reset gpio failed\n", __func__);
+		}
 	}else {
-		gpio_direction_input(tskit_parade_data->parade_chip_data->ts_platform_data->reset_gpio);
+		rc = gpio_direction_input(tskit_parade_data->parade_chip_data->ts_platform_data->reset_gpio);
+		if (rc) {
+			TS_LOG_ERR("%s: gpio_direction_input for reset gpio failed\n", __func__);
+		}
 		TS_LOG_INFO("%s, set rst & int after iovcc, set reset input when power on\n", __func__);
 	}
 

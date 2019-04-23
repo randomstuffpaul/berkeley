@@ -1284,7 +1284,4 @@ int ufshcd_read_unit_desc_param(struct ufs_hba *hba,
 int ufshcd_send_vendor_scsi_cmd(struct ufs_hba *hba,
 		struct scsi_device *sdp, unsigned char* cdb, void* buf);
 void ufshcd_set_auto_hibern8_delay(struct ufs_hba *hba, unsigned int value);
-#ifdef CONFIG_SCSI_UFS_ENHANCED_INLINE_CRYPTO_V2
-void uie_close_session(void);
-#endif
 #endif /* End of Header */

@@ -318,7 +318,7 @@ static bool bfr_boot_fail_has_fixed_recovery_method(bfr_recovery_method_select_p
 
     if (unlikely(NULL == pselect_param))
     {
-        BFMR_PRINT_INVALID_PARAMS("pselect_param: %p\n", pselect_param);
+        BFMR_PRINT_INVALID_PARAMS("pselect_param.\n");
         return false;
     }
 
@@ -514,7 +514,7 @@ static bool bfr_need_factory_reset_after_download_recovery(bfr_recovery_method_s
 {
     if (NULL == pselect_param)
     {
-        BFMR_PRINT_INVALID_PARAMS("pselect_param: %p\n", pselect_param);
+        BFMR_PRINT_INVALID_PARAMS("pselect_param.\n");
         return false;
     }
 
@@ -551,7 +551,7 @@ static int bfr_parse_boot_fail_info(bfr_recovery_method_select_param_t *pselect_
 
     if (NULL == pselect_param)
     {
-        BFMR_PRINT_INVALID_PARAMS("pselect_param: %p\n", pselect_param);
+        BFMR_PRINT_INVALID_PARAMS("pselect_param.\n");
         return -1;
     }
 
@@ -614,13 +614,12 @@ static int bfr_parse_boot_fail_info(bfr_recovery_method_select_param_t *pselect_
     return 0;
 }
 
-
 static int bfr_select_recovery_method_with_safe_mode(
     bfr_recovery_method_select_param_t *pselect_param)
 {
     if (NULL == pselect_param)
     {
-        BFMR_PRINT_INVALID_PARAMS("pselect_param: %p\n", pselect_param);
+        BFMR_PRINT_INVALID_PARAMS("pselect_param.\n");
         return -1;
     }
 
@@ -728,7 +727,7 @@ static int bfr_select_recovery_method_without_safe_mode(
 {
     if (NULL == pselect_param)
     {
-        BFMR_PRINT_INVALID_PARAMS("pselect_param: %p\n", pselect_param);
+        BFMR_PRINT_INVALID_PARAMS("pselect_param.\n");
         return -1;
     }
 
@@ -859,7 +858,7 @@ static int bfr_run_recovery_method(bfr_recovery_method_select_param_t *pselect_p
 {
     if (NULL == pselect_param)
     {
-        BFMR_PRINT_INVALID_PARAMS("pselect_param: %p\n", pselect_param);
+        BFMR_PRINT_INVALID_PARAMS("pselect_param.\n");
         return -1;
     }
 
@@ -1250,8 +1249,7 @@ static int bfr_read_recovery_record(bfr_recovery_record_t *precord,
 
     if (unlikely((NULL == precord) || (NULL == record_count_actually_read)))
     {
-        BFMR_PRINT_INVALID_PARAMS("precord: %p record_count_actually_read: %p\n",
-            precord, record_count_actually_read);
+        BFMR_PRINT_INVALID_PARAMS("precord or record_count_actually_read.\n");
         return -1;
     }
 
@@ -1369,7 +1367,7 @@ int bfr_get_hardware_fault_times(bfmr_get_hw_fault_info_param_t *pfault_info_par
 
     if (unlikely((NULL == pfault_info_param)))
     {
-        BFMR_PRINT_INVALID_PARAMS("pfault_info_param: %p\n", pfault_info_param);
+        BFMR_PRINT_INVALID_PARAMS("pfault_info_param.\n");
         return -1;
     }
 
@@ -1448,7 +1446,7 @@ int bfr_get_real_recovery_info(bfr_real_recovery_info_t *preal_recovery_info)
 
     if (NULL == preal_recovery_info)
     {
-        BFMR_PRINT_INVALID_PARAMS("preal_recovery_info: %p\n", preal_recovery_info);
+        BFMR_PRINT_INVALID_PARAMS("preal_recovery_info.\n");
         return -1;
     }
 
@@ -1518,7 +1516,7 @@ static int bfr_renew_recovery_record(bfr_recovery_record_t *precord)
 
     if (NULL == precord)
     {
-        BFMR_PRINT_INVALID_PARAMS("precord: %p\n", precord);
+        BFMR_PRINT_INVALID_PARAMS("precord.\n");
         return -1;
     }
 

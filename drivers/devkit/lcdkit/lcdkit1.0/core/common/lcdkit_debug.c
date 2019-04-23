@@ -1118,7 +1118,7 @@ static int lcdkit_is_mipi_input_legal(int op_type,int ic_reg,
    }
 
    /* ic_reg must in [0x00, 0xff] */
-   if (!((unsigned int)ic_reg >= 0 && (unsigned int)ic_reg <= 0xff))
+   if ((unsigned int)ic_reg > 0xff)
    {
       ret = -1;
    }
@@ -1696,6 +1696,11 @@ int lcdkit_debugfs_init(void)
     static char already_init = 0;  // internal flag
     struct dentry* dent = NULL;
     struct dentry* file = NULL;
+
+#ifndef LCDKIT_DEBUG_ENABLE
+	LCDKIT_ERR("TARGET_BUILD_VARIANT is user,lcd-dbg is not create\n");
+	return 0;
+#endif
 
     /* judge if already init */
     if (already_init)

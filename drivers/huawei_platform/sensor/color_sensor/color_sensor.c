@@ -41,6 +41,7 @@ HWLOG_REGIST();
 
 static struct class *color_sensor_class;
 struct hisi_nve_info_user nv_user_info;
+int color_report_val[MAX_REPORT_LEN] = {0};
 
 int read_color_calibrate_data_from_nv(int nv_number, int nv_size, char *nv_name, char *temp)
 {
@@ -150,6 +151,72 @@ static ssize_t color_calibrate_store(struct device *dev, struct device_attribute
 
 	return size;
 }
+static ssize_t at_color_calibrate_store(struct device *dev, struct device_attribute *attr,
+			      const char *buf, size_t size)
+{
+	at_color_sensor_input_para in_data;
+	//uint32_t in_data[MAX_TARGET_CALI_LEN] = {0};
+	struct colorDriver_chip *chip = NULL;
+
+	if(NULL == dev || NULL == attr || NULL == buf)
+	{
+		hwlog_err("[%s] input NULL!! \n", __func__);
+		return -1;
+	}
+	chip = dev_get_drvdata(dev);
+	if(NULL == chip){
+		hwlog_err("[%s] input NULL!! \n", __func__);
+		return -1;
+	}
+	if(NULL == chip->at_color_store_calibrate_state){
+		hwlog_err("[%s] at_color_store_calibrate_state NULL!! \n", __func__);
+		return -1;
+	}
+	hwlog_info("[%s] color_sensor store in!! \n", __func__);
+
+	memcpy(&in_data, buf, min(size, sizeof(at_color_sensor_input_para)));
+
+	hwlog_info("%s, target = %d, %d, %d, %d, %d, %d, %d, %d, %d", __func__, in_data.enable, \
+		in_data.reserverd[0],in_data.reserverd[1],in_data.reserverd[2],in_data.reserverd[3],in_data.reserverd[4],in_data.reserverd[5],\
+		in_data.reserverd[6],in_data.reserverd[7]);
+	chip->at_color_store_calibrate_state(chip, &in_data);
+
+	return size;
+}
+
+static ssize_t at_color_calibrate_show(struct device *dev, struct device_attribute *attr,
+			     char *buf)
+{
+	at_color_sensor_output_para out_data ={0};
+	struct colorDriver_chip *chip = NULL;
+	int ret = 0;
+	int i;
+	int size = 1;
+	if(NULL == dev || NULL == attr || NULL == buf)
+	{
+		hwlog_err("[%s] input NULL!! \n", __func__);
+		return -1;
+	}
+	chip = dev_get_drvdata(dev);
+	if(NULL == chip){
+		hwlog_err("[%s] input NULL!! \n", __func__);
+		return -1;
+	}
+	if(chip->at_color_show_calibrate_state == NULL){
+		hwlog_err("[%s] at_color_show_calibrate_state NULL!! \n", __func__);
+		return -1;
+	}
+	hwlog_info("[%s] in \n", __func__);
+	size = sizeof(at_color_sensor_output_para);
+
+	chip->at_color_show_calibrate_state(chip, &out_data);
+	memcpy(buf, &out_data, size);
+	hwlog_info("get cali result = %d, gain_arr=%d, color_array=%d\n", out_data.result, out_data.gain_arr, out_data.color_arr);
+	hwlog_info("get cali gain = %d, %d, %d, %d %d\n", out_data.report_gain[0],out_data.report_gain[1],out_data.report_gain[2],\
+		out_data.report_gain[3], out_data.report_gain[4]);
+	return size;
+}
+
 static ssize_t color_enable_show(struct device *dev, struct device_attribute *attr,
 			      const char *buf)
 {
@@ -175,7 +242,6 @@ static ssize_t color_enable_show(struct device *dev, struct device_attribute *at
 static ssize_t color_enable_store(struct device *dev, struct device_attribute *attr,
 			      const char *buf, size_t size)
 {
-	color_sensor_input_para in_data;
 	struct colorDriver_chip *chip = NULL;
 	bool state = true;
 
@@ -262,16 +328,45 @@ static ssize_t color_gain_store(struct device *dev,
 	chip->color_sensor_setGain(chip->deviceCtx, gain_value);
 	return size;
 }
+
+static ssize_t color_data_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct colorDriver_chip *chip = NULL;
+	int gain;
+
+	if(NULL == dev || NULL == attr || NULL == buf)
+	{
+		hwlog_err("[%s] input NULL!! \n", __func__);
+		return -1;
+	}
+
+	chip = dev_get_drvdata(dev);
+	if(NULL == chip){
+		hwlog_err("[%s] input NULL!! \n", __func__);
+		return -1;
+	}
+	//color_report_val
+	memcpy(buf, color_report_val, MAX_REPORT_LEN*sizeof(int));
+	hwlog_err("color_report_val = %d, %d, %d, %d, %d\n", color_report_val[0], color_report_val[1], color_report_val[2], color_report_val[3], color_report_val[4]);
+	return MAX_REPORT_LEN*sizeof(int);
+}
+
+
 DEVICE_ATTR(calibrate, 0660, color_calibrate_show, color_calibrate_store);
 DEVICE_ATTR(color_enable, 0660, color_enable_show, color_enable_store);
 DEVICE_ATTR(gain, 0660, color_gain_show, color_gain_store);
 DEVICE_ATTR(calibrate_timeout, 0440, calibrate_timeout_show, NULL);
+DEVICE_ATTR(color_data, 0660, color_data_show, NULL);
+DEVICE_ATTR(color_cali, 0660, at_color_calibrate_show, at_color_calibrate_store);
 
 static struct attribute *color_sensor_attributes[] = {
 	&dev_attr_calibrate.attr,
 	&dev_attr_color_enable.attr,
 	&dev_attr_gain.attr,
 	&dev_attr_calibrate_timeout.attr,
+	&dev_attr_color_data.attr,
+	&dev_attr_color_cali.attr,
 	NULL,
 };
 static const struct attribute_group color_sensor_attr_group = {

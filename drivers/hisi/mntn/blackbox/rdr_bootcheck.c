@@ -211,15 +211,10 @@ int rdr_bootcheck_thread_body(void *arg)
 		cur_reboot_times = rdr_record_reboot_times2file();
 		BB_PRINT_PN("ap has reboot %d times\n", cur_reboot_times);
 		if (max_reboot_times < cur_reboot_times) {
-			BB_PRINT_ERR("need reboot to erecovery.\n");
-
-			/*write "erecovery_enter_reason:=2015" to cache*/
-			rdr_record_erecovery_reason();
 
 			/*reset the file of reboot_times*/
 			rdr_reset_reboot_times();
 
-			kernel_restart("erecovery");
 		}
 	} else {
 		rdr_reset_reboot_times();

@@ -107,3 +107,18 @@ config HISEE_NFC_IRQ_SWITCH
 	default n
 	help
 	  whether hisee support nfc irq switch
+
+config HISEE_SUPPORT_OVERSEA
+	depends on HISI_HISEE
+	bool "Hisilicon hisee support oversea feature."
+	default n
+	help
+	  whether hisee support oversea feature
+
+config HISI_HISEE_MNTN_RESET_IRQ_SEPARATE
+	depends on HISI_HISEE
+	bool "Hisilicon hisee reset use separate interrupts."
+	default n
+	help
+	  whether hisee reset support separate interrupts feature
+

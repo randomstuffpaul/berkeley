@@ -4519,12 +4519,12 @@ int hisi_dss_ovl_base_config(struct hisi_fb_data_type *hisifd, dss_overlay_t *po
 							ovl->ovl_layer[layer_idx].layer_cfg =
 								set_bits32(ovl->ovl_layer[layer_idx].layer_cfg, 1, 1, 8);
 						} else {
-								ovl->ovl_layer[layer_idx].layer_pattern =
-							set_bits32(ovl->ovl_layer[layer_idx].layer_pattern, 0, 32, 0);
-								ovl->ovl_layer[layer_idx].layer_cfg =
-							set_bits32(ovl->ovl_layer[layer_idx].layer_cfg, 1, 1, 0);
-								ovl->ovl_layer[layer_idx].layer_cfg =
-							set_bits32(ovl->ovl_layer[layer_idx].layer_cfg, 0, 1, 8);
+							ovl->ovl_layer[layer_idx].layer_pattern =
+								set_bits32(ovl->ovl_layer[layer_idx].layer_pattern, 0, 32, 0);
+							ovl->ovl_layer[layer_idx].layer_cfg =
+								set_bits32(ovl->ovl_layer[layer_idx].layer_cfg, 1, 1, 0);
+							ovl->ovl_layer[layer_idx].layer_cfg =
+								set_bits32(ovl->ovl_layer[layer_idx].layer_cfg, 0, 1, 8);
 						}
 
 						ovl->ovl_layer_used[layer_idx] = 1;
@@ -4555,10 +4555,9 @@ int hisi_dss_ovl_base_config(struct hisi_fb_data_type *hisifd, dss_overlay_t *po
 	ovl->ovl_size = set_bits32(ovl->ovl_size, DSS_HEIGHT(img_height), 15, 16);
 
 		ovl_bg_color = 0x00000000;
-
 	ovl->ovl_bg_color= set_bits32(ovl->ovl_bg_color, ovl_bg_color, 32, 0);
 
-	ovl->ovl_bg_color_alpha= set_bits32(ovl->ovl_bg_color_alpha, 0x3FF, 32, 0);
+	ovl->ovl_bg_color_alpha = set_bits32(ovl->ovl_bg_color_alpha, 0x3FF, 32, 0);
 
 	ovl->ovl_dst_startpos = set_bits32(ovl->ovl_dst_startpos, 0x0, 32, 0);
 	ovl->ovl_dst_endpos = set_bits32(ovl->ovl_dst_endpos, DSS_WIDTH(img_width), 15, 0);
@@ -4616,7 +4615,11 @@ int hisi_dss_ovl_layer_config(struct hisi_fb_data_type *hisifd, dss_overlay_t *p
 	hisifd->dss_module.ov_used[ovl_idx] = 1;
 
 	if (layer->need_cap & CAP_BASE) {
-		ovl->ovl_bg_color = set_bits32(ovl->ovl_bg_color, layer->color, 32, 0);
+		color_rgb = layer->color;
+		color_alpha = (layer->color >> 24) * OVL_PATTERN_RATIO;
+		color_rgb = (((layer->color >> 16) & 0xff) << 20) | (((layer->color >> 8) & 0xff) << 10) | (layer->color & 0xff);
+		ovl->ovl_bg_color = set_bits32(ovl->ovl_bg_color, color_rgb, 32, 0);
+		ovl->ovl_bg_color_alpha = set_bits32(ovl->ovl_bg_color_alpha, color_alpha, 32, 0);
 		ovl->ovl_gcfg = set_bits32(ovl->ovl_gcfg, 0x1, 1, 16);
 		return 0;
 	}
@@ -4632,7 +4635,7 @@ int hisi_dss_ovl_layer_config(struct hisi_fb_data_type *hisifd, dss_overlay_t *p
 	color_rgb = layer->color;
 	glb_alpha = layer->glb_alpha * OVL_PATTERN_RATIO;
 	color_alpha = (layer->color >> 24) * OVL_PATTERN_RATIO;
-	color_rgb = (layer->color & 0x01ffffff) * OVL_PATTERN_RATIO;
+	color_rgb = (((layer->color >> 16) & 0xff) << 20) | (((layer->color >> 8) & 0xff) << 10) | (layer->color & 0xff);
 
 	blend_mode = get_ovl_blending_mode(pov_req, layer);
 	if ((blend_mode < 0) || (blend_mode >= DSS_BLEND_MAX)) {
@@ -5380,6 +5383,7 @@ static int hisi_dss_wdma_afbc_check_header (dss_wb_layer_t *layer,dss_rect_t in_
 		HISI_FB_ERR("layer is NULL");
 		return -EINVAL;
 	}
+
 	if ((layer->dst.width & (AFBC_HEADER_ADDR_ALIGN - 1)) ||
 		(layer->dst.height & (AFBC_BLOCK_ALIGN - 1))) {
 		HISI_FB_ERR("wb_layer img width(%d) is not %d bytes aligned, or "

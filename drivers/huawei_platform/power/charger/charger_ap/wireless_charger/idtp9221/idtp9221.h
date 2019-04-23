@@ -62,6 +62,7 @@
 #define IDT9221_RX_EPT_RESERVED               (0x07)
 #define IDT9221_RX_EPT_NO_RESPONSE            (0x08)
 #define IDT9221_RX_ERR_VRECT                  (0xA0)
+#define IDT9221_RX_ERR_VOUT                   (0xA1)
 /*vout register*/
 #define IDT9221_RX_GET_VOUT_ADDR              (0x003c)
 #define IDT9221_RX_VOUT_VALUE_MAX             (12600)//mV
@@ -211,6 +212,9 @@
 #define IDT9221_CMD_FIX_TX_FOP                (0x44)
 #define IDT9221_CMD_UNFIX_TX_FOP              (0x45)
 #define IDT9221_CMD_SEND_QVAL                 (0x48)
+
+#define IDT9221_CMD_ACK                       (0xff)
+#define IDT9221_CMD_ACK_HEAD                  (0x1e)
 
 /*cmd: 0x41*/
 #define IDT9221_TX_CAP_VOUT_STEP              (100)

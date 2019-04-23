@@ -337,7 +337,7 @@ char* bfm_get_kernel_bootfail_log_name(void);
 char* bfm_get_ramoops_bootfail_log_name(void);
 char* bfm_get_platform_name(void);
 unsigned int bfm_get_dfx_log_length(void);
-
+int bfm_update_platform_logs(bfm_bootfail_log_info_t *pbootfail_log_info);
 /**
     @function: int bfmr_copy_data_from_dfx_to_bfmr_tmp_buffer(void)
     @brief: copy dfx data to local buffer
@@ -349,7 +349,6 @@ unsigned int bfm_get_dfx_log_length(void);
     @note: HISI must realize this function in detail, the other platform can return when enter this function
 */
 void bfmr_copy_data_from_dfx_to_bfmr_tmp_buffer(void);
-int bfm_get_kmsg_log_header_size(void);
 char* bfm_get_raw_part_name(void);
 int bfm_get_raw_part_offset(void);
 void bfmr_alloc_and_init_raw_log_info(bfm_process_bootfail_param_t *pparam, bfmr_log_dst_t *pdst);
@@ -371,6 +370,7 @@ unsigned int bfmr_capture_log_from_src_file(char *buf, unsigned int buf_len, cha
 * }
 */
 int bfm_process_ocp_boot_fail_test(void *param);
+void bfm_set_valid_long_press_flag(void);
 int bfm_chipsets_init(bfm_chipsets_init_param_t *param);
 
 #ifdef __cplusplus

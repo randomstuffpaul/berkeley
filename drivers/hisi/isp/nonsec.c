@@ -64,6 +64,7 @@ struct hisi_isp_nsec {
     struct clk *ispclk[ISP_CLK_MAX];
     unsigned int ispclk_value[ISP_CLK_MAX];
     unsigned int clkdis_dvfs[ISP_CLK_MAX];
+    unsigned int clkdis_need_div[ISP_CLK_MAX];
     unsigned int clkdn[HISP_CLKDOWN_MAX][ISP_CLK_MAX];
     const char *clk_name[ISP_CLK_MAX];
     unsigned int dvfsmask;
@@ -80,7 +81,7 @@ struct hisi_isp_nsec {
 static struct hisi_isp_nsec nsec_rproc_dev;
 
 #define MEDIASUBSYS_PWSTAT (5)
-static int get_media1_subsys_power_state(void)
+int get_media1_subsys_power_state(void)
 {
     void __iomem* cfg_base = NULL;
     unsigned int media_pw_stat = 0;
@@ -98,7 +99,7 @@ static int get_media1_subsys_power_state(void)
         return 0;
 }
 #define PERPWRSTAT_ISP (0)
-static int get_isptop_power_state(void)
+int get_isptop_power_state(void)
 {
     void __iomem* cfg_base = NULL;
     unsigned int isppwrstat = 0;
@@ -343,7 +344,7 @@ static int hisp_clock_enable(struct hisi_isp_nsec *dev, int clk)
         return -EINVAL;
 
     ispclock = (unsigned long)dev->ispclk_value[clk];
-    if (!strncmp(dev->clk_name[clk], "isp_sys", strlen("isp_sys"))) {/*lint !e64 */
+    if(ISP_SYS_CLK == clk) {
         if ((ret = clk_prepare_enable(dev->ispclk[clk])) < 0) {
             pr_err("[%s] Failed: %d.%s.clk_prepare_enable.%d\n", __func__, clk, dev->clk_name[clk], ret);
             return -EINVAL;
@@ -385,10 +386,13 @@ static void hisp_clock_disable(struct hisi_isp_nsec *dev, int clk)
             case ISPFUNC2_CLK:
             case ISPFUNC3_CLK:
             case ISPFUNC4_CLK:
-            case ISP_SYS_CLK:
-                if (!strncmp(dev->clk_name[clk], "isp_sys", strlen("isp_sys"))) {/*lint !e64 */
-                    pr_info("[%s] %d.%s.clk_disable_unprepare\n", __func__, clk, dev->clk_name[clk]);
-                    break;
+                ispclock = (unsigned long)dev->clkdis_need_div[clk];
+                if (ispclock != 0) {
+                    if ((ret = clk_set_rate(dev->ispclk[clk], ispclock)) < 0) {
+                        pr_err("[%s] Failed: need_div %d.%d M, %d.%s.clk_set_rate.%d\n", __func__, (int)ispclock/1000000, (int)ispclock%1000000, clk, dev->clk_name[clk], ret);
+                        return;
+                    }
+                    pr_info("[%s] %d.%s.need_div clk_set_rate.%d.%d M\n", __func__, clk, dev->clk_name[clk], (int)ispclock/1000000, (int)ispclock%1000000);
                 }
                 ispclock = (unsigned long)dev->clkdis_dvfs[clk];
                 if ((ret = clk_set_rate(dev->ispclk[clk], ispclock)) < 0) {
@@ -397,6 +401,9 @@ static void hisp_clock_disable(struct hisi_isp_nsec *dev, int clk)
                 }
                 rproc_set_shared_clk_value(clk,(unsigned int)ispclock);
                 pr_info("[%s] %d.%s.clk_set_rate.%d.%d M\n", __func__, clk, dev->clk_name[clk], (int)ispclock/1000000, (int)ispclock%1000000);
+                break;
+            case ISP_SYS_CLK:
+                pr_info("[%s] %d.%s.clk_disable_unprepare\n", __func__, clk, dev->clk_name[clk]);
                 break;
             default:
                 break;
@@ -553,8 +560,9 @@ int hisp_powerdn(void)
     if ((ret = isptop_power_down(dev->useisptop)) != 0)
         pr_err("[%s] Failed: isptop_power_down.%d useisptop.%d\n", __func__, ret, dev->useisptop);
 
-    if ((ret = regulator_disable(dev->ispcore_supply)) != 0)
+    if ((ret = regulator_disable(dev->ispcore_supply)) != 0) {
         pr_err("[%s] Failed: ispsrt regulator_disable.%d\n", __func__, ret);
+    }
 
     for (index = 0; index < (int)dev->clock_num; index ++)
         hisp_clock_disable(dev, index);
@@ -995,6 +1003,9 @@ static int hisi_isp_nsec_getdts(struct platform_device *pdev, struct hisi_isp_ns
             pr_err("[%s] Failed: clkdis-dvfs of_property_read_u32_array.%d\n", __func__, ret);
             return -EINVAL;
         }
+        if ((ret = of_property_read_u32_array(np, "clkdis-need-div", dev->clkdis_need_div, dev->clock_num)) < 0) {
+            pr_err("[%s] Failed: clkdis-need-div of_property_read_u32_array.%d\n", __func__, ret);
+        }
     }
 
     if ((ret = hisi_isp_nsec_getdts_dvfs(np, dev)) < 0) {
@@ -1037,6 +1048,7 @@ static void isp_unmap_rsc(struct hisi_isp_nsec *dev)
 
     dev->isp_dma_va = NULL;
 }
+
 int hisi_isp_nsec_probe(struct platform_device *pdev)
 {
     struct hisi_isp_nsec *dev = &nsec_rproc_dev;
@@ -1063,6 +1075,7 @@ int hisi_isp_nsec_probe(struct platform_device *pdev)
     }
 
     dev->dvfsmask = (1 << ISPI2C_CLK);
+
     pr_alert("[%s] -\n", __func__);
 
     return 0;
@@ -1081,3 +1094,4 @@ int hisi_isp_nsec_remove(struct platform_device *pdev)
 
 MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("HiStar V150 rproc driver");
+

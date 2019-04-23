@@ -40,7 +40,6 @@ struct rt_regmap_ops {
 enum {
 	RT_DBG_REG,
 	RT_DBG_DATA,
-	RT_DBG_REGS,
 	RT_DBG_SYNC,
 	RT_DBG_ERROR,
 	RT_DBG_NAME,
@@ -1225,84 +1224,6 @@ static void rt_regmap_cache_release(struct rt_regmap_device *rd)
 }
 
 #ifdef CONFIG_DEBUG_FS
-static void rt_check_dump_config_file(struct rt_regmap_device *rd,
-				long int *reg_dump, int *cnt, char *type)
-{
-	char *token, *buf, *tmp_type;
-	char PATH[64];
-	mm_segment_t fs;
-	struct file *fp;
-	int ret, tmp_cnt = 0;
-
-	buf = devm_kzalloc(&rd->dev, 64*sizeof(char), GFP_KERNEL);
-	sprintf(PATH, "/sdcard/%s_dump_config.txt", rd->props.name);
-	fp = filp_open(PATH, O_RDONLY, 0);
-	if (IS_ERR(fp)) {
-		pr_info("There is no Dump config file in sdcard\n");
-		devm_kfree(&rd->dev, buf);
-	} else {
-		fs = get_fs();
-		set_fs(get_ds());
-		fp->f_op->read(fp, buf, 64, &fp->f_pos);
-		set_fs(fs);
-
-		tmp_type = token = strsep(&buf, " ");
-		token = strsep(&buf, " ");
-		while (token != NULL) {
-			ret = kstrtoul(token, 16, &reg_dump[tmp_cnt]);
-			if (ret == 0)
-				tmp_cnt++;
-			token = strsep(&buf, " ");
-		}
-		filp_close(fp, NULL);
-		*cnt = tmp_cnt;
-		memcpy(type, tmp_type, 16);
-		devm_kfree(&rd->dev, buf);
-	}
-}
-
-static void rt_show_regs(struct rt_regmap_device *rd, struct seq_file *seq_file)
-{
-	int i = 0, k = 0, ret, count = 0, cnt = 0;
-	unsigned char regval[512];
-	long int reg_dump[64] = {0};
-	const rt_register_map_t *rm = rd->props.rm;
-	char type[16];
-
-	rt_check_dump_config_file(rd, reg_dump, &cnt, type);
-	down(&rd->semaphore);
-	for (i = 0; i < rd->props.register_num; i++) {
-		ret = rd->regmap_ops.regmap_block_read(rd, rm[i]->addr,
-						rm[i]->size, &regval[count]);
-		count += rm[i]->size;
-		if (ret < 0) {
-			dev_err(&rd->dev, "regmap block read fail\n");
-			if (rd->error_occurred) {
-				sprintf(rd->err_msg + strlen(rd->err_msg),
-				"Error block read fail at 0x%02x\n",
-				rm[i]->addr);
-			} else {
-				sprintf(rd->err_msg,
-				"Error block read fail at 0x%02x\n",
-				rm[i]->addr);
-				rd->error_occurred = 1;
-			}
-			goto err_show_regs;
-		}
-
-		if ((rm[i]->reg_type & RT_REG_TYPE_MASK) != RT_RESERVE) {
-			seq_printf(seq_file, "reg0x%02x:0x", rm[i]->addr);
-			for (k = 0; k < rm[i]->size; k++)
-				seq_printf(seq_file, "%02x,",
-					regval[count - rm[i]->size + k]);
-			seq_puts(seq_file, "\n");
-		} else
-			seq_printf(seq_file,
-				"reg0x%02x:reserve\n", rm[i]->addr);
-	}
-err_show_regs:
-	up(&rd->semaphore);
-}
 
 static int general_read(struct seq_file *seq_file, void *_data)
 {
@@ -1362,9 +1283,6 @@ hiden_read:
 			seq_puts(seq_file, "No Error\n");
 		else
 			seq_printf(seq_file, rd->err_msg);
-		break;
-	case RT_DBG_REGS:
-		rt_show_regs(rd, seq_file);
 		break;
 	case RT_DBG_NAME:
 		seq_printf(seq_file, "%s\n", rd->props.aliases);
@@ -1725,13 +1643,6 @@ static void rt_create_general_debug(struct rt_regmap_device *rd,
 	rd->rt_debug_file[1] = debugfs_create_file("data",
 						   S_IFREG | S_IRUGO, dir,
 						   (void *)&rd->rtdbg_st[1],
-						   &general_ops);
-
-	rd->rtdbg_st[2].info = rd;
-	rd->rtdbg_st[2].id = RT_DBG_REGS;
-	rd->rt_debug_file[2] = debugfs_create_file("regs",
-						   S_IFREG | S_IRUGO, dir,
-						   (void *)&rd->rtdbg_st[2],
 						   &general_ops);
 
 	rd->rtdbg_st[3].info = rd;

@@ -13,7 +13,11 @@
 
 #include "lcd_kit_power.h"
 #include "lcd_kit_common.h"
+#include "lcm_drv.h"
 
+extern struct LCM_UTIL_FUNCS lcm_util_mtk;
+extern struct LCM_DRIVER lcdkit_mtk_common_panel;
+#define SET_RESET_PIN(v)	(lcm_util_mtk.set_reset_pin((v)))
 /********************************************************************
 *variable
 ********************************************************************/
@@ -119,6 +123,8 @@ int gpio_cmds_tx(struct gpio_desc *cmds, int cnt)
 			goto error;
 		}
 
+        *(cm->gpio) += ((struct mtk_panel_info *)(lcdkit_mtk_common_panel.panel_info))->gpio_offset;
+
 		if (cm->dtype == DTYPE_GPIO_INPUT) {
 			if (gpio_direction_input(*(cm->gpio)) != 0) {
 				LCD_KIT_ERR("failed to gpio_direction_input, lable=%s, gpio=%d!\n",
@@ -186,6 +192,11 @@ void lcd_kit_gpio_tx(uint32_t type, uint32_t op)
 			g_lcd_kit_gpio = power_hdl->lcd_vsn.buf[1];
 			break;
 		case LCD_KIT_RST:
+			if (op == GPIO_HIGH) {
+				SET_RESET_PIN(1);
+			} else if (op == GPIO_LOW) {
+				SET_RESET_PIN(0);
+			}
 			g_lcd_kit_gpio = power_hdl->lcd_rst.buf[1];
 			break;
 		case LCD_KIT_BL:

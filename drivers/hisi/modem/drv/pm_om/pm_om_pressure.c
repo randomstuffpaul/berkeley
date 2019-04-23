@@ -39,5 +39,6 @@ void pm_press_test_start(unsigned int time)
 }
 void pm_press_test_stop(void)
 {
-	bsp_softtimer_delete(&pm_press_timer);
+    if(pm_press_timer.init_flags == TIMER_INIT_FLAG)
+	    bsp_softtimer_delete(&pm_press_timer);
 }

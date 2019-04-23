@@ -182,7 +182,10 @@ enum boot_status {
 	BOOT_STATUS_BAD_APP_FIRMWARE = 0xfe,
 	BOOT_STATUS_WARM_BOOT = 0xff,
 };
-
+enum report_status {
+	NOT_NEED_REPORT = 0,
+	NEED_REPORT = 1,
+};
 enum app_status {
 	APP_STATUS_OK = 0x00,
 	APP_STATUS_BOOTING = 0x01,
@@ -544,9 +547,14 @@ struct syna_tcm_hcd {
 	const struct syna_tcm_hw_interface *hw_if;
 	char fw_name[MAX_STR_LEN * 4];
 	unsigned int aft_wxy_enable;
+	unsigned int esd_report_status;
+	unsigned int use_esd_report;
 	unsigned int use_dma_download_firmware;
 	unsigned int downmload_firmware_frequency;
 	unsigned int spi_comnunicate_frequency;
+	unsigned int resume_retry_download_fw_support;
+	unsigned int retry_download_delay_time;
+	unsigned int retry_download_retry_times;
 	int (*reset)(struct syna_tcm_hcd *tcm_hcd, bool hw, bool update_wd);
 	int (*sleep)(struct syna_tcm_hcd *tcm_hcd, bool en);
 	int (*identify)(struct syna_tcm_hcd *tcm_hcd, bool id);

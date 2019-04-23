@@ -180,7 +180,7 @@ VOS_VOID chap_Challenge(struct link *l)
 
   if (0x0 == *(chap->challenge.local)) {    /* as each time local[0] is 0x0, here is always true */
     cp = chap->challenge.local;
-    /*AT2D19295 测试组建议challenge中随机字符串长度固定为16，和标杆一致 */
+    /* 测试组建议challenge中随机字符串长度固定为16，和标杆一致 */
     *cp++ = (VOS_UINT8)(MD5DIGESTSIZE);
 
     /*

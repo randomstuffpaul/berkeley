@@ -121,16 +121,16 @@ static void smartpakit_dsm_report_by_i2c_error(const char *model, int id, int fl
 #ifdef CONFIG_HUAWEI_DSM_AUDIO
 	if (0 == flag) { // read i2c error
 		if (info) {
-			hwlog_info("%s: dsm report, %s_%d i2c read errno(%d) %u fail times of %u all times, err_details is %lu.\n", __func__, model, id, errno, info->err_count, info->regs_num, info->err_details);
-			audio_dsm_report_info(AUDIO_SMARTPA, DSM_SMARTPA_I2C_ERR, "%s_%d i2c read errno(%d) %u fail times of %u all times, err_details is %lu.", model, id, errno, info->err_count, info->regs_num, info->err_details);
+			hwlog_info("%s: dsm report, %s_%d i2c read errno(%d) %u fail times of %u all times, err_details is 0x%lx.\n", __func__, model, id, errno, info->err_count, info->regs_num, info->err_details);
+			audio_dsm_report_info(AUDIO_SMARTPA, DSM_SMARTPA_I2C_ERR, "%s_%d i2c read errno(%d) %u fail times of %u all times, err_details is 0x%lx.", model, id, errno, info->err_count, info->regs_num, info->err_details);
 		} else {
 			hwlog_info("%s: dsm report, %s_%d i2c read errno %d.\n", __func__, model, id, errno);
 			audio_dsm_report_info(AUDIO_SMARTPA, DSM_SMARTPA_I2C_ERR, "%s_%d i2c read errno %d.", model, id, errno);
 		}
 	} else { // 1 == flag write i2c error
 		if (info) {
-			hwlog_info("%s: dsm report, %s_%d i2c write errno(%d) %u fail times of %u all times, err_details is %lu.\n", __func__, model, id, errno, info->err_count, info->regs_num, info->err_details);
-			audio_dsm_report_info(AUDIO_SMARTPA, DSM_SMARTPA_I2C_ERR, "%s_%d i2c write errno(%d) %u fail times of %u all times, err_details is %lu.", model, id, info->err_count, info->regs_num, info->err_details);
+			hwlog_info("%s: dsm report, %s_%d i2c write errno(%d) %u fail times of %u all times, err_details is 0x%lx.\n", __func__, model, id, errno, info->err_count, info->regs_num, info->err_details);
+			audio_dsm_report_info(AUDIO_SMARTPA, DSM_SMARTPA_I2C_ERR, "%s_%d i2c write errno(%d) %u fail times of %u all times, err_details is 0x%lx.", model, id, errno, info->err_count, info->regs_num, info->err_details);
 		} else {
 			hwlog_info("%s: dsm report, %s_%d i2c write errno %d.\n", __func__, model, id, errno);
 			audio_dsm_report_info(AUDIO_SMARTPA, DSM_SMARTPA_I2C_ERR, "%s_%d i2c write errno %d.", model, id, errno);
@@ -325,6 +325,19 @@ static int smartpakit_read_regs(void *priv, void __user *arg)
 	return ret;
 }
 
+static bool smartpakit_need_write_regs(smartpakit_priv_t *pakit_priv,
+	int id, unsigned int num, smartpakit_param_node_t *regs)
+{
+	smartpakit_pa_ctl_sequence_t *old = &pakit_priv->poweron_sequence[id];
+	unsigned int regs_size = sizeof(smartpakit_param_node_t) * num;
+
+	if ((old->node != NULL) && (old->param_num == num) &&
+		(memcmp(old->node, regs, regs_size) == 0))
+		return false;
+
+	return true;
+}
+
 static int smartpakit_do_write_regs(smartpakit_i2c_priv_t *i2c_priv, unsigned int num, smartpakit_param_node_t *regs)
 {
 	smartpakit_priv_t *pakit_priv = NULL;
@@ -423,9 +436,9 @@ static int smartpakit_do_write_regs(smartpakit_i2c_priv_t *i2c_priv, unsigned in
 			ret = smartpakit_regmap_update_bits(cfg->regmap, regs[i].index, regs[i].mask, regs[i].value);
 		}
 		if (ret) {
-			hwlog_err("%s: regs[%d]:%d, value:%d write error(errno:%d).\n", __func__,i, regs[i].index, regs[i].value, ret);
+			hwlog_err("%s: regs[%d]:0x%x, value:0x%x write error(errno:%d).\n", __func__,i, regs[i].index, regs[i].value, ret);
 			if (i < I2C_STATUS_B64) {
-				info.err_details |= 1 << i;
+				info.err_details |= (unsigned long int)1 << i;
 			}
 			info.err_count++;
 			errno = ret;
@@ -484,6 +497,14 @@ static int smartpakit_do_write_regs_all(smartpakit_priv_t *pakit_priv, smartpaki
 	hwlog_debug("%s: pa_num=%d, reg_num=%d!!!\n", __func__, pa_num_need_ops, reg_num_need_ops);
 	for (i = 0; i < pa_num_need_ops; i++) {
 		index = (int)sequence->pa_ctl_index[i];
+		if (!pakit_priv->force_refresh_chip &&
+			!smartpakit_need_write_regs(pakit_priv,
+			index, (unsigned int)reg_num_need_ops,
+			sequence->node + (i * reg_num_need_ops))) {
+			hwlog_info("%s: pa%d not need re-write the same regs\n",
+				__func__, index);
+			continue;
+		}
 		ret += smartpakit_do_write_regs(pakit_priv->i2c_priv[index], (unsigned int)reg_num_need_ops,
 			sequence->node + (i * reg_num_need_ops)); /*lint !e679*/
 	}
@@ -508,6 +529,13 @@ static int smartpakit_write_regs(void *priv, void __user *arg, int compat_mode)
 	ret = smartpakit_parse_params(&sequence, arg, compat_mode);
 	if (ret < 0) {
 		hwlog_err("%s: parse w_regs failed!!!\n", __func__);
+		goto err_out;
+	}
+
+	if (!smartpakit_need_write_regs(i2c_priv->priv_data,
+		i2c_priv->chip_id, sequence.param_num, sequence.node)) {
+		hwlog_info("%s: pa%d not need re-write the same regs\n",
+			__func__, i2c_priv->chip_id);
 		goto err_out;
 	}
 
@@ -650,6 +678,8 @@ static int smartpakit_resume_regs(void *priv)
 		return -EINVAL;
 	}
 
+	pakit_priv->force_refresh_chip = true;
+
 	// init chip
 	hwlog_info("%s: init chips...\n", __func__);
 	ret = smartpakit_do_write_regs_all(pakit_priv, &pakit_priv->resume_sequence);
@@ -671,6 +701,7 @@ static int smartpakit_resume_regs(void *priv)
 	}
 
 err_out:
+	pakit_priv->force_refresh_chip = false;
 	return ret;
 }
 

@@ -33,6 +33,7 @@ struct antenna_sysfs_field_info {
 
 static struct antenna_sysfs_field_info antenna_tb[] = {
     ANTENNA_SYSFS_FIELD_RO(antenna_board_match,    BOARD_MATCH),
+    ANTENNA_SYSFS_FIELD_RO(antenna_board_voltage,  BOARD_VOLTAGE),
 };
 
 static struct attribute *antenna_sysfs_attrs[ARRAY_SIZE(antenna_tb) + 1];
@@ -93,6 +94,11 @@ static ssize_t antenna_show(struct device *dev,
         case ANTENNA_BOARD_MATCH:
             adc_ret = di->ops->get_antenna_match_status();
             return snprintf(buf, PAGE_SIZE, "%d\n", adc_ret);
+            break;
+        case ANTENNA_BOARD_VOLTAGE:
+            adc_ret = di->ops->get_antenna_board_voltage();
+            return snprintf(buf, PAGE_SIZE, "%d\n", adc_ret);
+            break;
         default:
             hwlog_err("(%s)NODE ERR!!HAVE NO THIS NODE:(%d)\n",__func__,info->name);
             break;
@@ -156,7 +162,7 @@ static int antenna_board_match_probe(struct platform_device *pdev)
     di->ops = g_antenna_board_match_ops;
 
     //match ops
-    if( (NULL == di->ops)||(di->ops->get_antenna_match_status == NULL))
+    if( (NULL == di->ops)||(di->ops->get_antenna_match_status == NULL)||(di->ops->get_antenna_board_voltage== NULL))
     {
         hwlog_err("antenna_board_match ops is NULL!\n");
         goto Antenna_board_failed_0;

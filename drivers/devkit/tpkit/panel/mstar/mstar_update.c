@@ -1969,10 +1969,10 @@ static u32 mstar_get_fw_crc_eflash(EmemType_e eEmemType)
 
     mstar_read_eflash_do_read(nReadAddr, &szTmpData[0]);
 
-    TS_LOG_INFO("szTmpData[0] = 0x%x\n", szTmpData[0]); // add for debug
-    TS_LOG_INFO("szTmpData[1] = 0x%x\n", szTmpData[1]); // add for debug
-    TS_LOG_INFO("szTmpData[2] = 0x%x\n", szTmpData[2]); // add for debug
-    TS_LOG_INFO("szTmpData[3] = 0x%x\n", szTmpData[3]); // add for debug
+    TS_LOG_DEBUG("szTmpData[0] = 0x%x\n", szTmpData[0]); // add for debug
+    TS_LOG_DEBUG("szTmpData[1] = 0x%x\n", szTmpData[1]); // add for debug
+    TS_LOG_DEBUG("szTmpData[2] = 0x%x\n", szTmpData[2]); // add for debug
+    TS_LOG_DEBUG("szTmpData[3] = 0x%x\n", szTmpData[3]); // add for debug
 
     rc = mstar_read_eflash_end();
     if (rc < 0) {
@@ -2579,18 +2579,23 @@ static void mstar_fw_update_swid(void)
     }
 #endif
 
-    if (nCrcMainA == nCrcMainB) {
-
         ic_sw_id = mstar_get_swid(EMEM_MAIN);
         fw_sw_id = fw->data[0x1FFF5] << 8 | fw->data[0x1FFF4];
         TS_LOG_INFO("Main mem ic swid = 0x%x, firmware file swid = 0x%x\n", ic_sw_id, fw_sw_id);
-        if (ic_sw_id == fw_sw_id) {
-            TS_LOG_INFO("sw id is match\n");
-        } else {
-            TS_LOG_INFO("The MAIN_MEM swid is not equal updated fw swid, go to normal boot up process\n");
+        if(tskit_mstar_data->mstar_chip_data->ic_type == CHIP_TYPE_MSG28XXA){
+            if((fw_sw_id != LENS_AUO_SWID) && (fw_sw_id != LENS_EBBG_SWID) && (fw_sw_id != EELY_AUO_SWID) && (fw_sw_id != EELY_EBBG_SWID))
+            {
+                TS_LOG_ERR("%s sw_id cannot match success, firmware file swid = 0x%x\n",__func__,fw_sw_id);
+                goto out;
+            }
+        }
+        if (ic_sw_id != fw_sw_id) {
+		TS_LOG_INFO("The MAIN_MEM swid is not equal updated fw swid, go to normal boot up process\n");
         }
 
+    if ((nCrcMainA == nCrcMainB) && (ic_sw_id == fw_sw_id)) {
 
+            TS_LOG_INFO("sw id is match\n");
             tskit_mstar_data->fw_update_data.swid_data.pUpdateBin = (u8 **) kmalloc(130 * sizeof(u8 *), GFP_KERNEL);
             if (ERR_ALLOC_MEM(tskit_mstar_data->fw_update_data.swid_data.pUpdateBin)) {
                 TS_LOG_ERR("Failed to allocate FW buffer\n");

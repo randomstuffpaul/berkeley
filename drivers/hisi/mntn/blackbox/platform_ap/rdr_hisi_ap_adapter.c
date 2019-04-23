@@ -207,15 +207,6 @@ static unsigned long exception_buf_len __attribute__((__section__(".data")));
  * You should not use this function to access IO space, use memcpy_toio()
  * or memcpy_fromio() instead.
  */
-__no_sanitize_address static void *memcpy_rdr(void *dest, const void *src, size_t count)
-{
-	char *tmp = dest;
-	const char *s = src;
-
-	while (count--)
-		*tmp++ = *s++;
-	return dest;
-}
 
 /*******************************************************************************
 Function:         get_ap_trace_mem_size_from_dts
@@ -1103,59 +1094,7 @@ void regs_dump(void)
 	}
 }
 
-__no_sanitize_address void last_task_stack_dump(void)
-{
-	int i;
-	unsigned char *dst = NULL;
 
-	if (!get_ap_last_task_switch_from_dts()) {
-		BB_PRINT_ERR(
-		       "[%s], ap_last_task_switch is closed in dts!\n",
-		       __func__);
-		return;
-	}
-
-	if (!g_rdr_ap_root) {
-		BB_PRINT_ERR("[%s]:g_rdr_ap_root is invalid\n", __func__);
-		return;
-	}
-	for (i = 0; i < NR_CPUS; i++) {
-		dst = g_rdr_ap_root->last_task_struct_dump_addr[i];
-		if ((!dst)
-		    || (!g_last_task_ptr[i])) {
-			BB_PRINT_ERR(
-			       "[%s], last_task_struct_dump_addr[%d] [0x%pK] is invalid!\n",
-			       __func__, i, dst);
-			continue;
-		}
-		if (!kern_addr_valid((unsigned long)g_last_task_ptr[i])) {
-			BB_PRINT_ERR(
-			       "[%s], g_last_task_ptr[%d] [0x%pK] is invalid!\n",
-			       __func__, i, g_last_task_ptr[i]);
-			continue;
-		}
-		memcpy_rdr((void *)dst, (void *)g_last_task_ptr[i],
-		       sizeof(struct task_struct));
-
-		dst = g_rdr_ap_root->last_task_stack_dump_addr[i];
-		if ((!dst)
-		    || (!g_last_task_ptr[i]->stack)) {
-			BB_PRINT_ERR(
-			       "[%s], last_task_stack_dump_addr[%d] [0x%pK] is invalid!\n",
-			       __func__, i, dst);
-			continue;
-		}
-		if (!kern_addr_valid
-		    ((unsigned long)g_last_task_ptr[i]->stack)) {
-			BB_PRINT_ERR(
-			       "[%s], g_last_task_ptr[%d] stack [0x%pK] is invalid!\n",
-			       __func__, i, g_last_task_ptr[i]->stack);
-			continue;
-		}
-		memcpy_rdr((void *)dst, (void *)g_last_task_ptr[i]->stack,
-		       THREAD_SIZE);
-	}
-}
 static int hisi_trace_hook_install(void)
 {
 	int ret = 0;
@@ -1751,7 +1690,7 @@ void rdr_hisiap_dump(u32 modid, u32 etype,
 	console_loglevel = 7;
 
 	/* 如果是panic，则需要将pc指针记录下来，并传递到fastboot  */
-	if (etype == AP_S_PANIC && g_bbox_ap_record_pc) {
+	if ((etype == AP_S_PANIC || etype == AP_S_VENDOR_PANIC) && g_bbox_ap_record_pc) {
 		get_exception_info(&exception_info,
 				   &exception_info_len);
 		memset(g_bbox_ap_record_pc->exception_info, 0,

@@ -176,6 +176,7 @@ DHDCFLAGS += -DBCM_PATCH_FOR_AMPDU_TEAR_DOWN
 DHDCFLAGS += -DBCM_PATCH_HIDDEN_DIRECT_SCAN
 #DHDCFLAGS += -DHUAWEI_DNS_PRIO
 DHDCFLAGS += -DHW_RRM_DISABLE
+DHDCFLAGS += -DHW_PATCH_FOR_HANG
 
 # Print 802.1X packets
 DHDCFLAGS += -DDHD_8021X_DUMP
@@ -390,6 +391,9 @@ endif
   DHDCFLAGS += -DHW_P2PGO_2G_SISO
   DHDCFLAGS += -DHW_OTP_CHECK
   DHDCFLAGS += -DHW_CE_5G_HIGH_BAND
+ifeq ($(TARGET_BOARD_PLATFORM), hi3660)
+  DHDCFLAGS += -DHW_WIFI_FILTER_WIFI_LOCK
+endif
 endif
 
 
@@ -405,6 +409,7 @@ EXTRA_CFLAGS += $(DHDCFLAGS) -DDHD_DEBUG
 EXTRA_CFLAGS += -DSRCBASE=\"$(src)\"
 EXTRA_CFLAGS += -I$(src)/include/ -I$(src)/
 KBUILD_CFLAGS += -I$(LINUXDIR)/include -I$(shell pwd)
+KBUILD_CFLAGS += -I$(LINUXDIR)/drivers
 EXTRA_CFLAGS += -Idrivers/huawei_platform/connectivity/bcm/wifi/include
 
 DHDOFILES := dhd_pno.o dhd_common.o dhd_ip.o dhd_custom_gpio.o \

@@ -68,7 +68,9 @@ static int __init early_parse_ufs_product_name_cmdline(char *arg)
 {
 	if (arg) {
 		strncpy(ufs_product_name, arg, strnlen(arg, sizeof(ufs_product_name)));
+#ifdef CONFIG_HISI_DEBUG_FS
 		pr_info("cmdline ufs_product_name=%s\n", ufs_product_name);
+#endif
 	} else {
 		pr_info("no ufs_product_name cmdline\n");
 	}
@@ -158,23 +160,6 @@ no_memory:
 	return ret;
 }
 
-void uie_close_session(void)
-{
-	if (session) {
-		TEEK_CloseSession(session);
-		kfree(session);
-		session = NULL;
-	}
-
-	if (context) {
-		TEEK_FinalizeContext(context);
-		kfree(context);
-		context = NULL;
-	}
-
-	pr_err("%s: end\n", __func__);
-}
-
 static int set_key_in_tee(void)
 {
 	u32 root_id = 2012;
@@ -183,6 +168,11 @@ static int set_key_in_tee(void)
 	TEEC_Result result;
 	u32 origin = 0;
 	int ret = 0;
+
+	if (!session) {
+		pr_err("%s: session is null\n", __func__);
+		return ret;
+	}
 
 	pr_err("%s: start ++\n", __func__);
 
@@ -673,7 +663,7 @@ void ufs_kirin_uie_utrd_prepare(struct ufs_hba *hba,
 #else
 		crypto_cci = lrbp->task_tag;
 		spin_lock_irqsave(hba->host->host_lock, flags);
-		ufs_kirin_uie_key_prepare(hba, crypto_cci, lrbp->cmd->request->ci_key);
+		ufs_kirin_uie_key_prepare(hba, crypto_cci, lrbp->cmd->request->hisi_req.ci_key);
 		spin_unlock_irqrestore(hba->host->host_lock, flags);
 #endif
 	} else {
@@ -968,9 +958,10 @@ int ufs_kirin_pwr_change_notify(struct ufs_hba *hba, bool status,
 		}
 		/*for hisi MPHY*/
 		deemphasis_config(host, hba, dev_req_params);
-
 		if (host->caps & USE_HISI_MPHY_TC) {
-			adapt_pll_to_power_mode(hba);
+			if(!IS_V200_MPHY(hba)) {
+				adapt_pll_to_power_mode(hba);
+			}
 		}
 
 		ufs_kirin_pwr_change_pre_change(hba);
@@ -1254,7 +1245,9 @@ static void ufs_kirin_populate_mgc_dt(struct device_node *parent_np,
 
 		ret = of_property_read_u32(child_np, "manufacturer_id", &man_id);
 		if (ret) {
+#ifdef CONFIG_HISI_DEBUG_FS
 			pr_err("check the manufacturer_id %s\n", child_np->name);
+#endif
 			continue;
 		}
 
@@ -1351,7 +1344,9 @@ void ufs_kirin_populate_dt(struct device *dev,
 	ret = of_property_match_string(np, "ufs-0db-equalizer-product-names",
 				     ufs_product_name);
 	if (ret >= 0) {
+#ifdef CONFIG_HISI_DEBUG_FS
 		dev_info(dev, "find %s in dts\n", ufs_product_name);
+#endif
 		host->tx_equalizer = 0;
 	} else {
 #ifdef UFS_TX_EQUALIZER_35DB
@@ -1445,14 +1440,6 @@ int ufs_kirin_init(struct ufs_hba *hba)
 	}
 #endif
 
-#ifdef CONFIG_SCSI_UFS_ENHANCED_INLINE_CRYPTO_V2
-	err = uie_open_session();
-	if (err) {
-		dev_err(dev, "uie_open_session error\n");
-		goto host_free;
-	}
-#endif
-
 	goto out;
 
 host_free:
@@ -1497,6 +1484,20 @@ int ufs_kirin_get_pwr_by_sysctrl(struct ufs_hba *hba)
 #endif
 /*lint -restore*/
 
+bool IS_V200_MPHY(struct ufs_hba *hba)
+{
+	u32 reg;
+	/* V200 memorymap is not equal to V120 */
+	ufs_i2c_readl(hba, &reg, REG_SC_APB_IF_V200);
+	dev_err(hba->dev, "UFS MPHY  %s\n",
+		(MPHY_BOARDID_V200 == reg) ? "V200" : "V120");
+	if (MPHY_BOARDID_V200 == reg) {
+		return true;
+	} else {
+		return false;
+	}
+}
+
 /**
  * struct ufs_hba_kirin_vops - UFS KIRIN specific variant operations
  *
@@ -1531,4 +1532,22 @@ const struct ufs_hba_variant_ops ufs_hba_kirin_vops = {
 #endif
 };
 /*lint -restore*/
+
+
+static int __init uie_open_session_late(void)
+{
+	int err = 0;
+
+#ifdef CONFIG_SCSI_UFS_ENHANCED_INLINE_CRYPTO_V2
+	err = uie_open_session();
+	if (err) {
+		BUG_ON(1);
+	}
+#endif
+
+	return err;
+}
+
+late_initcall(uie_open_session_late);
+
 EXPORT_SYMBOL(ufs_hba_kirin_vops);

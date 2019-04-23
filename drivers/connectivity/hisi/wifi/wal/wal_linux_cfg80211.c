@@ -1214,6 +1214,14 @@ OAL_STATIC oal_int32  wal_cfg80211_scan(
         goto fail;
     }
 
+    /* 判断扫描传入内存长度不能大于后续缓存空间大小，避免拷贝内存越界 */
+    if (pst_request->ie_len > WLAN_WPS_IE_MAX_SIZE)
+    {
+        OAM_ERROR_LOG1(0, OAM_SF_CFG, "{wal_cfg80211_scan:: scan ie is too large to save. [%d]!}",
+                        pst_request->ie_len);
+        return -OAL_EFAIL;
+    }
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,44))//TBD:确认正确的 Linux 版本号
     pst_netdev = pst_request->wdev->netdev;
 #endif
@@ -2851,6 +2859,14 @@ OAL_STATIC oal_int32 wal_cfg80211_fill_beacon_param(mac_vap_stru               *
     {
         OAM_ERROR_LOG2(uc_vap_id, OAM_SF_ANY, "{wal_cfg80211_fill_beacon_param::beacon frame error tail = %x, head = %x!}",
                        pst_beacon_info->tail, pst_beacon_info->head);
+        return -OAL_EINVAL;
+    }
+
+    /* 为避免读内存越界，传入beacon header长度不能小于帧头(24)+TSF(8)+BEACON_INTERVAL(2)+CAP_INFO(2) */
+    if (pst_beacon_info->head_len < (MAC_80211_FRAME_LEN + MAC_TIME_STAMP_LEN + MAC_BEACON_INTERVAL_LEN + MAC_CAP_INFO_LEN))
+    {
+        OAM_ERROR_LOG1(uc_vap_id, OAM_SF_CFG, "{wal_cfg80211_fill_beacon_param::beacon_info head len[%d] is too short.}",
+                        pst_beacon_info->head_len);
         return -OAL_EINVAL;
     }
 

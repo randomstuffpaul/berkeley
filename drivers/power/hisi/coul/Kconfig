@@ -20,6 +20,9 @@ config HISI_COUL_HI6555V200
 config HISI_COUL_HI6421V700
 	bool "hisi hi6421v700 coul"
 	default n
+config HISI_COUL_HI6XXX
+	bool "hisi hi6XXX coul"
+	default n
 config HISI_COUL_TEST
         bool "hisi coul test"
         default n

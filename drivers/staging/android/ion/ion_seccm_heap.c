@@ -471,8 +471,11 @@ static int ion_seccm_heap_allocate(struct ion_heap *heap,
 	}
 
 	sg_set_page(table->sgl, pfn_to_page(PFN_DOWN(paddr)), size, 0);
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 9, 0))
 	buffer->priv_virt = table;
-
+#else
+	buffer->sg_table = table;
+#endif
 	ion_sec_dbg("out %s paddr 0x%lx size 0x%lx heap id %u\n",
 		    __func__, paddr, size, heap->id);
 
@@ -488,7 +491,11 @@ err_free:
 static void ion_seccm_heap_free(struct ion_buffer *buffer)
 {
 	struct ion_heap *heap = buffer->heap;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 9, 0))
 	struct sg_table *table = buffer->priv_virt;
+#else
+	struct sg_table *table = buffer->sg_table;
+#endif
 	struct page *page = sg_page(table->sgl);
 	ion_phys_addr_t paddr = PFN_PHYS(page_to_pfn(page));
 
@@ -505,7 +512,7 @@ static void ion_seccm_heap_free(struct ion_buffer *buffer)
 	ion_sec_dbg("out %s size 0x%lx heap id %u\n", __func__,
 		    buffer->size, heap->id);
 }
-
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 9, 0))
 static int ion_seccm_heap_phys(struct ion_heap *heap,
 			       struct ion_buffer *buffer,
 			       ion_phys_addr_t *addr, size_t *len)
@@ -519,7 +526,7 @@ static int ion_seccm_heap_phys(struct ion_heap *heap,
 
 	return 0;
 }
-
+#endif
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 9, 0))
 int ion_secmem_heap_phys(struct ion_heap *heap,
 		struct ion_buffer *buffer,
@@ -533,14 +540,17 @@ int ion_secmem_heap_phys(struct ion_heap *heap,
 		return -EINVAL;
 	}
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeclaration-after-statement"
 	ion_phys_addr_t paddr = PFN_PHYS(page_to_pfn(page));
+#pragma GCC diagnostic pop
 	*addr = paddr;
 	*len = buffer->size;
 
 	return 0;
 }
 #endif
-
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 9, 0))
 static struct sg_table *ion_seccm_heap_map_dma(struct ion_heap *heap,
 					       struct ion_buffer *buffer)
 {
@@ -551,7 +561,7 @@ static void ion_seccm_heap_unmap_dma(struct ion_heap *heap,
 				     struct ion_buffer *buffer)
 {
 }
-
+#endif
 static int ion_seccm_heap_map_user(struct ion_heap *heap, struct ion_buffer *buffer,
 		      struct vm_area_struct *vma)
 {

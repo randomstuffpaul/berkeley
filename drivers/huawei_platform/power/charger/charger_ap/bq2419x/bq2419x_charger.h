@@ -3,15 +3,15 @@
  * Author:  L.JH HW
  */
 
-#ifndef _BQ2419X_CHARGER
-#define _BQ2419X_CHARGER
+#ifndef _BQ2419X_CHARGER_H_
+#define _BQ2419X_CHARGER_H_
 
-#include <linux/i2c.h>		/*for struct bq2419x_device_info */
-#include <linux/device.h>	/*for struct bq2419x_device_info */
-#include <linux/workqueue.h>	/*for struct bq2419x_device_info */
+#include <linux/i2c.h>
+#include <linux/device.h>
+#include <linux/workqueue.h>
 
 #ifndef BIT
-#define BIT(x)		(1 << (x))
+#define BIT(x)      (1 << (x))
 #endif
 
 /*************************struct define area***************************/
@@ -71,156 +71,168 @@ static const int bq2419x_vreg_values[] = {
 	4400
 };
 
-/*REG00[6:3](VINDPM) in mV */
+/* REG00[6:3](VINDPM) in mV */
 static const int bq2419x_vindpm_values[] = {
 	3880, 3960, 4040, 4120, 4200, 4280, 4360, 4440,
 	4520, 4600, 4680, 4760, 4840, 4920, 5000, 5080
 };
 
-/*REG06[7:5](RCOMP) in mohm */
+/* REG06[7:5](RCOMP) in mohm */
 static const int bq2419x_rcomp_values[] = {
 	10, 20, 30, 40, 50, 60, 70
 };
 
-/*REG06[7:5](VCLAMP) in mV */
+/* REG06[7:5](VCLAMP) in mV */
 static const int bq2419x_vclamp_values[] = {
 	16, 32, 48, 64, 80, 96, 112
 };
 
-/*REG05[5:4](WATCHDOG) in S */
+/* REG05[5:4](WATCHDOG) in S */
 static const int bq2419x_watchdog_values[] = {
 	0, 40, 80, 160
 };
 
 /*************************marco define area***************************/
-#define BQ2419X_REG_NUM                              (11)
-/*REG MASK & SHITF info*/
-#define BQ2419X_REG_ISC		0x00	/* Input Source Control */
-#define BQ2419X_REG_ISC_EN_HIZ_MASK		BIT(7)
-#define BQ2419X_REG_ISC_EN_HIZ_SHIFT		7
-#define BQ2419X_REG_ISC_VINDPM_MASK		(BIT(6) | BIT(5) | BIT(4) | \
-						 BIT(3))
-#define BQ2419X_REG_ISC_VINDPM_SHIFT		3
-#define BQ2419X_REG_ISC_IINLIM_MASK		(BIT(2) | BIT(1) | BIT(0))
-#define BQ2419X_REG_ISC_IINLIM_SHIFT		0
+/* DEFAULT VALUE */
+#define BQ2419X_RILIM_220_OHM                       (220)
+#define BQ2419X_ADC_CHANNEL_IIN_10                  (10)
 
-#define BQ2419X_REG_POC		0x01	/* Power-On Configuration */
-#define BQ2419X_REG_POC_RESET_MASK		BIT(7)
-#define BQ2419X_REG_POC_RESET_SHIFT		7
-#define BQ2419X_REG_POC_WDT_RESET_MASK		BIT(6)
-#define BQ2419X_REG_POC_WDT_RESET_SHIFT		6
-#define BQ2419X_REG_POC_CHG_CONFIG_MASK		(BIT(5) | BIT(4))
-#define BQ2419X_REG_POC_CHG_CONFIG_SHIFT	4
-#define BQ2419X_REG_POC_SYS_MIN_MASK		(BIT(3) | BIT(2) | BIT(1))
-#define BQ2419X_REG_POC_SYS_MIN_SHIFT		1
-#define BQ2419X_REG_POC_BOOST_LIM_MASK		BIT(0)
-#define BQ2419X_REG_POC_BOOST_LIM_SHIFT		0
+#define BQ2419X_REG_NUM                             (11)
 
-#define BQ2419X_REG_CCC		0x02	/* Charge Current Control */
-#define BQ2419X_REG_CCC_ICHG_MASK		(BIT(7) | BIT(6) | BIT(5) | \
-						 BIT(4) | BIT(3) | BIT(2))
-#define BQ2419X_REG_CCC_ICHG_SHIFT		2
-#define BQ2419X_REG_CCC_FORCE_20PCT_MASK	BIT(0)
-#define BQ2419X_REG_CCC_FORCE_20PCT_SHIFT	0
+/* REG MASK & SHITF info */
+#define BQ2419X_REG_ISC                             0x00    /* Input Source Control */
 
-#define BQ2419X_REG_PCTCC	0x03	/* Pre-charge/Termination Current Cntl */
-#define BQ2419X_REG_PCTCC_IPRECHG_MASK		(BIT(7) | BIT(6) | BIT(5) | \
-						 BIT(4))
-#define BQ2419X_REG_PCTCC_IPRECHG_SHIFT		4
-#define BQ2419X_REG_PCTCC_ITERM_MASK		(BIT(3) | BIT(2) | BIT(1) | \
-						 BIT(0))
-#define BQ2419X_REG_PCTCC_ITERM_SHIFT		0
+#define BQ2419X_REG_ISC_EN_HIZ_MASK                 (BIT(7))
+#define BQ2419X_REG_ISC_EN_HIZ_SHIFT                (7)
+#define BQ2419X_REG_ISC_VINDPM_MASK                 (BIT(6) | BIT(5) | BIT(4) |  BIT(3))
+#define BQ2419X_REG_ISC_VINDPM_SHIFT                (3)
+#define BQ2419X_REG_ISC_IINLIM_MASK                 (BIT(2) | BIT(1) | BIT(0))
+#define BQ2419X_REG_ISC_IINLIM_SHIFT                (0)
 
-#define BQ2419X_REG_CVC		0x04	/* Charge Voltage Control */
-#define BQ2419X_REG_CVC_VREG_MASK		(BIT(7) | BIT(6) | BIT(5) | \
-						 BIT(4) | BIT(3) | BIT(2))
-#define BQ2419X_REG_CVC_VREG_SHIFT		2
-#define BQ2419X_REG_CVC_BATLOWV_MASK		BIT(1)
-#define BQ2419X_REG_CVC_BATLOWV_SHIFT		1
-#define BQ2419X_REG_CVC_VRECHG_MASK		BIT(0)
-#define BQ2419X_REG_CVC_VRECHG_SHIFT		0
+#define BQ2419X_REG_POC                             0x01    /* Power-On Configuration */
 
-#define BQ2419X_REG_CTTC	0x05	/* Charge Term/Timer Control */
-#define BQ2419X_REG_CTTC_EN_TERM_MASK		BIT(7)
-#define BQ2419X_REG_CTTC_EN_TERM_SHIFT		7
-#define BQ2419X_REG_CTTC_TERM_STAT_MASK		BIT(6)
-#define BQ2419X_REG_CTTC_TERM_STAT_SHIFT	6
-#define BQ2419X_REG_CTTC_WATCHDOG_MASK		(BIT(5) | BIT(4))
-#define BQ2419X_REG_CTTC_WATCHDOG_SHIFT		4
-#define BQ2419X_REG_CTTC_EN_TIMER_MASK		BIT(3)
-#define BQ2419X_REG_CTTC_EN_TIMER_SHIFT		3
-#define BQ2419X_REG_CTTC_CHG_TIMER_MASK		(BIT(2) | BIT(1))
-#define BQ2419X_REG_CTTC_CHG_TIMER_SHIFT	1
-#define BQ2419X_REG_CTTC_JEITA_ISET_MASK	BIT(0)
-#define BQ2419X_REG_CTTC_JEITA_ISET_SHIFT	0
+#define BQ2419X_REG_POC_RESET_MASK                  (BIT(7))
+#define BQ2419X_REG_POC_RESET_SHIFT                 (7)
+#define BQ2419X_REG_POC_WDT_RESET_MASK              (BIT(6))
+#define BQ2419X_REG_POC_WDT_RESET_SHIFT             (6)
+#define BQ2419X_REG_POC_CHG_CONFIG_MASK             (BIT(5) | BIT(4))
+#define BQ2419X_REG_POC_CHG_CONFIG_SHIFT            (4)
+#define BQ2419X_REG_POC_SYS_MIN_MASK                (BIT(3) | BIT(2) | BIT(1))
+#define BQ2419X_REG_POC_SYS_MIN_SHIFT               (1)
+#define BQ2419X_REG_POC_BOOST_LIM_MASK              (BIT(0))
+#define BQ2419X_REG_POC_BOOST_LIM_SHIFT             (0)
 
-#define BQ2419X_REG_ICTRC	0x06	/* IR Comp/Thermal Regulation Control */
-#define BQ2419X_REG_ICTRC_BAT_COMP_MASK		(BIT(7) | BIT(6) | BIT(5))
-#define BQ2419X_REG_ICTRC_BAT_COMP_SHIFT	5
-#define BQ2419X_REG_ICTRC_VCLAMP_MASK		(BIT(4) | BIT(3) | BIT(2))
-#define BQ2419X_REG_ICTRC_VCLAMP_SHIFT		2
-#define BQ2419X_REG_ICTRC_TREG_MASK		(BIT(1) | BIT(0))
-#define BQ2419X_REG_ICTRC_TREG_SHIFT		0
+#define BQ2419X_REG_CCC                             0x02    /* Charge Current Control */
 
-#define BQ2419X_REG_MOC		0x07	/* Misc. Operation Control */
-#define BQ2419X_REG_MOC_DPDM_EN_MASK		BIT(7)
-#define BQ2419X_REG_MOC_DPDM_EN_SHIFT		7
-#define BQ2419X_REG_MOC_TMR2X_EN_MASK		BIT(6)
-#define BQ2419X_REG_MOC_TMR2X_EN_SHIFT		6
-#define BQ2419X_REG_MOC_BATFET_DISABLE_MASK	BIT(5)
-#define BQ2419X_REG_MOC_BATFET_DISABLE_SHIFT	5
-#define BQ2419X_REG_MOC_JEITA_VSET_MASK		BIT(4)
-#define BQ2419X_REG_MOC_JEITA_VSET_SHIFT	4
-#define BQ2419X_REG_MOC_INT_MASK_MASK		(BIT(1) | BIT(0))
-#define BQ2419X_REG_MOC_INT_MASK_SHIFT		0
+#define BQ2419X_REG_CCC_ICHG_MASK                   (BIT(7) | BIT(6) | BIT(5) |  BIT(4) | BIT(3) | BIT(2))
+#define BQ2419X_REG_CCC_ICHG_SHIFT                  (2)
+#define BQ2419X_REG_CCC_FORCE_20PCT_MASK            (BIT(0))
+#define BQ2419X_REG_CCC_FORCE_20PCT_SHIFT           (0)
 
-#define BQ2419X_REG_SS		0x08	/* System Status */
-#define BQ2419X_REG_SS_VBUS_STAT_MASK		(BIT(7) | BIT(6))
-#define BQ2419X_REG_SS_VBUS_PLUGGED		BIT(6)
-#define BQ2419X_REG_SS_VBUS_STAT_SHIFT		6
-#define BQ2419X_REG_SS_CHRG_STAT_MASK		(BIT(5) | BIT(4))
-#define BQ2419X_REG_SS_CHRG_STAT_SHIFT		4
-#define BQ2419X_REG_SS_DPM_STAT_MASK		BIT(3)
-#define BQ2419X_REG_SS_DPM_STAT_SHIFT		3
-#define BQ2419X_REG_SS_PG_STAT_MASK		BIT(2)
-#define BQ2419X_REG_SS_PG_STAT_SHIFT		2
-#define BQ2419X_REG_SS_THERM_STAT_MASK		BIT(1)
-#define BQ2419X_REG_SS_THERM_STAT_SHIFT		1
-#define BQ2419X_REG_SS_VSYS_STAT_MASK		BIT(0)
-#define BQ2419X_REG_SS_VSYS_STAT_SHIFT		0
+#define BQ2419X_REG_PCTCC                           0x03    /* Pre-charge/Termination Current Cntl */
 
-#define BQ2419X_REG_F		0x09	/* Fault */
-#define BQ2419X_REG_F_WATCHDOG_FAULT_MASK	BIT(7)
-#define BQ2419X_REG_F_WATCHDOG_FAULT_SHIFT	7
-#define BQ2419X_REG_F_BOOST_FAULT_MASK		BIT(6)
-#define BQ2419X_REG_F_BOOST_FAULT_SHIFT		6
-#define BQ2419X_REG_F_CHRG_FAULT_MASK		(BIT(5) | BIT(4))
-#define BQ2419X_REG_F_CHRG_FAULT_SHIFT		4
-#define BQ2419X_REG_F_BAT_FAULT_MASK		BIT(3)
-#define BQ2419X_REG_F_BAT_FAULT_SHIFT		3
-#define BQ2419X_REG_F_NTC_FAULT_MASK		(BIT(2) | BIT(1) | BIT(0))
-#define BQ2419X_REG_F_NTC_FAULT_SHIFT		0
+#define BQ2419X_REG_PCTCC_IPRECHG_MASK              (BIT(7) | BIT(6) | BIT(5) | BIT(4))
+#define BQ2419X_REG_PCTCC_IPRECHG_SHIFT             (4)
+#define BQ2419X_REG_PCTCC_ITERM_MASK                (BIT(3) | BIT(2) | BIT(1) | BIT(0))
+#define BQ2419X_REG_PCTCC_ITERM_SHIFT               (0)
 
-#define BQ2419X_REG_VPRS	0x0A	/* Vendor/Part/Revision Status */
-#define BQ2419X_REG_VPRS_PN_MASK		(BIT(5) | BIT(4) | BIT(3))
-#define BQ2419X_REG_VPRS_PN_SHIFT		3
-#define BQ2419X_REG_VPRS_PN_24190			0x4
-#define BQ2419X_REG_VPRS_PN_24192			0x5	/* Also 24193 */
-#define BQ2419X_REG_VPRS_PN_24192I			0x3
-#define BQ2419X_REG_VPRS_TS_PROFILE_MASK	BIT(2)
-#define BQ2419X_REG_VPRS_TS_PROFILE_SHIFT	2
-#define BQ2419X_REG_VPRS_DEV_REG_MASK		(BIT(1) | BIT(0))
-#define BQ2419X_REG_VPRS_DEV_REG_SHIFT		0
+#define BQ2419X_REG_CVC                             0x04    /* Charge Voltage Control */
 
-/*Options For Setting*/
-#define BQ2419X_REG_SS_CHRGDONE		(0x30)
-#define BQ2419X_REG_SS_DPM		(0x08)
-#define BQ2419X_REG_SS_PG		(0x04)
-#define BQ2419X_REG_SS_NOTPG		(0x00)
+#define BQ2419X_REG_CVC_VREG_MASK                   (BIT(7) | BIT(6) | BIT(5) | BIT(4) | BIT(3) | BIT(2))
+#define BQ2419X_REG_CVC_VREG_SHIFT                  (2)
+#define BQ2419X_REG_CVC_BATLOWV_MASK                (BIT(1))
+#define BQ2419X_REG_CVC_BATLOWV_SHIFT               (1)
+#define BQ2419X_REG_CVC_VRECHG_MASK                 (BIT(0))
+#define BQ2419X_REG_CVC_VRECHG_SHIFT                (0)
 
-#define BQ2419X_REG_F_WDT_TIMEOUT	             (0x80)
-#define BQ2419X_REG_F_BOOST_OCP	      (0x40)
-#define BQ2419X_REG_F_VBUS_OVP	      (0x10)
-#define BQ2419X_REG_F_BATT_OVP	      (0x08)
+#define BQ2419X_REG_CTTC                            0x05    /* Charge Term/Timer Control */
 
-#endif
+#define BQ2419X_REG_CTTC_EN_TERM_MASK               (BIT(7))
+#define BQ2419X_REG_CTTC_EN_TERM_SHIFT              (7)
+#define BQ2419X_REG_CTTC_TERM_STAT_MASK             (BIT(6))
+#define BQ2419X_REG_CTTC_TERM_STAT_SHIFT            (6)
+#define BQ2419X_REG_CTTC_WATCHDOG_MASK              (BIT(5) | BIT(4))
+#define BQ2419X_REG_CTTC_WATCHDOG_SHIFT             (4)
+#define BQ2419X_REG_CTTC_EN_TIMER_MASK              (BIT(3))
+#define BQ2419X_REG_CTTC_EN_TIMER_SHIFT             (3)
+#define BQ2419X_REG_CTTC_CHG_TIMER_MASK             (BIT(2) | BIT(1))
+#define BQ2419X_REG_CTTC_CHG_TIMER_SHIFT            (1)
+#define BQ2419X_REG_CTTC_JEITA_ISET_MASK            (BIT(0))
+#define BQ2419X_REG_CTTC_JEITA_ISET_SHIFT           (0)
+
+#define BQ2419X_REG_ICTRC                           0x06    /* IR Comp/Thermal Regulation Control */
+
+#define BQ2419X_REG_ICTRC_BAT_COMP_MASK             (BIT(7) | BIT(6) | BIT(5))
+#define BQ2419X_REG_ICTRC_BAT_COMP_SHIFT            (5)
+#define BQ2419X_REG_ICTRC_VCLAMP_MASK               (BIT(4) | BIT(3) | BIT(2))
+#define BQ2419X_REG_ICTRC_VCLAMP_SHIFT              (2)
+#define BQ2419X_REG_ICTRC_TREG_MASK                 (BIT(1) | BIT(0))
+#define BQ2419X_REG_ICTRC_TREG_SHIFT                (0)
+
+#define BQ2419X_REG_MOC                             0x07    /* Misc. Operation Control */
+
+#define BQ2419X_REG_MOC_DPDM_EN_MASK                (BIT(7))
+#define BQ2419X_REG_MOC_DPDM_EN_SHIFT               (7)
+#define BQ2419X_REG_MOC_TMR2X_EN_MASK               (BIT(6))
+#define BQ2419X_REG_MOC_TMR2X_EN_SHIFT              (6)
+#define BQ2419X_REG_MOC_BATFET_DISABLE_MASK         (BIT(5))
+#define BQ2419X_REG_MOC_BATFET_DISABLE_SHIFT        (5)
+#define BQ2419X_REG_MOC_JEITA_VSET_MASK             (BIT(4))
+#define BQ2419X_REG_MOC_JEITA_VSET_SHIFT            (4)
+#define BQ2419X_REG_MOC_INT_MASK_MASK               (BIT(1) | BIT(0))
+#define BQ2419X_REG_MOC_INT_MASK_SHIFT              (0)
+
+#define BQ2419X_REG_SS                              0x08    /* System Status */
+
+#define BQ2419X_REG_SS_VBUS_STAT_MASK               (BIT(7) | BIT(6))
+#define BQ2419X_REG_SS_VBUS_PLUGGED                 (BIT(6))
+#define BQ2419X_REG_SS_VBUS_STAT_SHIFT              (6)
+#define BQ2419X_REG_SS_CHRG_STAT_MASK               (BIT(5) | BIT(4))
+#define BQ2419X_REG_SS_CHRG_STAT_SHIFT              (4)
+#define BQ2419X_REG_SS_DPM_STAT_MASK                (BIT(3))
+#define BQ2419X_REG_SS_DPM_STAT_SHIFT               (3)
+#define BQ2419X_REG_SS_PG_STAT_MASK                 (BIT(2))
+#define BQ2419X_REG_SS_PG_STAT_SHIFT                (2)
+#define BQ2419X_REG_SS_THERM_STAT_MASK              (BIT(1))
+#define BQ2419X_REG_SS_THERM_STAT_SHIFT             (1)
+#define BQ2419X_REG_SS_VSYS_STAT_MASK               (BIT(0))
+#define BQ2419X_REG_SS_VSYS_STAT_SHIFT              (0)
+
+#define BQ2419X_REG_F                               0x09    /* Fault */
+
+#define BQ2419X_REG_F_WATCHDOG_FAULT_MASK           (BIT(7))
+#define BQ2419X_REG_F_WATCHDOG_FAULT_SHIFT          (7)
+#define BQ2419X_REG_F_BOOST_FAULT_MASK              (BIT(6))
+#define BQ2419X_REG_F_BOOST_FAULT_SHIFT             (6)
+#define BQ2419X_REG_F_CHRG_FAULT_MASK               (BIT(5) | BIT(4))
+#define BQ2419X_REG_F_CHRG_FAULT_SHIFT              (4)
+#define BQ2419X_REG_F_BAT_FAULT_MASK                (BIT(3))
+#define BQ2419X_REG_F_BAT_FAULT_SHIFT               (3)
+#define BQ2419X_REG_F_NTC_FAULT_MASK                (BIT(2) | BIT(1) | BIT(0))
+#define BQ2419X_REG_F_NTC_FAULT_SHIFT               (0)
+
+#define BQ2419X_REG_VPRS                            0x0A    /* Vendor/Part/Revision Status */
+
+#define BQ2419X_REG_VPRS_PN_MASK                    (BIT(5) | BIT(4) | BIT(3))
+#define BQ2419X_REG_VPRS_PN_SHIFT                   (3)
+#define BQ2419X_REG_VPRS_TS_PROFILE_MASK            (BIT(2))
+#define BQ2419X_REG_VPRS_TS_PROFILE_SHIFT           (2)
+#define BQ2419X_REG_VPRS_DEV_REG_MASK               (BIT(1) | BIT(0))
+#define BQ2419X_REG_VPRS_DEV_REG_SHIFT              (0)
+
+#define BQ2419X_REG_VPRS_PN_24190                   (0x4)
+#define BQ2419X_REG_VPRS_PN_24192                   (0x5)   /* Also 24193 */
+#define BQ2419X_REG_VPRS_PN_24192I                  (0x3)
+
+/* Options For Setting */
+#define BQ2419X_REG_SS_CHRGDONE                     (0x30)
+#define BQ2419X_REG_SS_DPM                          (0x08)
+#define BQ2419X_REG_SS_PG                           (0x04)
+#define BQ2419X_REG_SS_NOTPG                        (0x00)
+
+#define BQ2419X_REG_F_WDT_TIMEOUT                   (0x80)
+#define BQ2419X_REG_F_BOOST_OCP                     (0x40)
+#define BQ2419X_REG_F_VBUS_OVP                      (0x10)
+#define BQ2419X_REG_F_BATT_OVP                      (0x08)
+
+#endif /* end of _BQ2419X_CHARGER_H_ */

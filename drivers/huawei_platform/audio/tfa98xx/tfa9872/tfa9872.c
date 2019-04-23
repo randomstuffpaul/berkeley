@@ -777,7 +777,6 @@ static int tfa9872_i2c_probe(struct i2c_client *i2c, const struct i2c_device_id 
 	tfa9872->gpio_irq = of_get_named_gpio(i2c->dev.of_node, "gpio_irq", 0);
 	if (tfa9872->gpio_irq < 0) {
 		hwlog_err("gpio_irq is invalid!\n");
-		ret = FAILED;
 	} else {
 		hwlog_info("gpio_irq is %d.\n", tfa9872->gpio_irq);
 		if (!gpio_is_valid(tfa9872->gpio_irq)) {

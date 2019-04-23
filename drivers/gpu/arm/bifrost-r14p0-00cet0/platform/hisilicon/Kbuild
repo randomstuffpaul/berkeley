@@ -12,7 +12,18 @@
 #
 #
 
+mali_kbase-y += \
+        $(MALI_PLATFORM_DIR)/mali_kbase_config_hisilicon.o \
+        $(MALI_PLATFORM_DIR)/mali_kbase_hisi_callback.o
 
+include $(src)/$(MALI_PLATFORM_DIR)/last_buffer/Kbuild
+mali_kbase-$(CONFIG_HISI_LAST_BUFFER) += $(LAST_BUFFER:.c=.o)
 
-obj-$(CONFIG_MALI_MIDGARD)	+= mali_kbase_config_hisilicon.o
-obj-y += mali_kbase_hisi_callback.o
+ccflags-$(CONFIG_HISI_LAST_BUFFER) += \
+        -I$(src)/$(MALI_PLATFORM_DIR)/last_buffer
+
+subdir-ccflags-$(CONFIG_HISI_LAST_BUFFER) += \
+        -I$(src)/$(MALI_PLATFORM_DIR)/last_buffer
+
+# Compile the hisilicon base drivers.
+obj-$(CONFIG_MALI_MIDGARD) += $(MALI_PLATFORM_DIR)/base/memory_group_manager/

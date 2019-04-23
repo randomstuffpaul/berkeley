@@ -263,18 +263,21 @@ oal_void hmac_tx_traffic_classify_etc(
         return;
     }
 
-    /* 功能裁剪，只处理UDP报文，以及识别WifiDisplay RTSP业务为VI */
+    /* 功能裁剪，只处理UDP报文，以及识别WifiDisplay RTSP业务为VO */
     if (MAC_UDP_PROTOCAL != pst_ip->uc_protocol)
     {
         if (MAC_TCP_PROTOCAL == pst_ip->uc_protocol)
         {
             mac_tcp_header_stru *pst_tcp_hdr = (mac_tcp_header_stru *)(pst_ip + 1);
 
-            /* 识别WifiDisplay RTSP业务为VI */
+            /* 识别WifiDisplay RTSP业务为VO */
             if (OAL_NTOH_16(MAC_WFD_RTSP_PORT) == pst_tcp_hdr->us_sport)
             {
-            	*puc_tid = WLAN_TIDNO_VIDEO;
-            	return;
+                *puc_tid = WLAN_TIDNO_VOICE;
+                MAC_GET_CB_FRAME_TYPE(pst_tx_ctl)    = WLAN_CB_FRAME_TYPE_DATA;
+                MAC_GET_CB_FRAME_SUBTYPE(pst_tx_ctl) = MAC_DATA_VIP_FRAME;
+                MAC_GET_CB_IS_NEEDRETRY(pst_tx_ctl)  = OAL_TRUE;
+                return;
             }
         }
         return;

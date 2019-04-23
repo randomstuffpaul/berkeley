@@ -176,11 +176,14 @@ struct hi64xx_om_priv {
 	unsigned short bandwidth;
 	unsigned short sponsor;
 	unsigned int dir_count;
+	unsigned int codec_type;
 	bool standby;
 	bool started;
 	bool is_eng;
 	bool should_deactive_slimbus;
 	unsigned short open_file_failed_cnt;
+	unsigned int slimbus_track_type;
+	slimbus_device_type_t slimbus_device_type;
 };
 
 
@@ -740,7 +743,6 @@ static void _data_verify(struct data_flow *data,
 	if (VERIFY_DEFAULT == runtime->verify_state) {
 		pos = _get_verify_pos(data->addr, runtime->size);
 		if (pos == runtime->size) {
-			HI64XX_DSP_INFO("do not find verify head.\n");
 			return;
 		}
 
@@ -800,18 +802,10 @@ free_list_node:
 static void _hook_should_stop(void)
 {
 	slimbus_framer_type_t framer;
-	unsigned int s2_ctrl = 0;
-	bool s2_clk_en = false;
 
 	framer = slimbus_debug_get_framer();
 
-	s2_ctrl = hi64xx_hifi_read_reg(HI64xx_DSP_S2_CTRL_L);
-	if (s2_ctrl & (0x1 << HI64xx_DSP_S2_CLK_EN_BIT)) {
-		HI64XX_DSP_INFO("S2 is enable, om hook can't start.\n");
-		s2_clk_en = true;
-	}
-
-	if ((framer != SLIMBUS_FRAMER_CODEC) || s2_clk_en)
+	if ((framer != SLIMBUS_FRAMER_CODEC) || hi64xx_check_i2s2_clk())
 		hi64xx_stop_hook();
 
 	return;
@@ -1057,8 +1051,9 @@ void hi64xx_hifi_om_hook_stop(void)
 		HI64XX_DSP_INFO("right hook stoped\n");
 	}
 
-	if (priv->should_deactive_slimbus)
-		ret = slimbus_track_deactivate(SLIMBUS_DEVICE_HI6403, SLIMBUS_TRACK_DEBUG, NULL);
+	if (priv->should_deactive_slimbus) {
+		ret = slimbus_track_deactivate(priv->slimbus_device_type, priv->slimbus_track_type, NULL);
+	}
 
 	if (ret)
 		HI64XX_DSP_WARNING("deactivate debug return ret %d\n", ret);
@@ -1068,7 +1063,7 @@ void hi64xx_hifi_om_hook_stop(void)
 	priv->sponsor = OM_SPONSOR_DEFAULT;
 }
 
-int hi64xx_hifi_om_init(struct hi64xx_irq *irqmgr)
+int hi64xx_hifi_om_init(struct hi64xx_irq *irqmgr, unsigned int codec_type)
 {
 	int ret = 0;
 	int i = 0;
@@ -1088,12 +1083,25 @@ int hi64xx_hifi_om_init(struct hi64xx_irq *irqmgr)
 	priv->sponsor = OM_SPONSOR_DEFAULT;
 	priv->bandwidth = OM_BANDWIDTH_6144;
 	priv->dir_count = HOOK_DEFAULT_SUBDIR_CNT;
+	priv->codec_type = codec_type;
+	if (HI64XX_CODEC_TYPE_6403 == codec_type)	{
+		priv->slimbus_device_type = SLIMBUS_DEVICE_HI6403;
+		priv->slimbus_track_type =  SLIMBUS_TRACK_DEBUG;
+	}
+	else {
+		HI64XX_DSP_ERROR("do not support codec_type %d\n", codec_type);
+		WARN_ON(true);
+		ret = -ENOMEM;
+		goto err_exit;
+	}
+
 
 	priv->is_eng = false;
 
 	priv->asp_subsys_clk = devm_clk_get(priv->dev, "clk_asp_subsys");
 	if ( IS_ERR(priv->asp_subsys_clk)) {
 		HI64XX_DSP_ERROR( "asp subsys clk fail.\n");
+		ret = -ENOMEM;
 		goto err_exit;
 	}
 

@@ -17,9 +17,18 @@
 #include <dsm/dsm_pub.h>
 #endif
 #include "contexthub_ext_log.h"
+#include <linux/of.h>
+
+#define USER_WRITE_BUFFER_SIZE (1 + 2 * sizeof(int))
+#define MAX_SUPPORTED_MOTIONS_TYPE_CNT (MOTION_TYPE_END + 1) // include MOTIONHUB_TYPE_POPUP_CAM
+#define SUPPORTED_MOTIONS_TYPE_NODE_PATH "/sensorhub/motion"
+#define SUPPORTED_MOTIONS_TYPE_PROP "supported_motions_type"
+#define MOTION_SUPPORTED_FLAG   1
+#define MOTION_UNSUPPORTED_FLAG 0
 
 static bool motion_status[MOTION_TYPE_END];
 static int motion_ref_cnt;
+static u32 g_supported_motions_type[MAX_SUPPORTED_MOTIONS_TYPE_CNT];
 
 extern int stop_auto_motion;
 extern int step_ref_cnt;
@@ -61,6 +70,8 @@ static char *motion_type_str[] = {
 	[MOTION_TYPE_HEAD_DOWN] = "head_down",
 	[MOTION_TYPE_PUT_DOWN] = "put_down",
 	[MOTION_TYPE_SIDEGRIP] = "sidegrip",
+	[MOTION_TYPE_MOVE] = "move",
+	[MOTION_TYPE_FALL] = "fall",
 	[MOTION_TYPE_END] = "end",
 };
 
@@ -274,6 +285,74 @@ void disable_motions_when_sysreboot(void)
 	}
 }
 
+static void read_supported_motions_type_from_dts(void)
+{
+	struct device_node *np = NULL;
+	int supported_motions_count;
+	int ret;
+
+	memset(g_supported_motions_type, 0, sizeof(g_supported_motions_type));
+
+	np = of_find_node_by_path(SUPPORTED_MOTIONS_TYPE_NODE_PATH);
+	if (np == NULL) {
+		hwlog_info("%s, motion node not exist!\n", __func__);
+		return;
+	}
+
+	supported_motions_count = of_property_count_u32_elems(np,
+		SUPPORTED_MOTIONS_TYPE_PROP);
+	if (supported_motions_count < 0) {
+		hwlog_info("%s, no valid value exist!\n", __func__);
+		return;
+	}
+	if (supported_motions_count > MAX_SUPPORTED_MOTIONS_TYPE_CNT) {
+		hwlog_info("%s, buffer is not large enough!\n", __func__);
+		return;
+	}
+
+	ret = of_property_read_u32_array(np, SUPPORTED_MOTIONS_TYPE_PROP,
+		g_supported_motions_type, supported_motions_count);
+	if (ret != 0 && ret != -ENODATA)
+		hwlog_info("%s, read supported motions prop fail!\n", __func__);
+}
+
+static bool is_motion_supported(u32 motion_type)
+{
+	int i;
+
+	for (i = 0; i < MAX_SUPPORTED_MOTIONS_TYPE_CNT; i++) {
+		if (motion_type == g_supported_motions_type[i])
+			return true;
+	}
+	return false;
+}
+
+static int motion_support_query(unsigned long arg)
+{
+	void __user *argp = (void __user *)arg;
+	int motion_type = MOTIONHUB_TYPE_POPUP_CAM;
+	int supported = MOTION_SUPPORTED_FLAG;
+	int unsupported = MOTION_UNSUPPORTED_FLAG;
+
+	if (copy_from_user(&motion_type, argp, sizeof(motion_type))) {
+		hwlog_err("%s, copy motion type fail!\n", __func__);
+		return -EFAULT;
+	}
+
+	if (is_motion_supported(motion_type)) {
+		if (copy_to_user((void __user *)arg, (void *)&supported, sizeof(supported)) != 0) {
+			hwlog_err("%s, supported copy_to_user error.\n", __func__);
+			return -EFAULT;
+		}
+	} else {
+		if (copy_to_user((void __user *)arg, (void *)&unsupported, sizeof(unsupported)) != 0) {
+			hwlog_err("%s, unsupported copy_to_user error.\n", __func__);
+			return -EFAULT;
+		}
+	}
+	return 0;
+}
+
 /*******************************************************************************************
 Function:       mhb_read
 Description:   read /dev/motionhub
@@ -299,10 +378,26 @@ Output:         no
 Return:         length of write data
 *******************************************************************************************/
 static ssize_t mhb_write(struct file *file, const char __user *data,
-			 size_t len, loff_t *ppos)
+	 size_t len, loff_t *ppos)
 {
-	hwlog_info("%s need to do...\n", __func__);
+	char user_data[USER_WRITE_BUFFER_SIZE] = {0};
+	char motion_type;
 
+	if (len != USER_WRITE_BUFFER_SIZE) {
+		hwlog_err("%s length is invalid\n", __func__);
+		return len;
+	}
+
+	if (copy_from_user(user_data, data, len)) {
+		hwlog_err("%s copy_from_user failed.\n", __func__);
+		return len;
+	}
+
+	motion_type = user_data[0];
+	if (motion_type != MOTIONHUB_TYPE_POPUP_CAM)
+		return len;
+	if (inputhub_route_write(ROUTE_MOTION_PORT, user_data, len) == 0)
+		hwlog_err("%s route_write failed.\n", __func__);
 	return len;
 }
 
@@ -324,6 +419,8 @@ static long mhb_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case MHB_IOCTL_MOTION_ATTR_START:
 	case MHB_IOCTL_MOTION_ATTR_STOP:
 		break;
+	case MHB_IOCTL_MOTION_SUPPORT_QUERY:
+		return motion_support_query(arg);
 	default:
 		hwlog_err("%s unknown cmd : %d\n", __func__, cmd);
 		return -ENOTTY;
@@ -457,6 +554,7 @@ static int __init motionhub_init(void)
 
 	register_iom3_recovery_notifier(&motion_recovery_notify);
 	//hwlog_info("%s ok\n", __func__);
+	read_supported_motions_type_from_dts();
 	goto OUT;
 CLOSE:
     inputhub_route_close(ROUTE_MOTION_PORT);

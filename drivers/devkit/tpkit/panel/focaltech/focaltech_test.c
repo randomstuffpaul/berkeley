@@ -92,6 +92,31 @@
 #define LCD_NOISE_DATA_PROCESS		0
 #define REG_LCD_NOISE_DATA_READY	0x00
 
+#define REG_NORMALIZE_TYPE		0x16
+#define REG_PATTERN_5452				0x53
+#define REG_MAPPING_SWITCH				0x54
+#define REG_TX_NOMAPPING_NUM			0x55
+#define REG_RX_NOMAPPING_NUM			0x56
+#define NO_MAPPING						1
+#define MAPPING							0
+#define SHORT_TEST_RES_LEVEL			0x5A
+#define SHORT_TEST_ERR_CH0				0x58
+
+#define SHORT_TEST_STAND_ADC			1437
+#define SHORT_TEST_STAND_OFFSET			1024
+#define SHORT_TEST_STAND_RES			111
+#define SHORT_TEST_STAND_RES0			4
+#define SHORT_TEST_OFFSET_RES			395
+#define READ_ADC_CMD_OFFSET				0x04
+#define READ_ADC_CMD_CHL_TO_GND			0x03
+#define READ_ADC_CMD_CHL_TO_CHL			0x02
+#define READ_ADC_CMD_CHL_TO_ALL			0x01
+#define SET_SHORT_TEST_DELAY			1
+#define LOW_LEVEL_STAND_RES				70
+#define SCAN_QUERY_TIME					100
+#define OFFSET_RES						3
+#define PANEL_DIFF_FACTOR				10
+
 static char tp_test_failed_reason[TP_TEST_FAILED_REASON_LEN] = { "-software_reason" };
 struct focal_test_params *params = NULL;
 static int focal_write_flag = false;
@@ -130,6 +155,8 @@ static int focal_init_test_prm(struct focal_platform_data *pdata,
 
 static int focal_scap_raw_data_test_5x46(struct focal_test_params *params,
 	struct focal_test_result **result,char test_num);
+static int focal_scap_raw_data_test_3528(struct focal_test_params *params,
+	struct focal_test_result **result,char test_num);
 static int focal_raw_data_test(struct focal_test_params *params,
 	struct focal_test_result **result,char test_num);
 static int focal_cb_test(struct focal_test_params *params,
@@ -151,6 +178,13 @@ static int focal_row_column_delta_test(
 	struct focal_test_result *srcresult, struct focal_test_result **result, char test_num);
 static int focal_ft5x46_lcd_noise_test(
 	struct focal_test_params *params, struct focal_test_result **result,char test_num);
+static int focal_ft3528_short_circuit_test(struct focal_test_params *params,
+	struct focal_test_result **result,char test_num);
+static int focal_ft3528_panel_differ_test(
+	struct focal_test_params *params,
+	struct focal_test_result **result,char test_num);
+
+
 
 static int focal_abs(int value)
 {
@@ -357,9 +391,21 @@ int  focal_start_test_tp(
 	}
 	cap_test_num++;
 
-	if (FOCAL_FT5X46 == g_focal_dev_data->ic_type)
+	if (FOCAL_FT5X46 == g_focal_dev_data->ic_type || FOCAL_FT5422U == g_focal_dev_data->ic_type) {
+		ret = focal_scap_raw_data_test_5x46(params, &test_results[cap_test_num], cap_test_num + 1);
+		cap_test_num++;
+	} else if(FOCAL_FT3528 == g_focal_dev_data->ic_type) {
+		ret = focal_scap_raw_data_test_3528(params, &test_results[cap_test_num], cap_test_num+1);
+		cap_test_num++;
+	}
+
+	if(FOCAL_FT3528 == g_focal_dev_data->ic_type)
 	{
-		ret = focal_scap_raw_data_test_5x46(params, &test_results[cap_test_num], cap_test_num+1);
+		ret = focal_ft3528_panel_differ_test(params, &test_results[cap_test_num],cap_test_num+1);
+		if(ret){
+			tp_cap_test_status = SOFTWARE_REASON;
+			strncpy(tp_test_failed_reason, "-software reason",TP_TEST_FAILED_REASON_LEN);
+		}
 		cap_test_num++;
 	}
 
@@ -395,17 +441,27 @@ int  focal_start_test_tp(
 		cap_test_num++;
 	}
 	/*  short test */
-	ret = focal_short_circuit_test(params, &test_results[cap_test_num],cap_test_num+1);
-	if(ret){
-		tp_cap_test_status = SOFTWARE_REASON;
-		if(test_results[cap_test_num])
-		{
-			TS_LOG_ERR("%s: test_result is NULL cap_test_num is %d\n",  __func__, cap_test_num);
-			strncpy(test_results[cap_test_num]->tptestfailedreason, "-software reason",TP_TEST_FAILED_REASON_LEN);
+	if(FOCAL_FT3528 == g_focal_dev_data->ic_type)
+	{
+		ret = focal_ft3528_short_circuit_test(params, &test_results[cap_test_num],cap_test_num+1);
+		if(ret){
+			tp_cap_test_status = SOFTWARE_REASON;
+			strncpy(tp_test_failed_reason, "-software reason",TP_TEST_FAILED_REASON_LEN);
 		}
-		strncpy(tp_test_failed_reason, "-software reason",TP_TEST_FAILED_REASON_LEN);
+		cap_test_num++;
+	} else {
+		ret = focal_short_circuit_test(params, &test_results[cap_test_num],cap_test_num+1);
+		if(ret){
+			tp_cap_test_status = SOFTWARE_REASON;
+			if(test_results[cap_test_num])
+			{
+				TS_LOG_ERR("%s: test_result is NULL cap_test_num is %d\n",  __func__, cap_test_num);
+				strncpy(test_results[cap_test_num]->tptestfailedreason, "-software reason",TP_TEST_FAILED_REASON_LEN);
+			}
+			strncpy(tp_test_failed_reason, "-software reason",TP_TEST_FAILED_REASON_LEN);
+		}
+		cap_test_num++;
 	}
- 	cap_test_num++;
 
 	if(FOCAL_FT8607 == g_focal_dev_data->ic_type)
 	{
@@ -459,7 +515,8 @@ static int focal_start_scan(void)
 		return ret;
 	}
 
-	if(FOCAL_FT5X46 == g_focal_dev_data->ic_type){
+	if (FOCAL_FT5X46 == g_focal_dev_data->ic_type || FOCAL_FT5422U == g_focal_dev_data->ic_type
+		|| FOCAL_FT3528 == g_focal_dev_data->ic_type) {
 		query_delay = FTS_5X46_SCAN_QUERY_DELAY;
 		max_query_times = FTS_5X46_SCAN_MAX_TIME / query_delay;
 	}
@@ -525,7 +582,8 @@ static int focal_read_raw_data(u8 data_type, u8 *raw_data, size_t size)
 		}
 	}
 	msleep(10);
-	if(FOCAL_FT5X46 == g_focal_dev_data->ic_type){
+	if (FOCAL_FT5X46 == g_focal_dev_data->ic_type || FOCAL_FT5422U == g_focal_dev_data->ic_type
+			|| FOCAL_FT3528 == g_focal_dev_data->ic_type) {
 		cmd = REG_5X46_RAW_BUF0;
 	}
 	else{
@@ -842,8 +900,14 @@ static int focal_get_channel_form_ic(struct focal_test_params *params)
 		TS_LOG_ERR("%s:get channel num fail, ret=%d\n", __func__, ret);
 		return ret;
 	} else {
-		params->channel_x_num = chl_x;
-		params->channel_y_num = chl_y;
+		if(FOCAL_FT3528 == g_focal_dev_data->ic_type && g_focal_pdata->is_v3_pattern) {
+			params->channel_x_num = chl_y;
+			params->channel_y_num = chl_x;
+		} else {
+			params->channel_x_num = chl_x;
+			params->channel_y_num = chl_y;
+		}
+
 		params->key_num = 0;//visual key num
 		TS_LOG_INFO("%s:channel_x=%d, channel_y=%d,params->key_num=%d\n",
 			__func__, chl_x, chl_y,params->key_num);
@@ -855,6 +919,646 @@ static int focal_get_channel_form_ic(struct focal_test_params *params)
 
 	return 0;
 }
+
+static int get_channel_num_no_mapping(u8 *channel_x, u8 *channel_y)
+{
+	int ret = 0;
+	u8 buffer[1] = {0}; /* = new u8; */
+
+	TS_LOG_INFO("get tx num...\n");
+	ret = focal_read_reg(REG_TX_NOMAPPING_NUM,  buffer);
+	if (ret) {
+		TS_LOG_ERR("%s: failed to get Tx number", __func__);
+	} else {
+		*channel_x = buffer[0];
+	}
+
+	TS_LOG_INFO("get rx num...\n");
+	ret = focal_read_reg(REG_RX_NOMAPPING_NUM,  buffer);
+	if (ret) {
+		TS_LOG_ERR("%s: failed to get rx number\n", __func__);
+	} else {
+		*channel_y = buffer[0];
+	}
+
+	return ret;
+}
+
+static int mapping_switch(u8 str_switch, int*channel_x, int *channel_y)
+{
+	int ret = 0;
+	u8 chl_x = 0;
+	u8 chl_y = 0;
+	u8 ch_pattern = 0xFF;
+	u8 reg_data = 0xFF;
+
+	ret = focal_enter_factory();
+	if (ret) {
+		TS_LOG_ERR("%s:enter factory mode fail, ret=%d\n",
+			__func__, ret);
+		return ret;
+	}
+
+	ret = focal_read_reg(REG_PATTERN_5452, &ch_pattern);
+	if (ret) {
+		TS_LOG_ERR("%s: switch to no_mapping failed!", __func__);
+		return ret;
+	}
+
+	if (1 == ch_pattern) { /* 1: V3 Pattern */
+		reg_data = 0xFF;
+		ret = focal_read_reg(REG_MAPPING_SWITCH, &reg_data);
+		if (ret) {
+			TS_LOG_ERR("%s: read REG_MAPPING_SWITCH failed!", __func__);
+			return ret;
+		}
+
+		TS_LOG_INFO("get value from REG_PATTERN_5452 is %d", reg_data);
+
+		if (str_switch != reg_data) {
+			ret = focal_write_reg(REG_MAPPING_SWITCH, str_switch);  /* 0-mapping 1-no mampping */
+			if (ret) {
+				TS_LOG_ERR("%s: write REG_MAPPING_SWITCH failed!", __func__);
+				return ret;
+			}
+			msleep(20);//ic need
+
+			if (NO_MAPPING == str_switch) {
+				ret = get_channel_num_no_mapping(&chl_x, &chl_y);
+				if (ret) {
+					TS_LOG_ERR("get_channel_num_no_mapping failed!");
+					return ret;
+				}
+				*channel_x = chl_x;
+				*channel_y = chl_y;
+			}
+		}
+	}
+	return ret;
+}
+
+
+static int weak_short_get_adc_data(int all_adc_data_len, int *rev_buffer, u8 cmd)
+{
+    int ret = 0;
+    int i = 0;
+    int read_data_len = all_adc_data_len; /* offset*2 + (clb_data + tx_num + rx_num)*2*2 */
+    u8 *data_send = NULL;
+    u8 data = 0xFF;
+    u8 w_buffer[2] = {0};
+    bool adc_ok = false;
+    int byte_num = 0;
+    int read_num = 0;
+    int packet_num = 0;
+    int packet_remainder = 0;
+    int scan_query_times = SCAN_QUERY_TIME;
+
+    TS_LOG_INFO("read_data_len is %d", read_data_len);
+
+    data_send = kzalloc(read_data_len + 1, GFP_KERNEL);
+    if (NULL == data_send) {
+        TS_LOG_ERR("%s:data_send buffer malloc fail\n", __func__);
+        return -ENOMEM;
+    }
+    memset(data_send, 0, read_data_len + 1);
+
+    ret = focal_write_reg(REG_5X46_ADC_SCAN, cmd);/* test weak short once, after host send an enable command */
+    if (ret) {
+        TS_LOG_ERR("%s:write reg0X07 error. \n", __func__);
+        goto ADC_END;
+    }
+
+    msleep(100);//ic need
+
+    for (i = 0; i < scan_query_times; i++) {
+        msleep(10);//ic need
+        ret = focal_read_reg(REG_5X46_ADC_SCAN_STATUS, &data); /* data ready,and FW set reg 0x07 to 0. */
+        if (!ret) {
+            if (data == 0) {
+                adc_ok = true;
+                break;
+            }
+        }
+    }
+
+    if ( !adc_ok ) {
+        TS_LOG_ERR("ADC data NOT ready, error.");
+        ret = -EINVAL;
+        goto ADC_END;
+    }
+    msleep(300);//ic need
+    w_buffer[0] = REG_5X46_ADC_DATA_ADDR;
+    byte_num= read_data_len;
+    packet_num = byte_num / BYTES_PER_TIME;
+    packet_remainder = byte_num % BYTES_PER_TIME;
+    if (packet_remainder)
+        packet_num++;
+    if (byte_num < BYTES_PER_TIME) {
+        read_num = byte_num;
+    } else {
+        read_num = BYTES_PER_TIME;
+    }
+
+    ret = focal_read(w_buffer, 1, data_send, read_num);
+    for (i = 1; i < packet_num; i++) {
+        if (ret)
+            break;
+        if ((i == (packet_num - 1)) && packet_remainder) { /* last packet &*/
+            ret = focal_read(NULL, 0, data_send + BYTES_PER_TIME * i, packet_remainder);
+        } else {
+            ret = focal_read(NULL, 0, data_send + BYTES_PER_TIME * i, BYTES_PER_TIME);
+        }
+    }
+
+    if (!ret) {
+        for (i = 0; i < read_data_len / 2; i++) {
+            rev_buffer[i] = (data_send[i << 1] << 8) + data_send[(i << 1) + 1];
+        }
+    } else {
+        TS_LOG_INFO("fts_i2c_read_write error,ret=%d", ret);
+    }
+
+ADC_END:
+    if(NULL != data_send)
+        kfree(data_send);
+
+    return ret;
+}
+
+static bool short_test_channel_to_gnd(int *fm_short_resistance, int *adc_data, int offset,
+				bool *is_weak_short_gnd, unsigned int chl_x, unsigned int chl_y)
+{
+	int ret = 0;
+	int error_num = 0;
+	int min_70k_num = 0;
+	int total_num = 0;
+	int tx_num = 0;
+	int min_cg = 0;
+	int min_cc = 0;
+	int i = 0;
+	int num = 0;
+	u8 offset_res = OFFSET_RES;
+	int code_1 = SHORT_TEST_STAND_ADC;
+	int res_stalls = SHORT_TEST_STAND_RES;
+	int fvalue = 0;
+	int all_adc_data_num = 0;
+	int res_stalls0 = SHORT_TEST_STAND_RES0;
+	int *fg_short_resistance = NULL;
+	int *tmp_adc_data = NULL;
+	u8 *w_buf = NULL;
+	u8 *error_ch = NULL;
+	u8 *min_70k_ch = NULL;
+	bool is_used = false;
+	bool tmp_result = true;
+
+	tx_num = chl_x;
+	total_num = tx_num + chl_y;
+	all_adc_data_num = total_num + 1;
+	if(!params || !chl_x || !chl_y) {
+		TS_LOG_ERR("%s , params is null\n", __func__);
+		return false;
+	}
+
+	min_cc = params->threshold.short_circuit_min;
+	min_cg = params->threshold.short_circuit_min;
+
+	error_ch = kzalloc(total_num * sizeof(u8), GFP_KERNEL);
+	if (NULL == error_ch) {
+		TS_LOG_ERR("%s:error_ch buffer malloc fail\n", __func__);
+		tmp_result = false;
+		goto TEST_END;
+	}
+
+	min_70k_ch = kzalloc(total_num * sizeof(u8), GFP_KERNEL);
+	if (NULL == min_70k_ch) {
+		TS_LOG_ERR("%s:min_70k_ch buffer malloc fail\n", __func__);
+		tmp_result = false;
+		goto TEST_END;
+	}
+
+	w_buf = kzalloc((total_num + 3) * sizeof(u8), GFP_KERNEL);//first byte means reg addr, second byte means error num, reserve one byte.
+	if (NULL == w_buf) {
+		TS_LOG_ERR("%s:w_buf buffer malloc fail\n", __func__);
+		tmp_result = false;
+		goto TEST_END;
+	}
+
+	tmp_adc_data = kzalloc(total_num * total_num * sizeof(int), GFP_KERNEL);
+	if (NULL == tmp_adc_data) {
+		TS_LOG_ERR("%s:adc_data buffer malloc fail\n", __func__);
+		tmp_result = false;
+		goto TEST_END;
+	}
+	memset(tmp_adc_data, 0, (total_num * total_num));
+
+	fg_short_resistance =  kzalloc(total_num * sizeof(int), GFP_KERNEL);
+	if (NULL == fg_short_resistance) {
+		TS_LOG_ERR("%s:fg_short_resistance buffer malloc fail\n", __func__);
+		tmp_result = false;
+		goto TEST_END;
+	}
+	memset(fg_short_resistance, 0, total_num);
+
+	error_num = 0;
+	min_70k_num = 0;
+
+	for ( i = 0; i < total_num; i++) {
+		if (fm_short_resistance[i] < min_cc) {
+			error_ch[error_num] = (u8)(i + 1);
+			error_num++;
+		}
+	}
+
+	if (error_num > 0) {
+		w_buf[0] = SHORT_TEST_ERR_CH0;
+		w_buf[1] = (u8)error_num;
+		for ( i = 0; i < error_num; i++) {
+			w_buf[2 + i] = error_ch[i];
+		}
+
+		ret = focal_write(w_buf, (u16)(error_num + 2) );//first byte is reg addr, second byte is error num.
+		if (ret) {
+			TS_LOG_ERR("failed to write wbuf,ret= %d", ret);
+			tmp_result = false;
+			goto TEST_END;
+		}
+
+		ret = weak_short_get_adc_data(error_num * 2, tmp_adc_data, READ_ADC_CMD_CHL_TO_GND);
+		msleep(50);//ic need
+		if (ret) {
+			TS_LOG_ERR("failed to get weak short data,ret= %d", ret);
+			tmp_result = false;
+			goto TEST_END;
+		}
+
+		TS_LOG_INFO("Ground ADCData:\n");
+		for ( i = 0; i < error_num; i++) {
+			TS_LOG_INFO(" 0x%x,	", tmp_adc_data[i]);
+		}
+
+		for ( i = 0; i < error_num; i++) {
+			if (code_1 - tmp_adc_data[i] <= 0) {
+				fg_short_resistance[i] = min_cg;
+				continue;
+			}
+			fvalue = (tmp_adc_data[i] - offset + SHORT_TEST_OFFSET_RES) * res_stalls / (code_1 - tmp_adc_data[i]) - offset_res;
+			TS_LOG_INFO("short_test_channel_to_gnd:  fvalue is %d",fvalue);
+			if (fvalue < 0)
+				fvalue = focal_abs(fg_short_resistance[i]);
+
+			if (min_cg > fvalue) {
+				fg_short_resistance[error_ch[i] - 1] = fvalue;
+				adc_data[error_ch[i] - 1] = tmp_adc_data[i];
+				*is_weak_short_gnd = true;
+				if (fvalue > LOW_LEVEL_STAND_RES) {
+					if (error_ch[i] <= tx_num) {
+						TS_LOG_INFO("Tx%d with GND", error_ch[i]);
+					} else {
+						TS_LOG_INFO( "Rx%d with GND", (error_ch[i] - tx_num) );
+					}
+						TS_LOG_INFO(": %.02d, ADC: %d\n", fvalue, tmp_adc_data[i]);
+						tmp_result = false;
+					}
+
+					if (fvalue < LOW_LEVEL_STAND_RES) {
+						is_used = false;
+						for ( num = 0; num < min_70k_num; num++) {
+						if (error_ch[i] == min_70k_ch[num]) {
+							is_used = true;
+							break;
+						}
+					}
+					if (!is_used) {
+						min_70k_ch[min_70k_num] = error_ch[i];
+						min_70k_num++;
+					}
+				}
+			}
+		}
+	}
+
+	if (min_70k_num > 0) {
+		ret = focal_write_reg(SHORT_TEST_RES_LEVEL, 0x00);
+		if (ret) {
+			goto TEST_END;
+		}
+		memset(tmp_adc_data, 0, total_num * total_num);
+
+		w_buf[0] = SHORT_TEST_ERR_CH0;
+		w_buf[1] = (u8)min_70k_num;
+		for ( i = 0; i < min_70k_num; i++) {
+			w_buf[2 + i] = min_70k_ch[i];
+		}
+
+		ret = focal_write(w_buf, (u16)(min_70k_num + 2));//first byte is reg addr, second byte is error num.
+		for ( i = 0; i < 1; i++) {
+			ret = weak_short_get_adc_data(min_70k_num * 2, tmp_adc_data, READ_ADC_CMD_CHL_TO_GND);
+			msleep(50);//ic need
+			if (ret) {
+			TS_LOG_ERR("failed to get weak short data,ret= %d", ret);
+			tmp_result = false;
+			goto TEST_END;
+			}
+		}
+
+		for ( i = 0; i < min_70k_num; i++) {
+			if (code_1 - tmp_adc_data[i] <= 0) {
+				fg_short_resistance[i] = min_cg;
+				continue;
+			}
+
+			fvalue = (tmp_adc_data[i] - offset + SHORT_TEST_OFFSET_RES) * res_stalls0 / (code_1 - tmp_adc_data[i]) - offset_res;
+
+			if (fvalue < 0) {
+				fvalue = focal_abs(fg_short_resistance[i]);
+			}
+			if (min_cg > fvalue) {
+				fg_short_resistance[min_70k_ch[i] - 1] = fvalue;
+				adc_data[min_70k_ch[i] - 1] = tmp_adc_data[i];
+				if (min_70k_ch[i] <= tx_num) {
+					TS_LOG_INFO("Tx%d with GND", min_70k_ch[i]);
+				} else {
+					TS_LOG_INFO( "Rx%d with GND", (min_70k_ch[i] - tx_num));
+				}
+
+				TS_LOG_INFO(": %.02d, ADC: %d\n", fvalue, tmp_adc_data[i]);
+				tmp_result = false;
+			}
+		}
+	}
+
+TEST_END:
+
+	if(NULL != error_ch)
+		kfree(error_ch);
+	if(NULL != min_70k_ch)
+		kfree(min_70k_ch);
+	if(NULL != tmp_adc_data)
+		kfree(tmp_adc_data);
+	if(NULL != fg_short_resistance)
+		kfree(fg_short_resistance);
+	if(NULL != w_buf)
+		kfree(w_buf);
+
+	return tmp_result;
+}
+
+static bool short_test_channel_to_channel(int *fm_short_resistance, int *adc_data, int offset,
+														unsigned int chl_x, unsigned int chl_y)
+{
+    int ret = 0;
+    int error_num = 0;
+    int min_70k_num = 0;
+    int total_num = 0;
+    int rx_num = 0;
+    int tx_num = 0;
+    int min_cc = 0;
+    int i = 0;
+    int j = 0;
+    int num = 0;
+    int code_1 = SHORT_TEST_STAND_ADC;
+    int res_stalls = SHORT_TEST_STAND_RES;
+    int fvalue = 0;
+    int adc_count = 0;
+    int all_adc_data_num = 0;
+    int res_stalls0 = SHORT_TEST_STAND_RES0;
+    int *f_origin_resistance = NULL;
+    int *tmp_adc_data = NULL;
+    u8 *w_buf = NULL;
+    u8 *error_ch = NULL;
+    u8 *min_70k_ch = NULL ;
+    bool is_used = false;
+    u8 offset_res = OFFSET_RES;
+    bool tmp_result = true;
+    rx_num = chl_x;
+    tx_num = chl_y;
+    total_num = rx_num + tx_num;
+    all_adc_data_num = total_num + 1;
+
+    if(!params || !chl_x || !chl_y) {
+        TS_LOG_ERR("%s, param is null\n", __func__);
+        return false;
+    }
+    min_cc = params->threshold.short_circuit_min;
+
+    f_origin_resistance =  kzalloc(total_num * sizeof(int), GFP_KERNEL);
+    if (NULL == f_origin_resistance) {
+        TS_LOG_ERR("%s:f_origin_resistance buffer malloc fail\n", __func__);
+        tmp_result = false;
+        goto TEST_END;
+    }
+    memset(f_origin_resistance, 0, total_num);
+
+    tmp_adc_data = kzalloc(total_num * total_num * sizeof(int), GFP_KERNEL);
+    if (NULL == tmp_adc_data) {
+        TS_LOG_ERR("%s:adc_data buffer malloc fail\n", __func__);
+        tmp_result = false;
+        goto TEST_END;
+    }
+    memset(tmp_adc_data, 0, (total_num * total_num));
+
+    for ( i = 0; i < total_num; i++) {
+        f_origin_resistance[i] = fm_short_resistance[i];
+    }
+
+    ret = focal_write_reg(SHORT_TEST_RES_LEVEL, 0x01);
+    if (ret) {
+        tmp_result = false;
+        goto TEST_END;
+    }
+
+    w_buf = kzalloc((total_num + 3) * sizeof(u8), GFP_KERNEL);//first byte means reg addr, second byte means error num, reserve one byte.
+    if (NULL == w_buf) {
+        TS_LOG_ERR("%s:w_buf buffer malloc fail\n", __func__);
+        tmp_result = false;
+        goto TEST_END;
+    }
+
+    error_ch = kzalloc(total_num * sizeof(u8), GFP_KERNEL);
+    if (NULL == error_ch) {
+        TS_LOG_ERR("%s:error_ch buffer malloc fail\n", __func__);
+        tmp_result = false;
+        goto TEST_END;
+    }
+    min_70k_ch = kzalloc(total_num * sizeof(u8), GFP_KERNEL);
+    if (NULL == min_70k_ch) {
+        TS_LOG_ERR("%s:min_70k_ch buffer malloc fail\n", __func__);
+        tmp_result = false;
+        goto TEST_END;
+    }
+    error_num = 0;
+    min_70k_num = 0;
+
+    for (i = 0; i < total_num; i++) {
+        if (f_origin_resistance[i] < min_cc) {
+            error_ch[error_num] = (u8)(i + 1);
+            error_num++;
+        }
+    }
+    if (error_num > 1) {
+        w_buf[0] = SHORT_TEST_ERR_CH0;
+        w_buf[1] = (u8)error_num;
+        for ( i = 0; i < error_num; i++) {
+            w_buf[2 + i] = error_ch[i];//first byte means reg addr, second byte means error num
+        }
+//        memset(tmp_adc_data, 0, (all_adc_data_num + 1));
+
+        ret = focal_write(w_buf, (u16)(error_num + 2));//first byte means reg addr, second byte means error num
+        for ( j = 0; j < 1; j++) {
+            ret = weak_short_get_adc_data(error_num * (error_num - 1) * 2 / 2, tmp_adc_data, READ_ADC_CMD_CHL_TO_CHL);
+            msleep(50);//ic need
+            if (ret) {
+                TS_LOG_ERR("failed to get weak short data,ret= %d", ret);
+                tmp_result = false;
+                goto TEST_END;
+            }
+        }
+
+        TS_LOG_INFO("Mutual ADCData:\n");
+        for ( i = 0; i < error_num; i++) {
+            TS_LOG_INFO("short_test_channel_to_channel:  0x%x,	", tmp_adc_data[i]);
+        }
+
+        adc_count = 0;
+        for (i = 0; i < error_num; i++) {
+            for (j = i + 1; j < error_num; j++) {
+                if (code_1 - tmp_adc_data[adc_count] <= 0) {
+                    fvalue = min_cc;
+                    continue;
+                }
+                fvalue = (tmp_adc_data[adc_count] - offset + SHORT_TEST_OFFSET_RES) * res_stalls / (code_1 - tmp_adc_data[adc_count]) - offset_res;
+                adc_count++;
+                TS_LOG_INFO("short_test_channel_to_channel:  fvalue is %d",fvalue);
+                if (fvalue < 0) {
+                    fvalue = focal_abs(fvalue);
+                }
+                if (min_cc > fvalue) {
+                    fm_short_resistance[error_ch[i] - 1] = fvalue;
+                    fm_short_resistance[error_ch[j] - 1] = fvalue;
+                    adc_data[error_ch[i] - 1] = tmp_adc_data[adc_count];
+                    adc_data[error_ch[j] - 1] = tmp_adc_data[adc_count];
+
+                    if (fvalue > LOW_LEVEL_STAND_RES) {
+                        if (error_ch[i] <= tx_num) {
+                            TS_LOG_INFO("Tx%d", (error_ch[i]));
+                        } else {
+                            TS_LOG_INFO("Rx%d", (error_ch[i] - tx_num));
+                        }
+
+                        if (error_ch[j] <= tx_num) {
+                            TS_LOG_INFO("Tx%d", (error_ch[j] ) );
+                        } else {
+                            TS_LOG_INFO( "Rx%d", (error_ch[j] - tx_num));
+                        }
+                        TS_LOG_INFO(": %.02d , ADC: %d\n", fvalue, tmp_adc_data[adc_count]);
+                        tmp_result = false;
+                    } else {
+                        is_used = false;
+                        for (num = 0; num < min_70k_num; num++) {
+                            if (error_ch[i] == min_70k_ch[num]) {
+                                is_used = true;
+                                break;
+                            }
+                        }
+                        if (!is_used) {
+                            min_70k_ch[min_70k_num] = error_ch[i];
+                            min_70k_num++;
+                        }
+                        is_used = false;
+                        for (num = 0; num < min_70k_num; num++) {
+                            if (error_ch[j] == min_70k_ch[num]) {
+                                is_used = true;
+                                break;
+                            }
+                        }
+                        if (!is_used) {
+                            min_70k_ch[min_70k_num] = error_ch[j];
+                            min_70k_num++;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (min_70k_num > 0) {
+        ret = focal_write_reg(SHORT_TEST_RES_LEVEL, 0x00);
+        if (ret) {
+            goto TEST_END;
+        }
+        w_buf[0] = SHORT_TEST_ERR_CH0;
+        w_buf[1] = (u8)min_70k_num + 1;
+        for (i = 0; i < min_70k_num; i++) {
+            w_buf[2 + i] = min_70k_ch[i];
+        }
+
+        ret = focal_write(w_buf, (u16)(min_70k_num + 2));
+        memset(tmp_adc_data, 0, total_num * total_num);
+        for (i = 0; i < 1; i++) {
+            ret = weak_short_get_adc_data(min_70k_num * (min_70k_num - 1) * 2 / 2, tmp_adc_data, READ_ADC_CMD_CHL_TO_CHL);
+            msleep(50);//ic need
+            if (ret) {
+                TS_LOG_ERR("failed to get weak short data,ret= %d", ret);
+                tmp_result = false;
+                goto TEST_END;
+            }
+        }
+
+        adc_count = 0;
+        for (i = 0; i < min_70k_num; i++) {
+            for (j = i + 1; j < min_70k_num; j++) {
+                adc_count++;
+                if (0 >= code_1 - tmp_adc_data[adc_count]) {
+                    fvalue = min_cc;
+                    continue;
+                }
+                fvalue = (tmp_adc_data[adc_count] - offset + SHORT_TEST_OFFSET_RES) * res_stalls0 / (code_1 - tmp_adc_data[adc_count]) - offset_res;
+                TS_LOG_INFO("short_test_channel_to_channel:  fvalue is %d", fvalue);
+                adc_count++;
+                if (fvalue < 0) {
+                    fvalue = abs(fvalue);
+                }
+                if (min_cc > fvalue) {
+                    fm_short_resistance[min_70k_ch[i] - 1] = fvalue;
+                    fm_short_resistance[min_70k_ch[j] - 1] = fvalue;
+                    adc_data[min_70k_ch[i] - 1] = tmp_adc_data[adc_count];
+                    adc_data[min_70k_ch[j] - 1] = tmp_adc_data[adc_count];
+                    if (min_70k_ch[i] <= tx_num) {
+                        TS_LOG_INFO("Tx%d", (min_70k_ch[i]));
+                    } else {
+                        TS_LOG_INFO( "Rx%d", (min_70k_ch[i] - tx_num));
+                    }
+
+                    if (min_70k_ch[j] <= tx_num) {
+                        TS_LOG_INFO("Tx%d", (min_70k_ch[j]));
+                    } else {
+                        TS_LOG_INFO( "Rx%d", (min_70k_ch[j] - tx_num));
+                    }
+
+                    TS_LOG_INFO(": %.02d, ADC: %d\n", fvalue, tmp_adc_data[adc_count]);
+
+                    tmp_result = false;
+                }
+            }
+        }
+    }
+
+TEST_END:
+    if(NULL != error_ch)
+        kfree(error_ch);
+
+    if(NULL != min_70k_ch)
+        kfree(min_70k_ch);
+
+    if(NULL != w_buf)
+        kfree(w_buf);
+    if(NULL != tmp_adc_data)
+        kfree(tmp_adc_data);
+    if(NULL != f_origin_resistance)
+        kfree(f_origin_resistance);
+    return tmp_result;
+}
+
 
 static int focal_alloc_test_container(
 	struct focal_test_result **result,
@@ -952,7 +1656,8 @@ static int focal_get_raw_data_format(unsigned int chl_x ,unsigned int chl_y,int 
 		return -ENOMEM;
 	}
 
-	if(FOCAL_FT5X46 == g_focal_dev_data->ic_type){
+	if (FOCAL_FT5X46 == g_focal_dev_data->ic_type || FOCAL_FT5422U == g_focal_dev_data->ic_type
+			|| (FOCAL_FT3528 == g_focal_dev_data->ic_type)) {
 		ret = focal_read_raw_data(DATA_5X46_TYPE_RAW_DATA, original_raw_data,raw_data_size);
 	}else{
 		ret = focal_read_raw_data(DATA_TYPE_RAW_DATA, original_raw_data,raw_data_size);
@@ -1090,6 +1795,177 @@ test_finish:
 	return ret;
 }
 
+static int focal_scap_raw_data_test_3528(
+	struct focal_test_params *params,
+	struct focal_test_result **result,char test_num)
+{
+	int i = 0,size=0;
+	int ret = 0;
+	int chl_x = 0;
+	int chl_y = 0;
+	int raw_data_min = 0;
+	int raw_data_max = 0;
+	int raw_data_size = 0;
+	int act_read_data_size = 0;
+	int temp = 0;
+	int map_chl_x = 0, map_chl_y = 0;
+	int retry = 3;//retry times
+	char result_code[FTS_RESULT_CODE_LEN] = {0};
+	struct focal_test_result *test_result = NULL;
+
+	TS_LOG_ERR("%s: test item raw data,%d\n", __func__,test_num);
+	if(!params || !result || !(params->channel_x_num)|| !(params->channel_y_num)){
+		TS_LOG_ERR("%s: parameters invalid !\n", __func__);
+		return -EINVAL;
+	}
+	chl_x = params->channel_x_num;
+	chl_y = params->channel_y_num;
+	map_chl_x = chl_x;
+	map_chl_y = chl_y;
+	raw_data_min = params->threshold.scap_raw_data_min;
+	raw_data_max = params->threshold.scap_raw_data_max;
+
+	if(FOCAL_FT3528 == g_focal_dev_data->ic_type) {
+		/* if it is V3 pattern, get Tx/Rx num again */
+		ret = mapping_switch(NO_MAPPING, &chl_x, &chl_y);
+		if (ret || !chl_x || !chl_y) {
+			TS_LOG_ERR("%s:switch mapping status fail, ret=%d\n",
+				__func__, ret);
+			test_result->result = false;
+			goto test_finish;
+		}
+		if(g_focal_pdata->is_v3_pattern) {
+			temp = chl_x;
+			chl_x= chl_y;
+			chl_y = temp;
+		}
+		/* about FT3528 , no mapping tx num is 14, rx num is 36, after mapping  tx num is 18,  rx num is 26.
+		ic need get 14 +36 data. we need print data mapped rx num data per line, in order to keep the
+		print data in a neat format and separate from other data,  malloc 3 * Rx = 78 = (14 + 36) + 28, extra 
+		28 data is padded with 0. */
+		raw_data_size = map_chl_x * 3;
+		act_read_data_size = chl_y + chl_x;
+	}
+
+	TS_LOG_INFO("%s, x:%d,y :%d\n", __func__, chl_x, chl_y);
+	if (g_focal_dev_data->ts_platform_data->chip_data->rawdata_newformatflag == TS_RAWDATA_NEWFORMAT){
+		test_num = RAW_DATA_TYPE_SelfCap;
+	}
+	result_code[0] = test_num+'0';
+	result_code[1] = RAWDATA_TEST_FAIL_CHAR; //default result_code is failed
+	result_code[2] = '\0';
+	size=raw_data_size*2;
+	/*sef rawdata test needs to get data in waterproof mode and non-waterproof mode.
+		so size needs to be multiplied by 2*/
+	ret = focal_alloc_test_container(&test_result, size);
+	if (ret) {
+		TS_LOG_ERR("%s:alloc raw data container fail, ret=%d\n",
+			__func__, ret);
+		*result = NULL;
+		return ret;
+	}
+	test_result->testresult = RAWDATA_TEST_FAIL_CHAR;
+	test_result->typeindex = RAW_DATA_TYPE_SelfCap;
+	test_result->result = true;
+	strncpy(test_result->test_name, "Self_Cap_test", FTS_TEST_NAME_LEN - 1);
+
+	ret = focal_enter_factory();
+	if (ret) {
+		TS_LOG_ERR("%s:enter factory mode fail, ret=%d\n",
+			__func__, ret);
+		test_result->result = false;
+		goto test_finish;
+	}
+
+	/* get scap rawdata with water proof on&off,0xAC:Sc water,0xAB:Sc normal*/
+	for (i = 0; i < retry; i++) {
+		ret = focal_start_scan();
+		if (ret) {
+			TS_LOG_ERR("%s:scan fail, ret=%d\n", __func__, ret);
+			test_result->result = false;
+			goto test_finish;
+		}
+
+		ret = focal_get_scap_raw_data_format_5x46(0xAC,test_result->values,
+			act_read_data_size);
+		if (ret) {
+			TS_LOG_ERR("%s:get raw data fail, ret=%d\n",
+				__func__, ret);
+
+			test_result->result = false;
+			goto test_finish;
+		}
+		ret = focal_get_scap_raw_data_format_5x46(0xAB,test_result->values+raw_data_size,
+			act_read_data_size);
+		if (ret) {
+			TS_LOG_ERR("%s:get raw data fail, ret=%d\n",
+				__func__, ret);
+
+			test_result->result = false;
+			goto test_finish;
+		}
+	}
+	/* compare raw data with shreshold */
+	if(FOCAL_FT3528 == g_focal_dev_data->ic_type) {
+		raw_data_size = chl_x  + chl_y;
+	}
+	TS_LOG_INFO("first value = %d\n", test_result->values[0]);
+	for (i = 0; i < raw_data_size; i++) {
+		if ((test_result->values[i] < raw_data_min)
+			|| (test_result->values[i] > raw_data_max)) {
+
+			test_result->result = false;
+			strncpy(tp_test_failed_reason, "-panel_reason",TP_TEST_FAILED_REASON_LEN);
+			strncpy(test_result->tptestfailedreason, "-panel_reason",TP_TEST_FAILED_REASON_LEN);
+			focal_print_test_data("raw data test fail",
+				i / chl_y,
+				i % chl_y,
+				raw_data_max,
+				raw_data_min,
+				test_result->values[i]);
+		}
+	}
+	if(FOCAL_FT3528 == g_focal_dev_data->ic_type) {
+		raw_data_size = chl_x;
+		for (i = 0; i < raw_data_size; i++) {
+			if ((test_result->values[i + map_chl_x*3] < raw_data_min)//map_chl_x*3 is data offset
+				|| (test_result->values[i + map_chl_x*3] > raw_data_max)) {
+
+				test_result->result = false;
+				strncpy(tp_test_failed_reason, "-panel_reason",TP_TEST_FAILED_REASON_LEN);
+				focal_print_test_data("raw data test fail",
+					i / chl_y,
+					i % chl_y,
+					raw_data_max,
+					raw_data_min,
+					test_result->values[i + map_chl_x*3]);
+			}
+		}
+	}
+
+test_finish:
+	if(FOCAL_FT3528 == g_focal_dev_data->ic_type) {
+		ret = mapping_switch(MAPPING, &chl_x, &chl_y);
+		if (ret) {
+			TS_LOG_ERR("%s:switch mapping status fail, ret=%d\n",
+				__func__, ret);
+		}
+	}
+	if (test_result->result) {
+		result_code[1] = RAWDATA_TEST_PASS_CHAR; //test pass
+		test_result->testresult = RAWDATA_TEST_PASS_CHAR;
+		TS_LOG_INFO("%s:scap raw data test pass\n", __func__);
+	} else {
+		TS_LOG_ERR("%s:scap raw data test fail\n", __func__);
+	}
+	tp_cap_test_status =(tp_cap_test_status && test_result->result);
+	strncpy(test_result->result_code, result_code, FTS_RESULT_CODE_LEN - 1);
+	*result = test_result;
+
+	return ret;
+}
+
+
 static int focal_raw_data_test(
 	struct focal_test_params *params,
 	struct focal_test_result **result,char test_num)
@@ -1141,7 +2017,16 @@ static int focal_raw_data_test(
 		goto test_finish;
 	}
 
-	if(FOCAL_FT5X46 == g_focal_dev_data->ic_type){
+	if (FOCAL_FT5X46 == g_focal_dev_data->ic_type || FOCAL_FT5422U == g_focal_dev_data->ic_type
+			|| (FOCAL_FT3528 == g_focal_dev_data->ic_type)) {
+		if(FOCAL_FT3528 == g_focal_dev_data->ic_type){
+			ret = focal_write_reg(REG_NORMALIZE_TYPE, 0x01);
+			if(ret){
+				TS_LOG_ERR("%s:write_charnge_fre fail, ret=%d\n", __func__, ret);
+				test_result->result = false;
+				goto test_finish;
+			}
+		}
 		ret = focal_write_reg(REG_5X46_CHANG_FRE, 0x81);
 		if(ret){
 			TS_LOG_ERR("%s:write_charnge_fre fail, ret=%d\n", __func__, ret);
@@ -1167,7 +2052,8 @@ static int focal_raw_data_test(
 	}
 
 	/* start scanning */
-	if(FOCAL_FT5X46 == g_focal_dev_data->ic_type){
+	if (FOCAL_FT5X46 == g_focal_dev_data->ic_type || FOCAL_FT5422U == g_focal_dev_data->ic_type
+				|| (FOCAL_FT3528 == g_focal_dev_data->ic_type)) {
 		for (i = 0; i < 3; i++) {
 			ret = focal_start_scan();
 			if (ret) {
@@ -1265,6 +2151,155 @@ test_finish:
 	*result = test_result;
 	return ret;
 }
+
+static int focal_ft3528_panel_differ_test(
+	struct focal_test_params *params,
+	struct focal_test_result **result,char test_num)
+{
+	int ret = 0;
+	int value = 0;
+	int i = 0;
+	int chl_x = 0;
+	int chl_y = 0;
+	int panel_differ_data_size = 0;
+	u8 origin_rawdata_type = 0xFF;
+	u8 origin_frequecy = 0xFF;
+	u8 origin_fir_state = 0xFF;
+
+	char result_code[FTS_RESULT_CODE_LEN] = {0};
+	struct focal_test_result *test_result = NULL;
+
+	TS_LOG_INFO("%s: test item panel differ data,%d\n", __func__,test_num);
+
+	if(!params || !result || !(params->channel_x_num)|| !(params->channel_y_num)){
+		TS_LOG_ERR("%s: parameters invalid !\n", __func__);
+		return -EINVAL;
+	}
+	chl_x = params->channel_x_num;
+	chl_y = params->channel_y_num;
+
+	panel_differ_data_size = chl_x * chl_y;
+
+	result_code[0] = test_num+'0';
+	result_code[1] = 'F'; //default result_code is failed
+	result_code[2] = '\0';
+	ret = focal_alloc_test_container(&test_result, panel_differ_data_size);
+	if (ret) {
+		TS_LOG_ERR("%s:alloc raw data container fail, ret=%d\n",
+			__func__, ret);
+		*result = NULL;
+		return ret;
+	}
+
+	test_result->result = true;
+	strncpy(test_result->test_name, "panel_differ_test", FTS_TEST_NAME_LEN - 1);
+
+	ret = focal_enter_factory();
+	if (ret) {
+		TS_LOG_ERR("%s:enter factory mode failed, ret=%d\n", __func__, ret);
+		test_result->result = false;
+		goto test_finish;
+	}
+	msleep(FTS_ENTER_FACTORY_DELAY_TIME);
+
+	ret = focal_read_reg(REG_NORMALIZE_TYPE, &origin_rawdata_type);
+	if(ret){
+		TS_LOG_ERR("read reg 0x16 is fail, ret = %d\n", ret);
+		test_result->result = false;
+		goto test_finish;
+	}
+
+	if (origin_rawdata_type != 0) {
+		ret = focal_write_reg(REG_NORMALIZE_TYPE, 0x00);
+		msleep(50);//ic need
+		if (ret) {
+			TS_LOG_ERR("write reg 0x16 failed.");
+			test_result->result = false;
+			goto restore_rawdata_type;
+		}
+	}
+
+	ret = focal_read_reg(REG_5X46_CHANG_FRE, &origin_frequecy);
+	if(ret){
+		TS_LOG_ERR("read reg 0x0A failed,ret = %d\n", ret);
+		test_result->result = false;
+		goto restore_rawdata_type;
+	}
+
+	ret = focal_write_reg(REG_5X46_CHANG_FRE, 0x81);
+	if(ret){
+		TS_LOG_ERR("write reg 0x0A failed,ret = %d\n", ret);
+		test_result->result = false;
+		goto restore_frequency_register;
+	}
+
+	ret = focal_read_reg(REG_5X46_FIR_EN, &origin_fir_state);
+	if(ret){
+		TS_LOG_ERR("read reg 0xFB failed,ret = %d\n", ret);
+		test_result->result = false;
+		goto restore_frequency_register;
+	}
+
+	ret = focal_write_reg(REG_5X46_FIR_EN, 0x00);
+	if(ret){
+		TS_LOG_ERR("write reg 0xFB failed,ret = %d\n", ret);
+		test_result->result = false;
+		goto close_hardware_filter;
+	}
+
+	/* change register value before,need to lose 2 frame data,3th frame data is valid */
+	for (i = 0; i < 3; i++) {
+		ret = focal_start_scan();
+		if (ret) {
+			TS_LOG_INFO("%s:scan fail, ret=%d\n", __func__, ret);
+			test_result->result = false;
+			goto close_hardware_filter;
+		}
+		ret = focal_get_raw_data_format(chl_x,chl_y,test_result->values,test_result->size);
+		if (ret) {
+			TS_LOG_ERR("%s:get raw data fail, ret=%d\n", __func__, ret);
+			test_result->result = false;
+			goto close_hardware_filter;
+		}
+	}
+
+	/* compare raw data with shreshold */
+	for (i = 0; i < panel_differ_data_size; i++) {
+		value = test_result->values[i]/PANEL_DIFF_FACTOR;
+		test_result->values[i] = value;
+		if ((test_result->values[i] < params->threshold.panel_differ_min_array[i])
+			|| (test_result->values[i] > params->threshold.panel_differ_max_array[i])) {
+
+			test_result->result = false;
+			tp_cap_test_status = PANEL_REASON;
+			strncpy(tp_test_failed_reason, "-panel_reason",TP_TEST_FAILED_REASON_LEN);
+			focal_print_test_data("panel differ test fail",
+				i / chl_x,
+				i % chl_x,
+				params->threshold.panel_differ_min_array[i],
+				params->threshold.panel_differ_max_array[i],
+				test_result->values[i]);
+		}
+	}
+
+close_hardware_filter:
+	focal_write_reg(REG_5X46_FIR_EN, origin_fir_state); //restore 0xFB register status
+restore_frequency_register:
+	focal_write_reg(REG_5X46_CHANG_FRE, origin_frequecy); //setting default frequency
+restore_rawdata_type:
+	focal_write_reg(REG_NORMALIZE_TYPE, origin_rawdata_type);
+test_finish:
+	if (test_result->result) {
+		result_code[1] = 'P'; //test pass
+		TS_LOG_INFO("%s:panel differ test pass\n", __func__);
+	} else {
+		TS_LOG_ERR("%s:panel differ test fail\n", __func__);
+	}
+	strncpy(test_result->result_code, result_code, FTS_RESULT_CODE_LEN - 1);
+	*result = test_result;
+	return ret;
+}
+
 
 static int focal_ft5x46_lcd_noise_test(
 	struct focal_test_params *params, struct focal_test_result **result,char test_num)
@@ -1510,7 +2545,7 @@ static void focal_print_test_data(
 
 static int focal_get_cb_data_format(int *data, size_t size,unsigned int chl_x,unsigned int chl_y)
 {
-	unsigned int i = 0;
+	unsigned int i = 0, j = 0;
 	int ret = 0;
 	size_t read_size = 0;
 	unsigned int CurTx = 0;
@@ -1522,6 +2557,11 @@ static int focal_get_cb_data_format(int *data, size_t size,unsigned int chl_x,un
 		return -EINVAL;
 	}
 	read_size = size;
+	if(FOCAL_FT3528 == g_focal_dev_data->ic_type) {
+	/*needs to get data in waterproof mode and non-waterproof mode.
+	and the data use two bytes to save*/
+		read_size = (chl_x + chl_y) * 4;
+	}
 	cb_data = kzalloc(read_size, GFP_KERNEL);
 	if (!cb_data) {
 		TS_LOG_ERR("%s:alloc mem fail\n", __func__);
@@ -1537,7 +2577,8 @@ static int focal_get_cb_data_format(int *data, size_t size,unsigned int chl_x,un
 		}
 	}
 
-	if(FOCAL_FT5X46 == g_focal_dev_data->ic_type){
+	if (FOCAL_FT5X46 == g_focal_dev_data->ic_type || FOCAL_FT5422U == g_focal_dev_data->ic_type
+			|| (FOCAL_FT3528 == g_focal_dev_data->ic_type)) {
 		ret = focal_get_Scap_cb_data_5x46(0, cb_data, read_size/2);
 	}
 	else{
@@ -1550,7 +2591,7 @@ static int focal_get_cb_data_format(int *data, size_t size,unsigned int chl_x,un
 
 	memset(data, 0, size);
 
-	if(FOCAL_FT5X46 == g_focal_dev_data->ic_type){
+	if (FOCAL_FT5X46 == g_focal_dev_data->ic_type || FOCAL_FT5422U == g_focal_dev_data->ic_type) {
 		for (i = 0; i < size; i++){
 			CurTx = i / chl_y;
 			CurRx = i % chl_y;
@@ -1558,8 +2599,15 @@ static int focal_get_cb_data_format(int *data, size_t size,unsigned int chl_x,un
 			data[Count] = cb_data[i];
 			TS_LOG_DEBUG("%s:CurTx= %d , Rx =%d ,i =%d \n",__func__, CurTx,CurRx,i);
 		}
-	}
-	else{
+	} else if (FOCAL_FT3528 == g_focal_dev_data->ic_type) {
+		for (i = 0; i < read_size/4; i++) {
+			data[i] = (cb_data[i << 1] << 8) + cb_data[(i << 1) + 1];
+		}
+		for (i = 0; i < read_size/4; i++) {
+			j = (i << 1) + read_size/2;
+			data[size/2 + i] = cb_data[j] + cb_data[j + 1];
+		}
+	} else{
 		for (i = 0; i < size; i++){
 			CurTx = i % chl_y; //size = chl_x*chl_y,because  params->key_num =0
 			CurRx = i / chl_y;
@@ -1588,7 +2636,10 @@ static int focal_cb_test(
 	int cb_max = 0;
 	int cb_min = 0;
 	int data_size=0;
+	int temp = 0;
 	size_t cb_data_size = 0;
+	int mapping_chl_x = 0;
+	int mapping_chl_y = 0;
 
 	int *cb_data = NULL;
 	char result_code[FTS_RESULT_CODE_LEN] = {0};
@@ -1603,9 +2654,31 @@ static int focal_cb_test(
 	cb_max = params->threshold.cb_test_max;
 	chl_x = params->channel_x_num;
 	chl_y = params->channel_y_num;
+	mapping_chl_x = chl_x;
+	mapping_chl_y = chl_y;
 
-	if(FOCAL_FT5X46 == g_focal_dev_data->ic_type){
+	if (FOCAL_FT5X46 == g_focal_dev_data->ic_type || FOCAL_FT5422U == g_focal_dev_data->ic_type) {
 		data_size = (chl_x + chl_y)*2;
+	}else if(FOCAL_FT3528 == g_focal_dev_data->ic_type) {
+		/* if it is V3 pattern, get Tx/Rx num again */
+		ret = mapping_switch(NO_MAPPING, &chl_x, &chl_y);
+		if (ret || !chl_x|| !chl_y) {
+			TS_LOG_ERR("%s:switch mapping status fail, ret=%d\n",
+				__func__, ret);
+			test_result->result = false;
+			goto test_finish;
+		}
+		if(g_focal_pdata->is_v3_pattern) {
+			temp  = chl_x;
+			chl_x = chl_y;
+			chl_y = temp;
+		}
+		/* about FT3528 , no mapping tx num is 14, rx num is 36, after mapping  tx num is 18,  rx num is 26.
+		ic need get 14 +36 data. we need print data mapped rx num data per line, in order to keep the
+		print data in a neat format and separate from other data,  malloc 3 * Rx = 78 = (14 + 36) + 28, extra 
+		28 data is padded with 0. Cb test needs to get data in waterproof mode and non-waterproof mode.
+		so size needs to be multiplied by 2*/
+		data_size = mapping_chl_x * 3 * 2;
 	}
 	else{
 		data_size = chl_x * chl_y + params->key_num;
@@ -1652,8 +2725,11 @@ static int focal_cb_test(
 		test_result->result = false;
 		goto test_finish;
 	}
-	if(FOCAL_FT5X46 == g_focal_dev_data->ic_type){
+	if (FOCAL_FT5X46 == g_focal_dev_data->ic_type || FOCAL_FT5422U == g_focal_dev_data->ic_type) {
 		cb_data_size = cb_data_size - chl_x ;
+	}
+	if(FOCAL_FT3528 == g_focal_dev_data->ic_type) {
+		cb_data_size = chl_x + chl_y ;
 	}
 	cb_data = test_result->values;
 	if(CB_TEST_POINT_BY_POINT ==  params->cb_test_point_by_point) {
@@ -1692,6 +2768,22 @@ static int focal_cb_test(
 					cb_data[i]);
 			}
 		}
+		if(FOCAL_FT3528 == g_focal_dev_data->ic_type) {
+			for (i = 0; i < cb_data_size; i++) {
+				if (cb_data[i + mapping_chl_x*3] < cb_min || cb_data[i + mapping_chl_x*3] > cb_max) {//map_chl_x*3 is data offset
+
+					test_result->result = false;
+					tp_cap_test_status  = PANEL_REASON;
+					strncpy(tp_test_failed_reason, "-panel_reason",TP_TEST_FAILED_REASON_LEN);
+					focal_print_test_data("cb test failed",
+						i / chl_x,
+						i % chl_x,
+						cb_max,
+						cb_min,
+						cb_data[i + mapping_chl_x*3]);
+				}
+			}
+		}
 	}
 
 test_finish:
@@ -1700,6 +2792,13 @@ test_finish:
 		if(ret){
 			TS_LOG_ERR("%s:restore cb test fail, ret=%d\n", __func__, ret);
 			test_result->result = false;
+		}
+	}
+	if(FOCAL_FT3528 == g_focal_dev_data->ic_type) {
+		ret = mapping_switch(MAPPING, &chl_x, &chl_y);
+		if (ret) {
+			TS_LOG_ERR("%s:switch mapping status fail, ret=%d\n",
+				__func__, ret);
 		}
 	}
 
@@ -2126,6 +3225,7 @@ test_finish:
 		ret = focal_chip_clb();
 		if (ret) {
 			TS_LOG_ERR("%s:clb fail, ret=%d\n", __func__, ret);
+			*result = test_result;
 			return ret;
 		}
     }
@@ -2808,7 +3908,7 @@ static int focal_short_circuit_test(
 	chl_x = params->channel_x_num;
 	chl_y = params->channel_y_num;
 
-	if(FOCAL_FT5X46 == g_focal_dev_data->ic_type){
+	if (FOCAL_FT5X46 == g_focal_dev_data->ic_type || FOCAL_FT5422U == g_focal_dev_data->ic_type) {
  		adc_data_size = (chl_x + chl_y)*2;
 	}
 	else{
@@ -2841,7 +3941,7 @@ static int focal_short_circuit_test(
 			test_result->result = false;
 			goto test_finish;
 		}
-		if (FOCAL_FT5X46 == g_focal_dev_data->ic_type){
+		if (FOCAL_FT5X46 == g_focal_dev_data->ic_type || FOCAL_FT5422U == g_focal_dev_data->ic_type) {
 			ret = focal_get_short_circuit_data_5x46(test_result->values,
 			adc_data_size,chl_x,chl_y);
 		}
@@ -2906,6 +4006,218 @@ test_finish:
 	if (test_result->result) {
 		result_code[1] = RAWDATA_TEST_PASS_CHAR; //test pass
 		test_result->testresult = RAWDATA_TEST_PASS_CHAR;
+		TS_LOG_INFO("%s:short circuit test pass\n", __func__);
+	} else {
+		TS_LOG_ERR("%s:short circuit test fail\n", __func__);
+	}
+
+	strncpy(test_result->result_code, result_code, FTS_RESULT_CODE_LEN);
+	*result = test_result;
+
+	return ret;
+}
+
+static int focal_ft3528_short_circuit_test(struct focal_test_params *params,
+	struct focal_test_result **result,char test_num)
+{
+	int ret = 0;
+	int chl_x = 0;
+	int chl_y = 0;
+	int adc_data_size = 0;
+	int short_data_min = 0;
+	int offset = 0;
+	int total_num = 0;
+	int *adc_data  = NULL;
+	int *fm_short_resistance = NULL;
+	int code_1 = SHORT_TEST_STAND_ADC;
+	int res_stalls = SHORT_TEST_STAND_RES;
+	int offset_value[4] = {0};
+	u8 stall_value = 1;
+	int i = 0;
+	int count = 0;
+	int temp = 0;
+	u8 offset_size = 1;
+	u8 offset_res  = OFFSET_RES;
+	bool is_weak_short_gnd = false;
+	bool is_weak_short_mut = false;
+
+	int min_cc = 0;
+
+	char result_code[FTS_RESULT_CODE_LEN] = {0};
+	struct focal_test_result *test_result = NULL;
+
+	TS_LOG_INFO("%s:short circuit test start\n", __func__);
+	if(!params || !result || !(params->channel_x_num) || !(params->channel_y_num)){
+		TS_LOG_ERR("%s: parameters invalid !\n", __func__);
+		return -EINVAL;
+	}
+	min_cc = params->threshold.short_circuit_min;
+	chl_x = params->channel_x_num;
+	chl_y = params->channel_y_num;
+	/* if it is V3 pattern, get Tx/Rx num again */
+	ret = mapping_switch(NO_MAPPING, &chl_x, &chl_y);
+	if (ret || !chl_x || !chl_y) {
+		TS_LOG_ERR("%s:switch mapping status fail, ret=%d\n",
+			__func__, ret);
+		test_result->result = false;
+		goto test_finish;
+	}
+	if(g_focal_pdata->is_v3_pattern) {
+		temp  = chl_x;
+		chl_x = chl_y;
+		chl_y = temp;
+	}
+	TS_LOG_INFO("%s:chx:%d,chy:%d\n", __func__, chl_x, chl_y);
+	adc_data_size = chl_x + chl_y;
+	total_num = adc_data_size;
+
+	result_code[0] = test_num + '0';
+	result_code[1] = 'F'; //default result_code is failed
+	result_code[2] = '\0';
+	ret = focal_alloc_test_container(&test_result, adc_data_size);
+	if (ret) {
+		TS_LOG_ERR("%s:alloc mem fail\n", __func__);
+		*result = NULL;
+		test_result->result = false;
+		goto test_finish;
+	}
+
+	test_result->result = true;
+	strncpy(test_result->test_name,
+		"short_circuit_test", FTS_TEST_NAME_LEN - 1);
+
+	ret = focal_enter_factory();
+	if (ret) {
+		TS_LOG_ERR("%s:enter factory mode fail, ret=%d\n",
+			__func__, ret);
+		test_result->result = false;
+		goto test_finish;
+	}
+
+	TS_LOG_INFO("%s:focal_enter_factory\n",__func__);
+
+	adc_data = kzalloc((adc_data_size + 1) * sizeof(int), GFP_KERNEL);
+	if (NULL == adc_data) {
+		TS_LOG_ERR("%s:adc_data buffer malloc fail\n", __func__);
+		test_result->result = false;
+		goto free_mem;
+	}
+	memset(adc_data, 0, (adc_data_size + 1));
+
+	fm_short_resistance = kzalloc(total_num * sizeof(int), GFP_KERNEL);
+	if (NULL == fm_short_resistance) {
+		TS_LOG_ERR("%s:fm_short_resistance buffer malloc fail\n", __func__);
+		test_result->result = false;
+		goto free_mem;
+	}
+	memset(fm_short_resistance, 0, total_num);
+
+	ret = focal_read_reg(SHORT_TEST_RES_LEVEL, &stall_value);
+	if (ret) {
+		TS_LOG_ERR("%s:get value from reg0x5A fail, ret=%d\n", __func__, ret);
+		test_result->result = false;
+		goto free_mem;
+	}
+	ret = focal_write_reg(SHORT_TEST_RES_LEVEL, SET_SHORT_TEST_DELAY);
+	if (ret) {
+		TS_LOG_ERR("%s:write reg0x5A fail, ret=%d\n", __func__, ret);
+		test_result->result = false;
+		goto free_mem;
+	}
+
+	ret = weak_short_get_adc_data(offset_size * 2, offset_value, READ_ADC_CMD_OFFSET);
+	if (ret) {
+		TS_LOG_ERR("%s:failed to get weak short data,ret= %d", __func__, ret);
+		test_result->result = false;
+		goto free_mem;
+	}
+	msleep(50);//ic need
+
+	offset = offset_value[0] - SHORT_TEST_STAND_OFFSET;
+
+	/* get short resistance and exceptional channel */
+	ret = weak_short_get_adc_data(adc_data_size * 2, adc_data, READ_ADC_CMD_CHL_TO_ALL);
+	if (ret) {
+		TS_LOG_ERR("%s:failed to get weak short data,ret= %d", __func__, ret);
+		test_result->result = false;
+		goto free_mem;
+	}
+	msleep(50);//ic need
+
+	for (i = 0; i < total_num; i++) {
+		if (i < chl_y) {
+			TS_LOG_INFO("Tx%02d: %4d\n", i + 1, adc_data[i]);
+		} else  if (i < total_num ) {
+			TS_LOG_INFO("Rx%02d: %4d\n", i - chl_y + 1, adc_data[i]);
+		}
+		test_result->values[i] = adc_data[i];
+	}
+	TS_LOG_INFO("\r\n");
+
+	count = 0;
+	for ( i = 0; i < total_num; i++) {
+		if (code_1 - adc_data[i] <= 0) {
+			fm_short_resistance[i] = min_cc;
+			continue;
+		}
+		fm_short_resistance[i] = (adc_data[i] - offset + SHORT_TEST_OFFSET_RES) * res_stalls / (code_1 - adc_data[i]) - offset_res;
+		if (fm_short_resistance[i] < 0)
+		    fm_short_resistance[i] = abs(fm_short_resistance[i]);
+	}
+
+	/* data compare */
+	short_data_min = params->threshold.short_circuit_min;
+	for (i = 0; i < total_num; i++) {
+		if (short_data_min > fm_short_resistance[i]) {
+			test_result->result = false;
+			tp_cap_test_status = PANEL_REASON;
+			strncpy(tp_test_failed_reason, "-panel_reason",TP_TEST_FAILED_REASON_LEN);
+			focal_print_test_data("short circuit test fail:",
+				i / chl_x,
+				i % chl_x,
+				0,
+				short_data_min,
+				fm_short_resistance[i]);
+		}
+	}
+
+	if(test_result->result == false) {
+		test_result->result = true;
+		is_weak_short_mut = true;
+	}
+
+	if (is_weak_short_mut) {
+		/* use the exceptional channel to conduct channel to ground short circuit test. */
+		test_result->result = short_test_channel_to_gnd(fm_short_resistance, adc_data, offset, &is_weak_short_gnd, chl_x, chl_y);
+		TS_LOG_INFO("channel to gnd is %d", test_result->result);
+
+		/* use the exceptional channel to conduct channel to channel short circuit test. */
+		test_result->result &= short_test_channel_to_channel(fm_short_resistance, adc_data, offset, chl_x, chl_y);
+		TS_LOG_INFO("channel to channel is %d", test_result->result);
+	}
+
+	ret = focal_write_reg(SHORT_TEST_RES_LEVEL, stall_value);
+
+	TS_LOG_INFO("code1:%d, offset:%d\n", code_1, offset);
+
+free_mem:
+
+	if(NULL != adc_data)
+		kfree(adc_data);
+	if(NULL != fm_short_resistance)
+		kfree(fm_short_resistance);
+
+
+test_finish:
+	if(FOCAL_FT3528 == g_focal_dev_data->ic_type) {
+		ret = mapping_switch(MAPPING, &chl_x, &chl_y);
+		if (ret) {
+			TS_LOG_ERR("%s:switch mapping status fail, ret=%d\n",
+				__func__, ret);
+		}
+	}
+	if (test_result->result) {
+		result_code[1] = 'P'; //test pass
 		TS_LOG_INFO("%s:short circuit test pass\n", __func__);
 	} else {
 		TS_LOG_ERR("%s:short circuit test fail\n", __func__);
@@ -3036,7 +4348,7 @@ static int focal_adc_scan(void)
 	u8 reg_val = 0;
 
 	/* start adc sample */
-	if(FOCAL_FT5X46 == g_focal_dev_data->ic_type){
+	if (FOCAL_FT5X46 == g_focal_dev_data->ic_type || FOCAL_FT5422U == g_focal_dev_data->ic_type) {
 		ret = focal_write_reg(REG_5X46_ADC_SCAN, 1);
 	}
 	else{
@@ -3056,7 +4368,7 @@ static int focal_adc_scan(void)
 
 	for (i = 0; i < scan_query_times; i++) {
 
-		if(FOCAL_FT5X46 == g_focal_dev_data->ic_type){
+		if (FOCAL_FT5X46 == g_focal_dev_data->ic_type || FOCAL_FT5422U == g_focal_dev_data->ic_type) {
 			ret = focal_read_reg(REG_5X46_ADC_SCAN_STATUS, &reg_val);
 		}
 		else{
@@ -3109,8 +4421,11 @@ static int focal_get_adc_data(int *data, size_t size,unsigned int chl_x,unsigned
 		return -ENOMEM;
 	}
 
-	if (FOCAL_FT5X46 == g_focal_dev_data->ic_type){
-		focal_start_scan();
+	if (FOCAL_FT5X46 == g_focal_dev_data->ic_type || FOCAL_FT5422U == g_focal_dev_data->ic_type) {
+		ret = focal_start_scan();
+		if (ret) {
+			TS_LOG_ERR("%s: rawdata test scan fail\n", __func__);
+		}
 		ret =  focal_adc_scan();
 		if (ret) {
 		TS_LOG_ERR("%s:adc scan fail, ret=%d\n", __func__, ret);
@@ -3163,7 +4478,7 @@ static int focal_get_adc_data(int *data, size_t size,unsigned int chl_x,unsigned
 	TS_LOG_INFO("%s:readed cout=%d, size=%lu\n", __func__,
 		readed_count, size);
 
-	if (FOCAL_FT5X46 == g_focal_dev_data->ic_type){
+	if (FOCAL_FT5X46 == g_focal_dev_data->ic_type || FOCAL_FT5422U == g_focal_dev_data->ic_type) {
 		for (i = 0; i < size; i++){
 			Count = i * 2;
 			temp_data =( adc_data[Count] << 8);
@@ -3383,6 +4698,12 @@ static void focal_put_test_result(
 	int buff_index = 0;
 	char statistics_data[FTS_STATISTICS_DATA_LEN] = {0};
 
+	if(FOCAL_FT3528 == g_focal_dev_data->ic_type) {
+		if(size > FTS_MAX_CAP_TEST_NUM) {
+			TS_LOG_ERR("%s. size larger than define,size:%d, define %d\n", __func__, size, FTS_MAX_CAP_TEST_NUM);
+			return;
+		}
+	}
 	/* put test result */
 	for (i = 0; i < size; i++) {
 
@@ -3458,6 +4779,7 @@ static void focal_put_test_result(
  */
  int focal_get_debug_data_(int data_type, int *data, size_t size,int chl_x,int chl_y)
 {
+	int rc = 0;
 	int ret = 0;
 
 	ret = focal_write_reg(REG_DATA_TYPE, data_type);
@@ -3482,7 +4804,10 @@ static void focal_put_test_result(
 
 reset_data_type:
 
-	focal_write_reg(REG_DATA_TYPE, 0);
+	rc = focal_write_reg(REG_DATA_TYPE, 0);
+	if (rc) {
+		TS_LOG_ERR("%s: write reg fail\n", __func__);
+	}
 exit:
 
 	return ret;
@@ -3559,6 +4884,23 @@ void focal_prase_threshold_for_csv(const char *project_id,
 		threshold->cb_test_min = data_buf[0];
 		threshold->cb_test_max = data_buf[1];
 	}
+	if(FOCAL_FT3528 == g_focal_dev_data->ic_type) {
+		ret = ts_kit_parse_csvfile(file_path, DTS_PANEL_DIFFER_MIN_ARRAY, threshold->panel_differ_min_array,
+			params->channel_y_num, params->channel_x_num);
+		if (ret) {
+			TS_LOG_INFO("%s: Failed get %s \n", __func__, DTS_PANEL_DIFFER_MIN_ARRAY);
+			ret = 0;
+		}
+
+
+		ret = ts_kit_parse_csvfile(file_path, DTS_PANEL_DIFFER_MAX_ARRAY, threshold->panel_differ_max_array,
+			params->channel_y_num, params->channel_x_num);
+		if (ret) {
+			TS_LOG_INFO("%s: Failed get %s \n", __func__, DTS_PANEL_DIFFER_MAX_ARRAY);
+			ret = 0;
+		}
+	}
+
 	/*because scap raw data only have max/min data, so columns is 2/rows is 1*/
 	ret = ts_kit_parse_csvfile(file_path, FTS_SCAP_RAW_FATA_CSV, data_buf, 1, 2);
 	if (ret) {
@@ -3830,12 +5172,47 @@ err_alloc_mem:
 	return ret;
 }
 
+static int focal_get_pattern_flag(struct focal_platform_data* pdata)
+{
+	int ret = NO_ERR;
+	u8 ch_pattern = 0;
+	if(!pdata) {
+		TS_LOG_ERR("%s, pdata is NULL\n", __func__);
+		return -EINVAL;
+	}
+	ret = focal_enter_factory();
+	if (ret) {
+		TS_LOG_ERR("%s:enter factory mode fail, ret=%d\n",
+			__func__, ret);
+		return ret;
+	}
+	ret = focal_read_reg(REG_PATTERN_5452, &ch_pattern);
+	if (ret) {
+		TS_LOG_ERR("%s: switch to no_mapping failed!", __func__);
+		return ret;
+	} else {
+		if(ch_pattern == 1) {/*1: V3 pattren*/
+			pdata->is_v3_pattern = true;
+			TS_LOG_INFO("this ic is v3 pattern");
+		}
+	}
+	ret = focal_enter_work();
+	if (ret < 0)
+		TS_LOG_ERR("%s:enter work model fail, ret=%d\n", __func__, ret);
+
+	return ret;
+}
+
 int focal_get_raw_data(
 	struct ts_rawdata_info *info,
 	struct ts_cmd_node *out_cmd)
 {
 	int ret = 0;
 	struct focal_platform_data *pdata = NULL;
+	if(!g_focal_dev_data || !g_focal_pdata || !(g_focal_dev_data->ts_platform_data) || !(g_focal_dev_data->ts_platform_data->chip_data)) {
+		TS_LOG_ERR("%s, param invalid\n", __func__);
+		return -EINVAL;
+	}
 
 	if (g_focal_dev_data->ts_platform_data->chip_data->rawdata_newformatflag == TS_RAWDATA_NEWFORMAT){
 		return focal_get_raw_dataNewformat(info,out_cmd);		
@@ -3868,6 +5245,13 @@ int focal_get_raw_data(
 			goto free_mem;
 		}
 		TS_LOG_INFO("touch thr is %d\n",g_focal_pdata->lcd_noise_threshold);
+	}
+	if (FOCAL_FT3528 == g_focal_dev_data->ic_type) {
+		ret = focal_get_pattern_flag(g_focal_pdata);
+		if (ERROR_CODE_OK != ret) {
+			TS_LOG_ERR("read Reg focal_get_pattern_flag fail\n");
+			goto free_mem;
+		}
 	}
 
 	if (true == pdata->open_threshold_status) {
@@ -3950,7 +5334,6 @@ int focal_get_debug_data(
 	data_size = chl_x * chl_y;
 	debug_data = kzalloc(data_size * sizeof(int), GFP_KERNEL);
 	if (!debug_data) {
-		ret = -ENOMEM;
 		TS_LOG_ERR("%s:alloc mem fail\n", __func__);
 		goto exit;
 	}

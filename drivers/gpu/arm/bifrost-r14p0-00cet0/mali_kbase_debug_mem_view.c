@@ -51,7 +51,7 @@ struct debug_mem_seq_off {
 	struct list_head *lh;
 	size_t offset;
 };
-
+/*lint -e574*/
 static void *debug_mem_start(struct seq_file *m, loff_t *_pos)
 {
 	struct debug_mem_data *mem_data = m->private;
@@ -75,7 +75,7 @@ static void *debug_mem_start(struct seq_file *m, loff_t *_pos)
 	/* Beyond the end */
 	return NULL;
 }
-
+/*lint +e574*/
 static void debug_mem_stop(struct seq_file *m, void *v)
 {
 	kfree(v);
@@ -106,7 +106,8 @@ static void *debug_mem_next(struct seq_file *m, void *v, loff_t *pos)
 
 	return data;
 }
-
+/*lint -e574*/
+/*lint -e573*/
 static int debug_mem_show(struct seq_file *m, void *v)
 {
 	struct debug_mem_data *mem_data = m->private;
@@ -152,7 +153,8 @@ out:
 	kbase_gpu_vm_unlock(mem_data->kctx);
 	return 0;
 }
-
+/*lint +e573*/
+/*lint +e574*/
 static const struct seq_operations ops = {
 	.start = debug_mem_start,
 	.next = debug_mem_next,
@@ -189,7 +191,7 @@ static int debug_mem_zone_open(struct rb_root *rbtree,
 	}
 
 out:
-	return ret;
+	return ret;//lint !e429
 }
 
 static int debug_mem_open(struct inode *i, struct file *file)

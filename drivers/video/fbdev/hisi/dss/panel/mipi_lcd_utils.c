@@ -463,7 +463,6 @@ int hostprocessing_get_project_id_for_udp(char *out)
 		return -1;
 	}
 
-
 	if (!is_first_access) {
 		HISI_FB_DEBUG("you have accessed before .\n");
 		return -1;
@@ -474,9 +473,9 @@ int hostprocessing_get_project_id_for_udp(char *out)
 	} else {
 		down(&hisifd->blank_sem);
 		if (hisifd->panel_power_on) {
-		hisifb_activate_vsync(hisifd);
-		get_project_id_on_udp(out);
-		hisifb_deactivate_vsync(hisifd);
+			hisifb_activate_vsync(hisifd);
+			get_project_id_on_udp(out);
+			hisifb_deactivate_vsync(hisifd);
 		} else {
 			HISI_FB_ERR("panel is off .\n");
 		}

@@ -233,6 +233,9 @@ struct dw_mci {
 	u32			dir_status;
 	struct tasklet_struct	tasklet;
 	struct work_struct	card_work;
+#ifdef CONFIG_SD_TIMEOUT_RESET
+	struct work_struct	 work_volt_mmc;
+#endif
 	unsigned long		pending_events;
 	unsigned long		completed_events;
 	enum dw_mci_state	state;
@@ -248,6 +251,14 @@ struct dw_mci {
 	struct dw_mci_board	*pdata;
 	const struct dw_mci_drv_data	*drv_data;
 	void			*priv;
+#ifdef CONFIG_SD_TIMEOUT_RESET
+	int volt_hold_clk_sd;
+	int volt_hold_clk_sdio;
+	int set_sd_data_tras_timeout;
+	int set_sdio_data_tras_timeout;
+	struct clk		*volt_hold_sd_clk;
+	struct clk		*volt_hold_sdio_clk;
+#endif
 	struct clk		*biu_clk;
 	struct clk		*ciu_clk;
 	struct clk 		*parent_clk;
@@ -286,6 +297,9 @@ struct dw_mci {
 
 	struct regulator	*vmmc;	 /* Power regulator */
 	struct regulator	*vqmmc;	 /* Signaling regulator (vccq) */
+	struct regulator	*vmmcmosen;	 /* Power regulator mosen*/
+	u8	sd_vmmcmosen_switch;
+
 	unsigned long		irq_flags; /* IRQ flags */
 	int			irq;
 
@@ -317,6 +331,7 @@ struct dw_mci {
 
 	struct timer_list       cmd11_timer;
 	struct timer_list       dto_timer;
+	int                     is_reset_after_retry;
 };
 
 /* DMA ops for Internal/External DMAC interface */

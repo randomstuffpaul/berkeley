@@ -45,7 +45,12 @@
 #define ACM_SEARCH      _IOR(ACM_MAGIC, 2, acm_mp_node_t)
 #define ACM_ADD_DIR     _IOR(ACM_MAGIC, 3, acm_fwk_dir_t)
 #define ACM_DEL_DIR     _IOR(ACM_MAGIC, 4, acm_fwk_dir_t)
+#ifdef CONFIG_ACM_DSM
+#define ACM_ADD_DSM     _IOR(ACM_MAGIC, 5, acm_mp_node_t)
+#define ACM_CMD_MAXNR   (5)
+#else
 #define ACM_CMD_MAXNR   (4)
+#endif
 
 #define ACM_HASH_TABLE_SIZE (512)
 #define HASH_TABLE_MAX_SIZE (4096)

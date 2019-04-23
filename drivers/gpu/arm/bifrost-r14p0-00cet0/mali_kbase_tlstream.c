@@ -1117,7 +1117,7 @@ static void kbasep_tlstream_autoflush_timer_callback(struct timer_list *timer)
 		rcode = mod_timer(
 				&autoflush_timer,
 				jiffies + msecs_to_jiffies(AUTOFLUSH_INTERVAL));
-	CSTD_UNUSED(rcode);
+	CSTD_UNUSED(rcode);//lint !e644
 }
 
 /**
@@ -1169,6 +1169,7 @@ static int kbasep_tlstream_packet_pending(
  *
  * Return: number of bytes stored in the buffer
  */
+/*lint -e574*/
 static ssize_t kbasep_tlstream_read(
 		struct file *filp,
 		char __user *buffer,
@@ -1246,7 +1247,7 @@ static ssize_t kbasep_tlstream_read(
 
 	return copy_len;
 }
-
+/*lint +e574*/
 /**
  * kbasep_tlstream_poll - poll timeline stream for packets
  * @filp: pointer to file structure
@@ -1407,7 +1408,7 @@ void kbase_tlstream_term(void)
 		kfree(tl_stream[i]);
 	}
 }
-
+/*lint -e648*/
 static void kbase_create_timeline_objects(struct kbase_context *kctx)
 {
 	struct kbase_device             *kbdev = kctx->kbdev;
@@ -1419,28 +1420,28 @@ static void kbase_create_timeline_objects(struct kbase_context *kctx)
 	for (lpu_id = 0; lpu_id < kbdev->gpu_props.num_job_slots; lpu_id++) {
 		u32 *lpu =
 			&kbdev->gpu_props.props.raw_props.js_features[lpu_id];
-		KBASE_TLSTREAM_TL_SUMMARY_NEW_LPU(lpu, lpu_id, *lpu);
+		KBASE_TLSTREAM_TL_SUMMARY_NEW_LPU(lpu, lpu_id, *lpu);//lint !e648
 	}
 
 	/* Create Address Space objects. */
-	for (as_nr = 0; as_nr < kbdev->nr_hw_address_spaces; as_nr++)
-		KBASE_TLSTREAM_TL_SUMMARY_NEW_AS(&kbdev->as[as_nr], as_nr);
+	for (as_nr = 0; as_nr < kbdev->nr_hw_address_spaces; as_nr++)//lint !e574
+		KBASE_TLSTREAM_TL_SUMMARY_NEW_AS(&kbdev->as[as_nr], as_nr);//lint !e574
 
 	/* Create GPU object and make it retain all LPUs and address spaces. */
 	KBASE_TLSTREAM_TL_SUMMARY_NEW_GPU(
 			kbdev,
 			kbdev->gpu_props.props.raw_props.gpu_id,
-			kbdev->gpu_props.num_cores);
+			kbdev->gpu_props.num_cores);//lint !e648
 
 	for (lpu_id = 0; lpu_id < kbdev->gpu_props.num_job_slots; lpu_id++) {
 		void *lpu =
 			&kbdev->gpu_props.props.raw_props.js_features[lpu_id];
-		KBASE_TLSTREAM_TL_SUMMARY_LIFELINK_LPU_GPU(lpu, kbdev);
+		KBASE_TLSTREAM_TL_SUMMARY_LIFELINK_LPU_GPU(lpu, kbdev);//lint !e648
 	}
-	for (as_nr = 0; as_nr < kbdev->nr_hw_address_spaces; as_nr++)
+	for (as_nr = 0; as_nr < kbdev->nr_hw_address_spaces; as_nr++)//lint !e574
 		KBASE_TLSTREAM_TL_SUMMARY_LIFELINK_AS_GPU(
 				&kbdev->as[as_nr],
-				kbdev);
+				kbdev);//lint !e648
 
 	/* Create object for each known context. */
 	mutex_lock(&kbdev->kctx_list_lock);
@@ -1448,7 +1449,7 @@ static void kbase_create_timeline_objects(struct kbase_context *kctx)
 		KBASE_TLSTREAM_TL_SUMMARY_NEW_CTX(
 				element->kctx,
 				element->kctx->id,
-				(u32)(element->kctx->tgid));
+				(u32)(element->kctx->tgid));//lint !e648
 	}
 	/* Before releasing the lock, reset body stream buffers.
 	 * This will prevent context creation message to be directed to both
@@ -1462,11 +1463,11 @@ static void kbase_create_timeline_objects(struct kbase_context *kctx)
 	 */
 	kbase_tlstream_flush_streams();
 }
-
+/*lint +e648*/
 int kbase_tlstream_acquire(struct kbase_context *kctx, u32 flags)
 {
 	int ret;
-	u32 tlstream_enabled = TLSTREAM_ENABLED | flags;
+	u32 tlstream_enabled = TLSTREAM_ENABLED | flags;//lint !e648
 
 	if (0 == atomic_cmpxchg(&kbase_tlstream_enabled, 0, tlstream_enabled)) {
 		int rcode;
@@ -2500,7 +2501,7 @@ void __kbase_tlstream_aux_pagefault(u32 ctx_nr, u64 page_count_change)
 
 	kbasep_tlstream_msgbuf_release(TL_STREAM_TYPE_AUX, flags);
 }
-
+/*lint -e578*/
 void __kbase_tlstream_aux_pagesalloc(u32 ctx_nr, u64 page_count)
 {
 	const u32     msg_id = KBASE_AUX_PAGESALLOC;
@@ -2524,7 +2525,7 @@ void __kbase_tlstream_aux_pagesalloc(u32 ctx_nr, u64 page_count)
 
 	kbasep_tlstream_msgbuf_release(TL_STREAM_TYPE_AUX, flags);
 }
-
+/*lint +e578*/
 void __kbase_tlstream_aux_devfreq_target(u64 target_freq)
 {
 	const u32       msg_id = KBASE_AUX_DEVFREQ_TARGET;

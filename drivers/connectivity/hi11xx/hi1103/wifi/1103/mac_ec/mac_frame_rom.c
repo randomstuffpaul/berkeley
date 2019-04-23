@@ -427,19 +427,28 @@ oal_uint8 *mac_find_p2p_attribute_etc(oal_uint8 uc_eid, oal_uint8 *puc_ies, oal_
 
 oal_uint8 *mac_find_ie_etc(oal_uint8 uc_eid, oal_uint8 *puc_ies, oal_int32 l_len)
 {
+    oal_int32 l_remain_len;
+
     if (OAL_PTR_NULL == puc_ies)
     {
         return OAL_PTR_NULL;
     }
 
-    while (l_len > MAC_IE_HDR_LEN && puc_ies[0] != uc_eid)
+    /* buffer长度超过1500字节认为入参异常，不做查找操作 */
+    if (l_len > 1500)
     {
-        l_len   -= puc_ies[1] + MAC_IE_HDR_LEN;
+        return OAL_PTR_NULL;
+    }
+
+    l_remain_len = l_len;
+    while (l_remain_len > MAC_IE_HDR_LEN && puc_ies[0] != uc_eid)
+    {
+        l_remain_len   -= puc_ies[1] + MAC_IE_HDR_LEN;
         puc_ies += puc_ies[1] + MAC_IE_HDR_LEN;
     }
 
-    if ((l_len < MAC_IE_HDR_LEN) || (l_len < (MAC_IE_HDR_LEN + puc_ies[1]))
-        || ((l_len == MAC_IE_HDR_LEN) && (puc_ies[0] != uc_eid)))
+    if ((l_remain_len < MAC_IE_HDR_LEN) || (l_remain_len < (MAC_IE_HDR_LEN + puc_ies[1]))
+        || ((l_remain_len == MAC_IE_HDR_LEN) && (puc_ies[0] != uc_eid)))
     {
         return OAL_PTR_NULL;
     }

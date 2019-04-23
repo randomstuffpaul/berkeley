@@ -280,9 +280,13 @@ s32 ffsUmountVol(struct super_block *sb)
 s32 ffsGetVolInfo(struct super_block *sb, VOL_INFO_T *info)
 {
 	FS_INFO_T *p_fs = &(EXFAT_SB(sb)->fs_info);
-
-	if (p_fs->used_clusters == (u32) ~0)
-		p_fs->used_clusters = p_fs->fs_func->count_used_clusters(sb);
+	s32 i = 0;
+	if (p_fs->used_clusters == (u32) ~0) {
+		i = p_fs->fs_func->count_used_clusters(sb);
+		if (i < 0)
+			return FFS_MEDIAERR;
+		p_fs->used_clusters = (u32)i;
+	}
 
 	info->FatType = p_fs->vol_type;
 	info->ClusterSize = p_fs->cluster_size;
@@ -2105,7 +2109,14 @@ s32 exfat_count_used_clusters(struct super_block *sb)
 	map_i = map_b = 0;
 
 	for (i = 2; i < p_fs->num_clusters; i += 8) {
+
+		if (((u32)map_i >= p_fs->map_sectors) || (map_i < 0))
+			return -EINVAL;
 		k = *(((u8 *) p_fs->vol_amap[map_i]->b_data) + map_b);
+
+		/*shielded here for the size of array used_bit[] reduce*/
+		if (k >= sizeof(used_bit))/*lint !e650*/
+			return -EINVAL;
 		count += used_bit[k];
 
 		if ((++map_b) >= p_bd->sector_size) {
@@ -2258,7 +2269,7 @@ s32 clr_alloc_bitmap(struct super_block *sb, u32 clu)
 	exfat_bitmap_clear((u8 *) p_fs->vol_amap[i]->b_data, b);
 
 	return sector_write(sb, sector, p_fs->vol_amap[i], 0);
-
+/*lint -save -e533 */
 #ifdef CONFIG_EXFAT_DISCARD
 	if (opts->discard) {
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,37)
@@ -2272,6 +2283,7 @@ s32 clr_alloc_bitmap(struct super_block *sb, u32 clu)
 		}
 	}
 #endif /* CONFIG_EXFAT_DISCARD */
+/*lint -restore*/
 } /* end of clr_alloc_bitmap */
 
 u32 test_alloc_bitmap(struct super_block *sb, u32 clu)

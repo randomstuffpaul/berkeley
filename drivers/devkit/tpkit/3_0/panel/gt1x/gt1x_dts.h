@@ -66,6 +66,7 @@
 #define GTP_SUPPORT_WXY			"gt1x_support_wxy"
 #define GTP_WXY_DATA_ADD		"gt1x_wxy_data_add"
 
+#define GT1X_INIT_DELAY "gt1x_init_delay"
 #define GT1X_SUPPORT_TP_COLOR			"support_get_tp_color"
 #define GT1X_PROVIDE_PANEL_ID_SUPPORT			"provide_panel_id_suppot"
 #define GT1X_OPEN_ONCE_THRESHOLD		"only_open_once_captest_threshold"

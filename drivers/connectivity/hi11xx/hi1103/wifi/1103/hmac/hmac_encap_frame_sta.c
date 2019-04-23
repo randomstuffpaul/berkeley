@@ -161,6 +161,10 @@ oal_uint32 hmac_mgmt_encap_asoc_req_sta_etc(hmac_vap_stru *pst_hmac_sta, oal_uin
     mac_user_stru          *pst_mac_user;
 #endif
 
+#ifdef _PRE_WLAN_FEATURE_OPMODE_NOTIFY
+    hmac_user_stru         *pst_hmac_user;
+#endif
+
 #ifdef _PRE_WLAN_FEATURE_TXBF_HT
     mac_txbf_cap_stru *pst_txbf_cap;
 #endif
@@ -195,6 +199,7 @@ oal_uint32 hmac_mgmt_encap_asoc_req_sta_etc(hmac_vap_stru *pst_hmac_sta, oal_uin
     }
 
     pst_scaned_bss = hmac_vap_get_scan_bss_info(pst_mac_vap);
+
 #if (_PRE_PRODUCT_ID != _PRE_PRODUCT_ID_HI1151) || !defined(WIN32)
     if (OAL_PTR_NULL == pst_scaned_bss)
     {
@@ -401,11 +406,13 @@ oal_uint32 hmac_mgmt_encap_asoc_req_sta_etc(hmac_vap_stru *pst_hmac_sta, oal_uin
 #endif
 
 #ifdef _PRE_WLAN_FEATURE_OPMODE_NOTIFY
-    if(OAL_TRUE == pst_mac_vap->st_cap_flag.bit_opmode)
-    {
-        mac_set_opmode_notify_ie_etc((oal_void *)pst_mac_vap, puc_req_frame, &uc_ie_len);
-        puc_req_frame += uc_ie_len;
-    }
+        pst_hmac_user = mac_res_get_hmac_user_etc(pst_mac_vap->us_assoc_vap_id);
+        if((!(pst_hmac_user->en_user_ap_type & MAC_AP_TYPE_160M_OP_MODE)) &&
+           (OAL_TRUE == pst_mac_vap->st_cap_flag.bit_opmode))
+        {
+            mac_set_opmode_notify_ie_etc((oal_void *)pst_mac_vap, puc_req_frame, &uc_ie_len);
+            puc_req_frame += uc_ie_len;
+        }
 #endif
 
 #ifdef _PRE_WLAN_FEATURE_1024QAM

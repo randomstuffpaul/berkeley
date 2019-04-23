@@ -135,6 +135,18 @@ void hisi_usb_stop_hifi_usb(void)
 }
 EXPORT_SYMBOL(hisi_usb_stop_hifi_usb);
 
+void hisi_usb_stop_hifi_usb_reset_power(void)
+{
+	INFO("\n");
+	if (get_always_hifi_usb_value()) {
+		INFO("always use hifi usb\n");
+		return;
+	}
+	if (hisi_usb_otg_event(STOP_HIFI_USB_RESET_VBUS))
+		ERR("STOP_HIFI_USB failed\n");
+}
+EXPORT_SYMBOL(hisi_usb_stop_hifi_usb_reset_power);
+
 bool hisi_usb_using_hifi_usb(struct usb_device *udev)
 {
 	struct usb_hcd *hcd;
@@ -1202,6 +1214,45 @@ static int hifi_usb_proxy_reset_bandwidth(struct proxy_hcd_client *client, int s
 	return ret;
 }
 
+static void hifi_usb_dts_config(struct hifi_usb_proxy *hifiusb)
+{
+	struct proxy_hcd_client		*client = hifiusb->client;
+	struct proxy_hcd		*phcd = client_to_phcd(client);
+	struct platform_device		*pdev = phcd->pdev;
+	struct device			*dev = &pdev->dev;
+	int				size, ret;
+
+#ifdef CONFIG_HIFI_USB_HAS_H2X
+	hifiusb->usb_not_using_h2x = device_property_read_bool(dev,
+				"hifiusb,usb_not_using_h2x");
+#endif
+
+	memset(hifi_usb_base_quirk_devices, 0, sizeof(hifi_usb_ext_quirk_devices));
+	memset(hifi_usb_ext_quirk_devices, 0, sizeof(hifi_usb_ext_quirk_devices));
+
+	size = of_property_count_u32_elems(dev->of_node, "base-quirk-devices");
+	if (size > 0 && size <= MAX_QUIRK_DEVICES_ONE_GROUP) {
+		ret = of_property_read_u32_array(dev->of_node,
+				"base-quirk-devices",
+				hifi_usb_base_quirk_devices, size);
+		if (ret < 0) {
+			ERR("read elements form base_quirk_devices failed due to %d\n",
+					ret);
+			return;
+		}
+	}
+
+	size = of_property_count_u32_elems(dev->of_node, "ext-quirk-devices");
+	if (size > 0 && size <= MAX_QUIRK_DEVICES_ONE_GROUP) {
+		ret = of_property_read_u32_array(dev->of_node,
+				"ext-quirk-devices",
+				hifi_usb_ext_quirk_devices, size);
+		if (ret < 0)
+			ERR("read elements form ext_quirk_devices failed due to %d\n",
+					ret);
+	}
+}
+
 static struct proxy_hcd_client_ops hifi_usb_client_ops = {
 	.alloc_dev		= hifi_usb_proxy_alloc_dev,
 	.free_dev		= hifi_usb_proxy_free_dev,
@@ -1265,6 +1316,7 @@ static int hifi_usb_init(struct proxy_hcd_client *client)
 	proxy->client = client;
 	client->client_priv = proxy;
 	hifi_usb_hibernation_init(proxy);
+	hifi_usb_dts_config(proxy);
 
 	/* create debugfs node */
 	if (hifi_usb_debugfs_init(proxy))
@@ -1952,6 +2004,30 @@ static void hifi_usb_phy_ldo_init(struct hifi_usb_proxy *hifiusb)
 	}
 }
 
+#ifdef CONFIG_HIFI_USB_HAS_H2X
+static int hifi_usb_h2x_on(void)
+{
+	if (!hifi_usb)
+		return -EFAULT;
+
+	if (!hifi_usb->usb_not_using_h2x)
+		return usb_h2x_on();
+
+	return 0;
+}
+
+static int hifi_usb_h2x_off(void)
+{
+	if (!hifi_usb)
+		return -EFAULT;
+
+	if (!hifi_usb->usb_not_using_h2x)
+		return usb_h2x_off();
+
+	return 0;
+}
+#endif
+
 /*
  * Core functions for hibernation.
  */
@@ -1966,7 +2042,7 @@ static int hifi_usb_hw_revive(void)
 	hifi_usb_phy_ldo_auto();
 
 #ifdef CONFIG_HIFI_USB_HAS_H2X
-	ret = usb_h2x_on();
+	ret = hifi_usb_h2x_on();
 	if (ret) {
 		ERR("usb_h2x_on failed\n");
 		return ret;
@@ -1985,7 +2061,7 @@ static int hifi_usb_hw_hibernate(void)
 
 	DBG("+\n");
 #ifdef CONFIG_HIFI_USB_HAS_H2X
-	ret = usb_h2x_off();
+	ret = hifi_usb_h2x_off();
 	if (ret) {
 		ERR("usb_h2x_off failed\n");
 		return ret;
@@ -2326,7 +2402,7 @@ int start_hifi_usb(void)
 	client_ref_start(&client->client_ref, client_ref_release);
 
 #ifdef CONFIG_HIFI_USB_HAS_H2X
-	ret = usb_h2x_on();
+	ret = hifi_usb_h2x_on();
 	if (ret) {
 		ERR("usb_h2x_on failed\n");
 		goto err;
@@ -2377,7 +2453,7 @@ int start_hifi_usb(void)
 err2:
 	hifi_usb_phy_ldo_force_auto();
 #ifdef CONFIG_HIFI_USB_HAS_H2X
-	if (usb_h2x_off())
+	if (hifi_usb_h2x_off())
 		ERR("error usb_h2x_on failed\n");
 	/* FIXME: if someone modify this funciton, take attation to this err: */
 err:
@@ -2453,7 +2529,7 @@ void stop_hifi_usb(void)
 	}
 
 #ifdef CONFIG_HIFI_USB_HAS_H2X
-	ret = usb_h2x_off();
+	ret = hifi_usb_h2x_off();
 	if (ret)
 		ERR("usb_h2x_off failed\n");
 #endif

@@ -30,6 +30,6 @@ struct switch_usb_info {
     spinlock_t reg_flag_lock;
 };
 
-extern int fsa9685_manual_sw(int input_select);
-extern int fsa9685_manual_detach(void);
-extern int fsa9685_dcd_timeout_enable(bool enable_flag);
+extern int usbswitch_common_manual_sw(int input_select);
+extern int usbswitch_common_manual_detach(void);
+extern int usbswitch_common_dcd_timeout_enable(bool enable_flag);

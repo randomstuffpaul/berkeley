@@ -257,7 +257,6 @@ static int hisi_pwm_probe(struct platform_device *pdev)
 			goto err_return;
 		}
 
-
 		HISI_FB_INFO("dss_pwm_clk:[%lu]->[%lu].\n",
 			DEFAULT_PWM_CLK_RATE, clk_get_rate(g_pwm_clk));
 	}
@@ -276,6 +275,11 @@ static int hisi_pwm_remove(struct platform_device *pdev)
 {
 	struct clk *clk_tmp = NULL;
 	int ret = 0;
+
+	if (NULL == pdev) {
+		HISI_FB_ERR("pdev is NULL");
+		return -EINVAL;
+	}
 
 	ret = pinctrl_cmds_tx(pdev, pwm_pinctrl_finit_cmds,
 		ARRAY_SIZE(pwm_pinctrl_finit_cmds));

@@ -1161,20 +1161,6 @@ static int charge_core_parse_dts(struct device_node *np,
 		return -EINVAL;
 	}
 	hwlog_info("typec high mode ibat curr = %d\n", di->data.ichg_typech);
-	/*ycable input current */
-	ret = of_property_read_u32(np, "ycable_iin_curr", &(di->data.ycable_iin_curr));
-	if (ret) {
-		hwlog_err("get ycable_iin_curr failed\n");
-		di->data.ycable_iin_curr = YCABLE_CURR_DEFAULT;
-	}
-	hwlog_info("ycable_iin_curr = %d\n", di->data.ycable_iin_curr);
-	/*ycable charge current */
-	ret = of_property_read_u32(np, "ycable_ichg_curr", &(di->data.ycable_ichg_curr));
-	if (ret) {
-		hwlog_err("get ycable_ichg_curr failed\n");
-		di->data.ycable_ichg_curr = YCABLE_CURR_DEFAULT;
-	}
-	hwlog_info("ycable_ichg_curr = %d\n", di->data.ycable_ichg_curr);
 
 	charge_core_parse_high_temp_limit(np, di);
 #ifdef CONFIG_WIRELESS_CHARGER

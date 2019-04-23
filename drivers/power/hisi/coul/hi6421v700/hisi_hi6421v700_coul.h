@@ -113,11 +113,10 @@
 #define EN_ECO_SAMPLE            BIT(6)
 #define CLR_ECO_SAMPLE           BIT(7)
 
-#define HI6421V700_BOOT_OCV_ADDR  PMIC_HRST_REG12_ADDR(0)/*bit 1 */
-#define EN_BOOT_OCV_SAMPLE            BIT(1)
-
 #define DRAINED_BATTERY_FLAG_ADDR         PMIC_HRST_REG12_ADDR(0)
 #define DRAINED_BATTERY_FLAG_BIT          BIT(0)
+#define HI6421V700_BOOT_OCV_ADDR  PMIC_HRST_REG12_ADDR(0)/*bit 1 */
+#define EN_BOOT_OCV_SAMPLE            BIT(1)
 /************************************************************
     coul register of smartstar
 ************************************************************/

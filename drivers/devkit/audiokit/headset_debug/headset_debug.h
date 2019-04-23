@@ -9,6 +9,7 @@ extern "C" {
 struct headset_debug {
 	struct snd_soc_jack *jack;
 	struct switch_dev *sdev;
+	struct input_dev *input_dev;
 	struct dentry * df_dir;
 	atomic_t state;
 };
@@ -58,6 +59,9 @@ enum headset_debug_key_type {
 extern void headset_debug_init(struct snd_soc_jack *jack, struct switch_dev *sdev);
 extern void headset_debug_set_state(int state, bool use_input);
 extern void headset_debug_uninit(void);
+extern void headset_debug_input_init(struct input_dev *accdet_input_dev);
+extern void headset_debug_input_set_state(int state, bool use_input);
+extern void headset_debug_input_uninit(void);
 
 #ifdef __cplusplus
 #if __cplusplus

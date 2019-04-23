@@ -237,6 +237,7 @@ AT_LOG_PRIVACY_MATCH_AT_CMD_MAP_TBL_STRU                    g_astPrivacyMatchAtC
     /* ”ÎAP∂‘Ω”√¸¡Ó */
     {"AT+CPOS"                  ,   "AT+CPOS"},
     {"\r\n+CPOSR"               ,   "\r\n+CPOSR\r\n"},
+    {"\r\n^NVRD"           ,        "\r\n^NVRD\r\n"},
 };
 AT_LOG_PRIVACY_MAP_CMD_TO_FUNC_STRU                         g_astPrivacyMapCmdToFuncTbl[] =
 {

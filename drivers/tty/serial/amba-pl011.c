@@ -1636,7 +1636,7 @@ static unsigned int pl011_tx_empty(struct uart_port *port)
 	    container_of(port, struct uart_amba_port, port);
 	unsigned int status = pl011_read(uap, REG_FR);
 	return status & (uap->vendor->fr_busy | UART01x_FR_TXFF) ?
-							0 : TIOCSER_TEMT;
+							0 : TIOCSER_TEMT;/*[false alarm]:return */
 }
 
 static unsigned int pl011_get_mctrl(struct uart_port *port)

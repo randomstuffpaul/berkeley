@@ -524,19 +524,25 @@ static int smartpakit_ctrl_get_current_i2c_client(smartpakit_priv_t *pakit_priv,
 		return -EINVAL;
 	}
 
+	mutex_lock(&pakit_priv->i2c_ops_lock);
+
 	pakit_priv->current_i2c_client = NULL;
 	if (addr >= SMARTPAKIT_I2C_ADDR_ARRAY_MAX) {
 		hwlog_err("%s: invalid i2c slave addr 0x%x!!!\n", __func__, addr);
-		return -EINVAL;
+		goto ERR;
 	}
 
 	if (pakit_priv->i2c_addr_to_pa_index[addr] == SMARTPAKIT_INVALID_PA_INDEX) {
 		hwlog_err("%s: i2c slave addr 0x%x not registered!!!\n", __func__, addr);
-		return -EINVAL;
+		goto ERR;
 	}
 
 	pakit_priv->current_i2c_client = pakit_priv->i2c_priv[smartpakit_priv->i2c_addr_to_pa_index[addr]]->i2c;
+	mutex_unlock(&pakit_priv->i2c_ops_lock);
 	return 0;
+ERR:
+	mutex_unlock(&pakit_priv->i2c_ops_lock);
+	return -EINVAL;
 }
 
 static ssize_t smartpakit_ctrl_read(struct file *file, char __user *buf,
@@ -558,36 +564,45 @@ static ssize_t smartpakit_ctrl_read(struct file *file, char __user *buf,
 		return -EFAULT;
 	}
 
+	mutex_lock(&pakit_priv->i2c_ops_lock);
+
 	if ((0 == nbytes) || (nbytes > SMARTPAKIT_RW_PARAMS_NUM_MAX)) {
 		hwlog_err("%s: nbytes %d is 0 or >%d bytes, error!\n", __func__, (int)nbytes, SMARTPAKIT_RW_PARAMS_NUM_MAX);
-		return -EINVAL;
+		ret = -EINVAL;
+		goto ERR;
 	}
 
 	kern_buf = kmalloc(nbytes, GFP_KERNEL);
 	if (!kern_buf) {
 		hwlog_err("Failed to allocate buffer\n");
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto ERR;
 	}
 
-	mutex_lock(&pakit_priv->i2c_ops_lock);
 	if ((pakit_priv->ioctl_ops != NULL) && (pakit_priv->ioctl_ops->i2c_read != NULL)) {
 		ret = pakit_priv->ioctl_ops->i2c_read(pakit_priv->current_i2c_client, (char *)kern_buf, (int)nbytes);
 	}
-	mutex_unlock(&pakit_priv->i2c_ops_lock);
 
 	if (0 > ret) {
 		hwlog_err("%s: i2c read error %d", __func__, ret);
-		kfree(kern_buf);
-		return ret;
+		goto ERR;
 	}
 
 	if (copy_to_user((void  __user *)buf, kern_buf,  nbytes)) {
-		kfree(kern_buf);
-		return -EFAULT;
+		ret = -EFAULT;
+		goto ERR;
 	}
 
+	mutex_unlock(&pakit_priv->i2c_ops_lock);
 	kfree(kern_buf);
 	return (ssize_t)nbytes;
+ERR:
+	mutex_unlock(&pakit_priv->i2c_ops_lock);
+	if (kern_buf) {
+		kfree(kern_buf);
+		kern_buf = NULL;
+	}
+	return ret;
 }
 
 static ssize_t smartpakit_ctrl_write(struct file *file,
@@ -609,36 +624,45 @@ static ssize_t smartpakit_ctrl_write(struct file *file,
 		return -EFAULT;
 	}
 
+	mutex_lock(&pakit_priv->i2c_ops_lock);
+
 	if ((0 == nbytes) || (nbytes > SMARTPAKIT_RW_PARAMS_NUM_MAX)) {
 		hwlog_err("%s: nbytes %d is 0 or > %d bytes, error!\n", __func__, (int)nbytes, SMARTPAKIT_RW_PARAMS_NUM_MAX);
-		return -EINVAL;
+		ret = -EINVAL;
+		goto ERR;
 	}
 
 	kern_buf = kmalloc(nbytes, GFP_KERNEL);
 	if (!kern_buf) {
 		hwlog_err("Failed to allocate buffer\n");
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto ERR;
 	}
 
 	if (copy_from_user(kern_buf, (void  __user *)buf, nbytes)) {
-		kfree(kern_buf);
-		return -EFAULT;
+		ret = -EFAULT;
+		goto ERR;
 	}
 
-	mutex_lock(&pakit_priv->i2c_ops_lock);
 	if ((pakit_priv->ioctl_ops != NULL) && (pakit_priv->ioctl_ops->i2c_write != NULL)) {
 		ret = pakit_priv->ioctl_ops->i2c_write(pakit_priv->current_i2c_client, (char *)kern_buf, (int)nbytes);
 	}
-	mutex_unlock(&pakit_priv->i2c_ops_lock);
 
 	if (0 > ret) {
 		hwlog_err("%s: i2c write error %d", __func__, ret);
-		kfree(kern_buf);
-		return ret;
+		goto ERR;
 	}
+	mutex_unlock(&pakit_priv->i2c_ops_lock);
 
 	kfree(kern_buf);
 	return (ssize_t)nbytes;
+ERR:
+	mutex_unlock(&pakit_priv->i2c_ops_lock);
+	if (kern_buf) {
+		kfree(kern_buf);
+		kern_buf = NULL;
+	}
+	return ret;
 }
 
 void smartpakit_ctrl_get_model(char *dst, smartpakit_priv_t *pakit_priv)
@@ -687,6 +711,7 @@ static int smartpakit_ctrl_get_info(smartpakit_priv_t *pakit_priv, void __user *
 	info.algo_in	     = pakit_priv->algo_in;
 	info.out_device      = pakit_priv->out_device;
 	info.algo_delay_time = pakit_priv->algo_delay_time;
+	info.two_in_one      = pakit_priv->two_in_one;
 
 	if ((pakit_priv->algo_in != SMARTPAKIT_ALGO_IN_SIMPLE)
 		&& (pakit_priv->algo_in != SMARTPAKIT_ALGO_IN_WITH_DSP_PLUGIN)) {
@@ -736,8 +761,8 @@ static int smartpakit_ctrl_get_info(smartpakit_priv_t *pakit_priv, void __user *
 		}
 	}
 
-	hwlog_info("%s: soc_platform=%d, algo_in=%d, out_device=0x%08x, pa_num=%d, algo_delay_time=%d, chip_vendor=%d, chip_model=%s.\n", __func__,
-					info.soc_platform, info.algo_in, info.out_device, info.pa_num, info.algo_delay_time, info.chip_vendor, info.chip_model);
+	hwlog_info("%s: soc_platform=%d, algo_in=%d, out_device=0x%08x, pa_num=%d, algo_delay_time=%d, chip_vendor=%d, chip_model=%s, two_in_one=%d.\n", __func__,
+					info.soc_platform, info.algo_in, info.out_device, info.pa_num, info.algo_delay_time, info.chip_vendor, info.chip_model, info.two_in_one );
 	if (info.pa_num != pakit_priv->pa_num) {
 		hwlog_info("%s: <***** NOTICE: I2C Number not equal PA Number,*******>, i2c_num = %d, pa_num = %d.\n", __func__, info.pa_num, pakit_priv->pa_num);
 	}
@@ -769,6 +794,7 @@ static int smartpakit_ctrl_unprepare(smartpakit_priv_t *pakit_priv)
 static int smartpakit_ctrl_set_resume_regs(smartpakit_priv_t *pakit_priv, void __user *arg, int compat_mode)
 {
 	int ret = 0;
+	int i;
 #ifndef CONFIG_FINAL_RELEASE
 	hwlog_info("%s: enter ...\n", __func__);
 #endif
@@ -782,6 +808,10 @@ static int smartpakit_ctrl_set_resume_regs(smartpakit_priv_t *pakit_priv, void _
 		return -EINVAL;
 	}
 	pakit_priv->resume_sequence_permission_enable = false;
+
+	// clear poweron sequence to avoid audio server died
+	for (i = 0; i < SMARTPAKIT_PA_ID_MAX; i++)
+		smartpakit_reset_poweron_regs(&pakit_priv->poweron_sequence[i]);
 
 	memset(&pakit_priv->resume_sequence, 0, sizeof(smartpakit_pa_ctl_sequence_t));
 	ret = smartpakit_parse_params(&pakit_priv->resume_sequence, arg, compat_mode);
@@ -1298,6 +1328,8 @@ static int smartpakit_parse_dt_info(struct platform_device *pdev, smartpakit_pri
 	const char *out_device_str   = "out_device";
 	const char *chip_vendor_str  = "chip_vendor";
 	const char *chip_model_str   = "chip_model";
+	const char *two_in_one_str   = "two_in_one";
+
 	struct device *dev = NULL;
 	u32 out_device[SMARTPAKIT_PA_ID_MAX] = { 0 };
 	int count = 0;
@@ -1350,6 +1382,18 @@ static int smartpakit_parse_dt_info(struct platform_device *pdev, smartpakit_pri
 #endif
 	} else {
 		hwlog_debug("%s: chip_vendor prop not existed, skip!!!\n", __func__);
+	}
+
+	if (of_property_read_bool(dev->of_node, two_in_one_str)) {
+		ret = of_property_read_u32(dev->of_node, two_in_one_str, &pakit_priv->two_in_one);
+		if (ret < 0) {
+			hwlog_err("%s: get pakit_priv->two_in_one from dts failed %d!!!\n", __func__, ret);
+			ret = -EFAULT;
+			goto err_out;
+		}
+	} else {
+		hwlog_debug("%s: two_in_one prop not existed, skip!!!\n", __func__);
+		pakit_priv->two_in_one = 0;
 	}
 
 	// model: for simple pa or smartpa with dsp + plugin
@@ -1488,6 +1532,7 @@ static int smartpakit_probe(struct platform_device *pdev)
 	pakit_priv->misc_rw_permission_enable = false;
 	pakit_priv->misc_i2c_use_pseudo_addr = false;
 	pakit_priv->current_i2c_client = NULL;
+	pakit_priv->force_refresh_chip = false;
 
 	memset(pakit_priv->i2c_addr_to_pa_index, SMARTPAKIT_INVALID_PA_INDEX,
 		sizeof(unsigned char) * SMARTPAKIT_I2C_ADDR_ARRAY_MAX);

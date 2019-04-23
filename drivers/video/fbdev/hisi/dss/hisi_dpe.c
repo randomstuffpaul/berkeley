@@ -286,10 +286,13 @@ regulator_sem:
 
 void mdc_regulator_enable(struct hisi_fb_data_type *hisifd)
 {
+	uint32_t mdc_core_clk = 0xffc02180;
+
 	if (NULL == hisifd) {
 		HISI_FB_ERR("NULL ptr.\n");
 		return;
 	}
+
 
 	if (hisifd->index == MEDIACOMMON_PANEL_IDX) {
 		outp32(hisifd->media_crg_base + MEDIA_CLKDIV9, 0x08000800);
@@ -303,7 +306,7 @@ void mdc_regulator_enable(struct hisi_fb_data_type *hisifd)
 
 		outp32(hisifd->media_crg_base + MEDIA_PEREN0, 0x20000000);
 		outp32(hisifd->media_crg_base + MEDIA_PEREN1, 0x01806000);
-		outp32(hisifd->media_crg_base + MEDIA_CLKDIV8, 0xffc02180);
+		outp32(hisifd->media_crg_base + MEDIA_CLKDIV8, mdc_core_clk);
 	}
 }
 
@@ -785,7 +788,7 @@ static int dpe_on(struct platform_device *pdev)
 			return -EINVAL;
 		}
 	} else {
-		ret = dpe_set_clk_rate(pdev);
+		ret = dpe_set_clk_rate(pdev);//edc pxl
 		if (ret) {
 			HISI_FB_ERR("fb%d dpe_set_clk_rate, error=%d!\n",
 				hisifd->index, ret);

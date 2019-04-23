@@ -201,7 +201,8 @@ int hisi_ambient_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	struct hisi_ambient_t *hisi_ambient;
 	int now_cc = 0;
-	int delta_time = 0;
+	long delta_time = 0;
+	int delta_cc = 0;
 	int avg_current = 0;
 
 	pr_info("%s+\n", __func__);
@@ -222,7 +223,14 @@ int hisi_ambient_suspend(struct platform_device *pdev, pm_message_t state)
 			if(delta_time == 0){
 				return 0;
 			} else {
-				avg_current = ((now_cc - hisi_ambient->start_cc) * HOURTOSEC / delta_time);
+				delta_cc = abs(now_cc - hisi_ambient->start_cc) / 1000; //unit modify from uah to mah
+				if (delta_cc > (INT_MAX / HOURTOSEC)) {
+					pr_err("%s-,delta battery CC is too big. now_cc is %d, start_cc is %d .\n", __func__, now_cc, hisi_ambient->start_cc);
+					hisi_ambient->start_cc = -1;
+					return 0;
+				}
+
+				avg_current = (delta_cc * HOURTOSEC / (int)delta_time);//unit is ma
 				if(avg_current > KEEP_CURRENT) {
 					pr_info("ambient avg.current (%d) too high, reset ambient monitor data.\n", avg_current);
 					do_gettimeofday(&hisi_ambient->last_time);
@@ -244,6 +252,7 @@ int hisi_ambient_resume(struct platform_device *pdev)
 	int min_temp = 0;
 	int now_cc = 0;
 	long delta_time = 0;
+	int delta_cc = 0;
 	int avg_current = 0;
 	int ret = 0;
 	struct hisi_ambient_sensor_t *ambient_sensor;
@@ -265,7 +274,14 @@ int hisi_ambient_resume(struct platform_device *pdev)
 			return 0;
 		}
 
-		avg_current = ((now_cc - hisi_ambient->start_cc) * HOURTOSEC / (int)delta_time);
+		delta_cc = abs(now_cc - hisi_ambient->start_cc) / 1000;//unit modify from uah to mah
+		if (delta_cc > (INT_MAX / HOURTOSEC)) {
+			pr_err("%s-,delta battery CC is too big. now_cc is %d, start_cc is %d .\n", __func__, now_cc, hisi_ambient->start_cc);
+			hisi_ambient->start_cc = -1;
+			return 0;
+		}
+
+		avg_current = (delta_cc * HOURTOSEC / (int)delta_time);//unit is ma
 		if ( delta_time >= hisi_ambient->interval &&
 			(avg_current <= LOW_CURRENT)) {
 			/* time > interval (15 mins) and avg current is lower than LOW_CURRENT (50mA). */

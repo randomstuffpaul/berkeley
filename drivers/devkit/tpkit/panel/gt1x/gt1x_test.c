@@ -23,8 +23,7 @@
 #include "../../huawei_ts_kit.h"
 
 #define SHORT_TO_GND_RESISTER(sig)  (div_s64(5266285, (sig) & (~0x8000)) - 40 * 100)	/* 52662.85/code-40 */
-#define SHORT_TO_VDD_RESISTER(sig,value) (div_s64(36864 * ((value) - 9) *100, (((sig) & (~0x8000)) * 7)) - 40 * 100)
-
+#define SHORT_TO_VDD_RESISTER(sig,value) (div_s64((s64)(36864 * ((value) - 9)) * 100, (((sig) & (~0x8000)) * 7)) - 40 * 100)
 #define FLOAT_AMPLIFIER 1000
 #define MAX_U16_VALUE	65535
 #define RAWDATA_TEST_TIMES	10
@@ -416,7 +415,7 @@ static void gt1x_test_noisedata(struct gt1x_ts_test *ts_test)
 	if (ret) {
 		TS_LOG_ERR("%s: Failed send rawdata command:ret%d\n", __func__, ret);
 		ts_test->test_result[GTP_NOISE_TEST] = SYS_SOFTWARE_REASON;
-		return;
+		goto free_data_buf_out;
 	}
 
 	TS_LOG_INFO("%s: Enter rawdata mode\n", __func__);
@@ -492,13 +491,17 @@ static void gt1x_test_noisedata(struct gt1x_ts_test *ts_test)
 	ret = ts_test->ts->ops.send_cmd(GTP_CMD_NORMAL, 0x00, GT1X_NEED_SLEEP);
 	if (ret)
 		TS_LOG_ERR("Failed send normal mode cmd:ret%d\n", ret);
-	return;
+	goto free_data_buf_out;
 	
 soft_err_out:
 	buf[0] = 0x00;
 	ts_test->ts->ops.i2c_write(GTP_READ_COOR_ADDR, &buf[0], 1);
 	ts_test->noisedata.size = 0;
 	ts_test->test_result[GTP_NOISE_TEST] = SYS_SOFTWARE_REASON;
+free_data_buf_out:
+	if(data_buf) {
+		kfree(data_buf);
+	}
 	return;	
 }
 
@@ -719,9 +722,8 @@ exit_finish:
 char *gt1x_strncat(char *dest, char *src, size_t dest_size)
 {
 	size_t dest_len = 0;
-	
 	dest_len = strnlen(dest, dest_size);
-	return strncat(&dest[dest_len], src, dest_size - dest_len - 1);
+	return strncat(&dest[dest_len], src, (dest_size > dest_len ? (dest_size - dest_len - 1) : 0));
 }
 char *gt1x_strncatint(char * dest, int src, char * format, size_t dest_size)
 {
@@ -1286,7 +1288,7 @@ static int gt1x_shortcircut_analysis(struct gt1x_ts_test *ts_test)
 		
 		r_threshold = ts_test->test_params.r_drv_drv_threshold;
 		short_pin_num = be16_to_cpup((__be16 *)&data_buf[0]);
-		if (short_pin_num > MAX_DRV_NUM + MAX_SEN_NUM)
+		if (short_pin_num > (MAX_DRV_NUM + MAX_SEN_NUM - 1))
 			continue;
 
 		for (j = i + 1; j < MAX_DRV_NUM; j++) {
@@ -1316,7 +1318,7 @@ static int gt1x_shortcircut_analysis(struct gt1x_ts_test *ts_test)
 		
 		r_threshold = ts_test->test_params.r_sen_sen_threshold;
 		short_pin_num = be16_to_cpup((__be16 *)&data_buf[0]) + MAX_DRV_NUM;
-		if (short_pin_num > MAX_DRV_NUM + MAX_SEN_NUM)
+		if (short_pin_num > (MAX_DRV_NUM + MAX_SEN_NUM - 1))
 			continue;
 
 		for (j = 0; j < MAX_SEN_NUM; j++) {
@@ -1349,7 +1351,7 @@ static int gt1x_shortcircut_analysis(struct gt1x_ts_test *ts_test)
 		
 		r_threshold = ts_test->test_params.r_drv_sen_threshold;
 		short_pin_num = be16_to_cpup((__be16 *)&data_buf[0]) + MAX_DRV_NUM;
-		if (short_pin_num > MAX_DRV_NUM + MAX_SEN_NUM)
+		if (short_pin_num>(MAX_DRV_NUM + MAX_SEN_NUM - 1))
 			continue;
 
 		for (j = 0; j < MAX_DRV_NUM; j++) {

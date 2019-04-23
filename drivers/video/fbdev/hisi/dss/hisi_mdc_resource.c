@@ -48,7 +48,12 @@ static int mdc_chn_request_handle(struct hisi_fb_data_type *hisifd,
 		HISI_FB_ERR("hisifd or chn_info is null.\n");
 		return -EINVAL;
 	}
+
 	mdc_ops = &(hisifd->mdc_ops);
+	if (mdc_ops->chan_num > MAX_MDC_CHANNEL) {
+		HISI_FB_ERR("chan_num=%d is invalid.\n", mdc_ops->chan_num);
+		return -EINVAL;
+	}
 
 	for (i = 0; i < mdc_ops->chan_num; i++) {
 		mdc_chn = &(mdc_ops->mdc_channel[i]);
@@ -72,6 +77,7 @@ static int mdc_chn_request_handle(struct hisi_fb_data_type *hisifd,
 		}
 
 		if (mdc_chn->status != FREE) {
+			HISI_FB_DEBUG("mdc_chn status is not FREE!, mdc_chn status = %d \n", mdc_chn->status);
 			continue;
 		}
 
@@ -98,6 +104,8 @@ static int mdc_chn_request_handle(struct hisi_fb_data_type *hisifd,
 		} else {
 			mdc_chn->status = MDC_USED;
 		}
+		mdc_chn->drm_used = chn_info->is_drm;
+		HISI_FB_DEBUG("chn_info is_drm = %d, hold_flag = %d, status = %d \n", chn_info->is_drm, chn_info->hold_flag, mdc_chn->status);
 
 		HISI_FB_DEBUG("request mdc channel(%d) seccess.\n", mdc_chn->rch_idx);
 		return 0;
@@ -125,10 +133,12 @@ static int mdc_chn_request_handle(struct hisi_fb_data_type *hisifd,
 		}
 
 		if ((mdc_chn->status == MDC_USED) && (chn_info->hold_flag == HWC_REQUEST)) {
+
 			continue;
 		}
 
 		if ((mdc_chn->status == HWC_USED) && (chn_info->hold_flag == MDC_REQUEST)) {
+
 			hisifd->need_refresh = true;
 			wake_up_interruptible_all(&(mdc_ops->refresh_handle_wait));
 		}
@@ -152,6 +162,8 @@ static int mdc_chn_request_handle(struct hisi_fb_data_type *hisifd,
 		chn_info->ovl_idx = mdc_chn->ovl_idx;
 		chn_info->wb_composer_type = mdc_chn->wb_composer_type;
 		mdc_chn->status = MDC_USED;
+		mdc_chn->drm_used = chn_info->is_drm;
+		HISI_FB_DEBUG("hold_status = %d, status = %d, drm_used = %d \n", chn_info->hold_flag, mdc_chn->status, chn_info->is_drm);
 
 		HISI_FB_DEBUG("Request mdc channel(%d) success.\n", mdc_chn->rch_idx);
 		return 0;
@@ -172,7 +184,12 @@ int mdc_chn_release_handle(struct hisi_fb_data_type *hisifd,
 		HISI_FB_ERR("hisifd or chn_info is null.\n");
 		return -EINVAL;
 	}
+
 	mdc_ops = &(hisifd->mdc_ops);
+	if (mdc_ops->chan_num > MAX_MDC_CHANNEL) {
+		HISI_FB_ERR("chan_num=%d is invalid.\n", mdc_ops->chan_num);
+		return -EINVAL;
+	}
 
 	for (i = 0; i < mdc_ops->chan_num; i++) {
 		mdc_chn = &(mdc_ops->mdc_channel[i]);
@@ -345,6 +362,7 @@ int hisi_mdc_resource_init(struct hisi_fb_data_type *hisifd, unsigned int platfo
 			mdc_ops->mdc_channel[0].ovl_idx = DSS_OVL3;
 			mdc_ops->mdc_channel[0].wb_composer_type = DSS_WB_COMPOSE_COPYBIT;
 			mdc_ops->mdc_channel[0].status = FREE;
+			mdc_ops->mdc_channel[0].drm_used= 0;
 			break;
 
 		case FB_ACCEL_DSSV320:
@@ -360,6 +378,7 @@ int hisi_mdc_resource_init(struct hisi_fb_data_type *hisifd, unsigned int platfo
 			mdc_ops->mdc_channel[0].ovl_idx = DSS_OVL2;
 			mdc_ops->mdc_channel[0].wb_composer_type = DSS_WB_COMPOSE_COPYBIT;
 			mdc_ops->mdc_channel[0].status = FREE;
+			mdc_ops->mdc_channel[0].drm_used= 0;
 			break;
 
 		case FB_ACCEL_HI366x:
@@ -373,6 +392,7 @@ int hisi_mdc_resource_init(struct hisi_fb_data_type *hisifd, unsigned int platfo
 			mdc_ops->mdc_channel[0].ovl_idx = DSS_OVL3;
 			mdc_ops->mdc_channel[0].wb_composer_type = DSS_WB_COMPOSE_COPYBIT;
 			mdc_ops->mdc_channel[0].status = FREE;
+			mdc_ops->mdc_channel[0].drm_used= 0;
 			break;
 
 		case FB_ACCEL_KIRIN970:
@@ -388,6 +408,7 @@ int hisi_mdc_resource_init(struct hisi_fb_data_type *hisifd, unsigned int platfo
 			mdc_ops->mdc_channel[0].ovl_idx = DSS_OVL3;
 			mdc_ops->mdc_channel[0].wb_composer_type = DSS_WB_COMPOSE_COPYBIT;
 			mdc_ops->mdc_channel[0].status = FREE;
+			mdc_ops->mdc_channel[0].drm_used= 0;
 
 			mdc_ops->mdc_channel[1].cap_available = CAP_BASE | CAP_DIM \
 				| CAP_SCL | CAP_YUV_PACKAGE \
@@ -398,6 +419,7 @@ int hisi_mdc_resource_init(struct hisi_fb_data_type *hisifd, unsigned int platfo
 			mdc_ops->mdc_channel[1].ovl_idx = DSS_OVL3;
 			mdc_ops->mdc_channel[1].wb_composer_type = DSS_WB_COMPOSE_COPYBIT;
 			mdc_ops->mdc_channel[1].status = FREE;
+			mdc_ops->mdc_channel[1].drm_used= 0;
 			break;
 
 		default:

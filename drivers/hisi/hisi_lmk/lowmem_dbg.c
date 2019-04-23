@@ -19,6 +19,7 @@
 #include <linux/hisi/hisi_ion.h>
 #include <linux/version.h>
 #include <linux/hisi/page_tracker.h>
+#include <log/log_usertype/log-usertype.h>
 #include <linux/slub_def.h>
 
 #include "lowmem_killer.h"
@@ -99,7 +100,16 @@ static void dump_tasks(bool verbose)
 
 static void lowmem_dump(struct work_struct *work)
 {
-	bool verbose = (work == &lowmem_dbg_verbose_wk) ? true : false;
+	bool verbose;
+	int logusertype = get_logusertype_flag();
+
+	/*
+	* for internal debug, we hope print more lowmemory info.
+	*/
+	if (logusertype == BETA_USER || logusertype == OVERSEA_USER)
+		verbose = true;
+	else
+		verbose = (work == &lowmem_dbg_verbose_wk) ? true : false;
 
 	mutex_lock(&lowmem_dump_mutex);
 	show_mem(SHOW_MEM_FILTER_NODES);

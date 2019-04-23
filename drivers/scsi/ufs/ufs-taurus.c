@@ -13,7 +13,6 @@
  */
 
 #define pr_fmt(fmt) "ufshcd :" fmt
-
 #include <linux/mfd/hisi_pmic.h>
 #include <soc_sctrl_interface.h>
 #include <soc_ufs_sysctrl_interface.h>
@@ -107,18 +106,24 @@ void ufs_soc_init(struct ufs_hba *hba)
 	ufs_sys_ctrl_set_bits(host, BIT_SYSCTRL_REF_CLOCK_EN,
 			      PHY_CLK_CTRL); /* open clock of M-PHY */
 	if (host->caps & USE_HISI_MPHY_TC) {
-		ufs_i2c_writel(hba, (unsigned int) BIT(6),
-			       SC_RSTDIS); /*enable Device Reset*/
-		ufs_i2c_readl(hba, &reg, SC_UFS_REFCLK_RST_PAD);
-		reg = reg & (~(BIT(2) | BIT(10)));
-		/*output enable, For EMMC to high dependence, open
-		 * DA_UFS_OEN_RST
-		 * and DA_UFS_OEN_REFCLK*/
-		ufs_i2c_writel(hba, reg, SC_UFS_REFCLK_RST_PAD);
+		if (IS_V200_MPHY(hba)) {
+			ufs_i2c_writel(hba, 0x20000, 0x46078);
+			mdelay(2); /* wait 2 ms */
+			ufs_i2c_writel(hba, 0x20000, 0x4607C);
+		} else {
+			ufs_i2c_writel(hba, (unsigned int)BIT(6),
+				SC_RSTDIS); /*enable Device Reset*/
+			ufs_i2c_readl(hba, &reg, SC_UFS_REFCLK_RST_PAD);
+			reg = reg & (~(BIT(2) | BIT(10)));
+			/*output enable, For EMMC to high dependence, open
+			 * DA_UFS_OEN_RST
+			 * and DA_UFS_OEN_REFCLK*/
+			ufs_i2c_writel(hba, reg, SC_UFS_REFCLK_RST_PAD);
 
-		mdelay(2);
-		ufs_i2c_writel(hba, (unsigned int)BIT(6),
+			mdelay(2);
+			ufs_i2c_writel(hba, (unsigned int)BIT(6),
 				SC_RSTEN); /*disable Device Reset*/
+		}
 	} else {
 		ufs_sys_ctrl_writel(host, MASK_UFS_DEVICE_RESET | 0,
 				    UFS_DEVICE_RESET_CTRL); /* reset device */
@@ -153,7 +158,8 @@ void ufs_soc_init(struct ufs_hba *hba)
 		mdelay(1);
 
 	/*set SOC_SCTRL_SCBAKDATA11_ADDR ufs bit to 1 when init*/
-	hisi_idle_sleep_vote(ID_UFS, 1);
+	if (!ufshcd_is_auto_hibern8_allowed(hba))
+		hisi_idle_sleep_vote(ID_UFS, 1);
 
 	dev_info(hba->dev, "%s --\n", __func__);
 	return;
@@ -193,7 +199,8 @@ int ufs_kirin_suspend(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 	struct ufs_kirin_host *host = hba->priv;
 
 	/*set SOC_SCTRL_SCBAKDATA11_ADDR ufs bit to 0 when idle*/
-	hisi_idle_sleep_vote(ID_UFS, 0);
+	if (!ufshcd_is_auto_hibern8_allowed(hba))
+		hisi_idle_sleep_vote(ID_UFS, 0);
 
 	if (ufshcd_is_runtime_pm(pm_op))
 		return 0;
@@ -217,7 +224,8 @@ int ufs_kirin_resume(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 	struct ufs_kirin_host *host = hba->priv;
 
 	/*set SOC_SCTRL_SCBAKDATA11_ADDR ufs bit to 1 when busy*/
-	hisi_idle_sleep_vote(ID_UFS, 1);
+	if (!ufshcd_is_auto_hibern8_allowed(hba))
+		hisi_idle_sleep_vote(ID_UFS, 1);
 
 	if (!host->in_suspend)
 		return 0;
@@ -237,20 +245,29 @@ int ufs_kirin_resume(struct ufs_hba *hba, enum ufs_pm_op pm_op)
 void ufs_kirin_device_hw_reset(struct ufs_hba *hba)
 {
 	struct ufs_kirin_host *host = hba->priv;
-	if (likely(!(host->caps & USE_HISI_MPHY_TC)))
+	if (likely(!(host->caps & USE_HISI_MPHY_TC))) {
 		ufs_sys_ctrl_writel(host, MASK_UFS_DEVICE_RESET | 0,
 							UFS_DEVICE_RESET_CTRL);
-	else
-		ufs_i2c_writel(hba, (unsigned int) BIT(6), SC_RSTDIS);
-	mdelay(1);
+		mdelay(1);
+	}
+	else if (!IS_V200_MPHY(hba)) {
+		ufs_i2c_writel(hba, (unsigned int)BIT(6), SC_RSTDIS);
+		mdelay(1);
+	} else {
+			ufs_i2c_writel(hba, 0x20000, 0x46078);
+			mdelay(2); /* wait 2 ms */
+		}
 
 	if (likely(!(host->caps & USE_HISI_MPHY_TC)))
-		ufs_sys_ctrl_writel(host, MASK_UFS_DEVICE_RESET | BIT_UFS_DEVICE_RESET,
-			    			UFS_DEVICE_RESET_CTRL);
-	else
+		ufs_sys_ctrl_writel(host,
+			MASK_UFS_DEVICE_RESET | BIT_UFS_DEVICE_RESET,
+			UFS_DEVICE_RESET_CTRL);
+	else if (!IS_V200_MPHY(hba)) {
 		ufs_i2c_writel(hba, (unsigned int)BIT(6), SC_RSTEN);
-	/* some device need at least 40ms */
-	mdelay(40);
+	} else {
+			ufs_i2c_writel(hba, 0x20000, 0x4607C);
+		}
+	mdelay(10); /* wait 10 ms */
 }
 
 /* Workaround: PWM-amplitude reduce & PMC and H8's glitch */
@@ -317,26 +334,6 @@ int ufs_kirin_dme_setup_snps_asic_mphy(struct ufs_hba *hba)
 	pr_info("%s ++\n", __func__);
 
 	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0xD0C1, 0x0), 0x1); /* Unipro VS_mphy_disable */
-
-	if (host->caps & RX_CANNOT_DISABLE) {
-		ufshcd_dme_get(hba, UIC_ARG_MIB_SEL(0x800a, 0x4), &value1);
-		ufshcd_dme_get(hba, UIC_ARG_MIB_SEL(0x800a, 0x5), &value2);
-		/* bit[5:4] = 2b'00, not do override, let the FSM control the
-		 *            RX status, normally during H8, the RX will be
-		 *            disabled to save power. CS chip will use this
-		 *            configure, which is default also.
-		 * bit[5:4] = 2b'01, do override, not disable RX in any status,
-		 *            include H8, which cause high power consume,
-		 *            ES chip need this bugfix, otherwise the RX
-		 *            will not work again if enabled after disable.
-		 * bit[5:4] = 2b'11, do override, disable RX in any status,
-		 *            link startup will fail if configured this.
-		 */
-		value1 |= BIT_RX_DISABLE_OVR_EN_WR;
-		value2 |= BIT_RX_DISABLE_OVR_EN_WR;
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x800a, 0x4), value1);
-		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x800a, 0x5), value2);
-	}
 
 	if (ufs_sctrl_readl(host, SCDEEPSLEEPED_OFFSET) & EFUSE_RHOLD_BIT) {
 		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x8013, 0x4), 0x2); /* MPHY RXRHOLDCTRLOPT */
@@ -440,7 +437,6 @@ int ufs_kirin_dme_setup_snps_asic_mphy(struct ufs_hba *hba)
 	return err;
 }
 
-
 int ufs_kirin_link_startup_pre_change(struct ufs_hba *hba)
 {
 	int err = 0;
@@ -451,7 +447,12 @@ int ufs_kirin_link_startup_pre_change(struct ufs_hba *hba)
 	pr_info("%s ++\n", __func__);
 
 	/*for hisi MPHY*/
-	hisi_mphy_updata_temp_sqvref(hba, host);
+	if ((host->caps & USE_HISI_MPHY_TC)) {
+		if (IS_V200_MPHY(hba))
+			hisi_mphy_V200_updata(hba, host);
+		else
+			hisi_mphy_updata_temp_sqvref(hba, host);
+	}
 
 	/*FIXME is it good for FPGA condition*/
 	if (!(host->caps & USE_HISI_MPHY_TC)) {
@@ -466,54 +467,67 @@ int ufs_kirin_link_startup_pre_change(struct ufs_hba *hba)
 	ufshcd_writel(hba, reg, REG_CONTROLLER_AHIT);
 
 	/*for hisi MPHY*/
-	hisi_mphy_updata_vswing_fsm_ocs5(hba, host);
-
-	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x155E, 0x0), 0x0); /* Unipro PA_Local_TX_LCC_Enable */
-
-	/* enlarge the VS_AdjustTrailingClocks and VS_DebugSaveConfigTime */
-	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0xd086, 0x0), 0xF0); /* Unipro VS_AdjustTrailingClocks */
-	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0xd0a0, 0x0), 0x3); /* Unipro VS_DebugSaveConfigTime */
-	/* Unipro PA_AdaptAfterLRSTInPA_INIT, use PA_PeerRxHsAdaptInitial value */
-	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0x15D5, 0x0), 0x1);
-
-	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0xD0AB, 0x0), 0x0); /* close Unipro VS_Mk2ExtnSupport */
-	ufshcd_dme_get(hba, UIC_ARG_MIB_SEL(0xD0AB, 0x0), &value);
-	if (0 != value) {
-		/* Ensure close success */
-		pr_warn("Warring!!! close VS_Mk2ExtnSupport failed\n");
-	}
-	if (!(host->caps & USE_HISI_MPHY_TC)) {
-#if 0
-		/*FPGA with HISI PHY not configure equalizer*/
-		if (35 == host->tx_equalizer) {
-			ufs_kirin_mphy_write(hba, 0x1002, 0xAC78);
-			ufs_kirin_mphy_write(hba, 0x1102, 0xAC78);
-			ufs_kirin_mphy_write(hba, 0x1003, 0x2440);
-			ufs_kirin_mphy_write(hba, 0x1103, 0x2440);
-		} else if (60 == host->tx_equalizer) {
-			ufs_kirin_mphy_write(hba, 0x1002, 0xAA78);
-			ufs_kirin_mphy_write(hba, 0x1102, 0xAA78);
-			ufs_kirin_mphy_write(hba, 0x1003, 0x2640);
-			ufs_kirin_mphy_write(hba, 0x1103, 0x2640);
+	if ((host->caps & USE_HISI_MPHY_TC)) {
+		if (!IS_V200_MPHY(hba))
+			hisi_mphy_updata_vswing_fsm_ocs5(hba, host);
+		else {
+			/* set the HS-prepare length and sync length to MAX
+			* value, try
+			* to solve the data check error problem,
+			* the device seems not receive the write cmd. */
+			/* PA_TxHsG1SyncLength , can not set MPHY's register
+			 * directly*/
+			ufshcd_dme_set(
+				hba, UIC_ARG_MIB_SEL((u32)0x1552, 0x0), 0x4F);
+			/* PA_TxHsG2SyncLength , can not set MPHY's register
+			 * directly */
+			ufshcd_dme_set(
+				hba, UIC_ARG_MIB_SEL((u32)0x1554, 0x0), 0x4F);
+			/* PA_TxHsG3SyncLength , can not set MPHY's register
+			 * directly */
+			ufshcd_dme_set(
+				hba, UIC_ARG_MIB_SEL((u32)0x1556, 0x0), 0x4F);
+			/*enlarge TX_LS_PREPARE_LENGTH*/ /*enable override*/
+			ufshcd_dme_get(
+				hba, UIC_ARG_MIB_SEL((u32)0xd0f0, 0x0), &value);
+			/* Unipro VS_mphy_disable */
+			value |= (1 << 3);
+			ufshcd_dme_set(
+				hba, UIC_ARG_MIB_SEL((u32)0xd0f0, 0x0), value);
+			/*Set to max value 0xf*/
+			ufshcd_dme_set(
+				hba, UIC_ARG_MIB_SEL((u32)0xd0f4, 0x0), 0xf);
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0xd085, 0x0),
+				0x1); /* update */
 		}
-#endif
-		if (35 == host->tx_equalizer) {
-			ufshcd_dme_set(
-				hba, UIC_ARG_MIB_SEL((u32)0x0037, 0x0), 0x1);
-			ufshcd_dme_set(
-				hba, UIC_ARG_MIB_SEL((u32)0x0037, 0x1), 0x1);
-		} else if (60 == host->tx_equalizer) {
-			ufshcd_dme_set(
-				hba, UIC_ARG_MIB_SEL((u32)0x0037, 0x0), 0x2);
-			ufshcd_dme_set(
-				hba, UIC_ARG_MIB_SEL((u32)0x0037, 0x1), 0x2);
+
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x155E, 0x0),
+			0x0); /* Unipro PA_Local_TX_LCC_Enable */
+
+		/* enlarge the VS_AdjustTrailingClocks and
+		 * VS_DebugSaveConfigTime */
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0xd086, 0x0),
+			0xF0); /* Unipro VS_AdjustTrailingClocks */
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0xd0a0, 0x0),
+			0x3); /* Unipro VS_DebugSaveConfigTime */
+		/* Unipro PA_AdaptAfterLRSTInPA_INIT, use
+		 * PA_PeerRxHsAdaptInitial value */
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL((u32)0x15D5, 0x0), 0x1);
+
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0xD0AB, 0x0),
+			0x0); /* close Unipro VS_Mk2ExtnSupport */
+		ufshcd_dme_get(hba, UIC_ARG_MIB_SEL(0xD0AB, 0x0), &value);
+		if (0 != value) {
+			/* Ensure close success */
+			pr_warn("Warring!!! close VS_Mk2ExtnSupport failed\n");
 		}
+		/*for hisi MPHY*/
+		hisi_mphy_busdly_config(hba, host);
+
+		pr_info("%s --\n", __func__);
+
+		return err;
 	}
-	/*for hisi MPHY*/
-	hisi_mphy_busdly_config(hba, host);
-
-	pr_info("%s --\n", __func__);
-
 	return err;
 }
 
@@ -540,6 +554,35 @@ static void hisi_mphy_link_post_config(struct ufs_hba *hba,
 		}
 	}
 }
+
+static void hisi_mphy_V200_link_post_config(struct ufs_hba *hba,
+			struct ufs_kirin_host *host)
+{
+	uint32_t tx_lane_num = 1;
+	uint32_t rx_lane_num = 1;
+
+	/*set the PA_TActivate to 128. need to check in ASIC...*/
+	/* H8's workaround */
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x15a8, 0x0), 5);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x80da, 0x0), 0x2d);
+
+	ufshcd_dme_get(hba, UIC_ARG_MIB(0x1561), &tx_lane_num);
+	ufshcd_dme_get(hba, UIC_ARG_MIB(0x1581), &rx_lane_num);
+
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x000a, 0x4), 0x1e);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00eb, 0x4), 0x64);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x000e, 0x4), 0xf0);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00da, 0x0), 0x4b);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00dd, 0x0), 0xcb);
+	ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c2, 0x4), 0x0);
+	if (tx_lane_num > 1 && rx_lane_num > 1) {
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x000a, 0x5), 0x1e);
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00eb, 0x5), 0x64);
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x000e, 0x5), 0xf0);
+		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00c2, 0x5), 0x0);
+	}
+}
+
 
 void set_device_clk(struct ufs_hba *hba)
 {
@@ -570,15 +613,52 @@ void set_device_clk(struct ufs_hba *hba)
 int ufs_kirin_link_startup_post_change(struct ufs_hba *hba)
 {
 	struct ufs_kirin_host *host = hba->priv;
+	uint32_t value, value_bak;
 
 	pr_info("%s ++\n", __func__);
 
-	ufshcd_dme_set(hba, UIC_ARG_MIB(0x2044), 0x0); /* Unipro DL_AFC0CreditThreshold */
-	ufshcd_dme_set(hba, UIC_ARG_MIB(0x2045), 0x0); /* Unipro DL_TC0OutAckThreshold */
-	ufshcd_dme_set(hba, UIC_ARG_MIB(0x2040), 0x9); /* Unipro DL_TC0TXFCThreshold */
+	if (!(host->caps & USE_HISI_MPHY_TC)) {
+		ufshcd_dme_set(hba, UIC_ARG_MIB(0x2044), 0x0); /* Unipro DL_AFC0CreditThreshold */
+		ufshcd_dme_set(hba, UIC_ARG_MIB(0x2045), 0x0); /* Unipro DL_TC0OutAckThreshold */
+		ufshcd_dme_set(hba, UIC_ARG_MIB(0x2040), 0x9); /* Unipro DL_TC0TXFCThreshold */
+	}
+	if ((host->caps & USE_HISI_MPHY_TC)) {
+		/*for hisi MPHY*/
+		if (!IS_V200_MPHY(hba)) {
+			ufshcd_dme_set(hba, UIC_ARG_MIB(0x2044), 0x0); /* Unipro DL_AFC0CreditThreshold */
+			ufshcd_dme_set(hba, UIC_ARG_MIB(0x2045), 0x0); /* Unipro DL_TC0OutAckThreshold */
+			ufshcd_dme_set(hba, UIC_ARG_MIB(0x2040), 0x9); /* Unipro DL_TC0TXFCThreshold */
+			hisi_mphy_link_post_config(hba, host);
+		} else {
+			hisi_mphy_V200_link_post_config(hba, host);
 
-	/*for hisi MPHY*/
-	hisi_mphy_link_post_config(hba, host);
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0xD085, 0x0), 0x1);
+
+			ufshcd_dme_get(hba, UIC_ARG_MIB(0x1552), &value);
+			if(value < 0x4B)
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x1552, 0x0), 0x4B);
+			ufshcd_dme_get(hba, UIC_ARG_MIB(0x1554), &value);
+			if(value < 0x4C)
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x1554, 0x0), 0x4C);
+			ufshcd_dme_get(hba, UIC_ARG_MIB(0x1556), &value);
+			if(value < 0x4D)
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x1556, 0x0), 0x4D);
+			ufshcd_dme_get(hba, UIC_ARG_MIB(0x15D0), &value);
+			if(value < 0x4E)
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x15D0, 0x0), 0x4E);
+
+
+			ufshcd_dme_get(hba, UIC_ARG_MIB_SEL(0x00ba, 0x0),
+			       	&value_bak);
+			ufshcd_dme_get(hba, UIC_ARG_MIB_SEL(0x00ae, 0x0),
+			       	&value);
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00ae, 0x0),
+			       	value | BIT(7));
+			ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00ba, 0x0),
+			       	value_bak);
+
+		}
+	}
 
 	if (host->caps & BROKEN_CLK_GATE_BYPASS) {
 		/* not bypass ufs clk gate */
@@ -602,9 +682,11 @@ int ufs_kirin_link_startup_post_change(struct ufs_hba *hba)
 void ufs_kirin_pwr_change_pre_change(struct ufs_hba *hba)
 {
 	uint32_t value;
+	struct ufs_kirin_host *host = hba->priv;
 	pr_info("%s ++\n", __func__);
-
+#ifdef CONFIG_HISI_DEBUG_FS
 	pr_info("device manufacturer_id is 0x%x\n", hba->manufacturer_id);
+#endif
 	/*ARIES platform need to set SaveConfigTime to 0x13, and change sync length to maximum value */
 	ufshcd_dme_set(hba, UIC_ARG_MIB((u32)0xD0A0), 0x13); /* VS_DebugSaveConfigTime */
 	ufshcd_dme_set(hba, UIC_ARG_MIB((u32)0x1552), 0x4f); /* g1 sync length */
@@ -645,8 +727,111 @@ void ufs_kirin_pwr_change_pre_change(struct ufs_hba *hba)
 	/*DME_AFC1ReqTimeOutVal = 32767, default is 0*/
 	ufshcd_dme_set(hba, UIC_ARG_MIB((u32)0xd046), 32767);
 
-
 	pr_info("%s --\n", __func__);
+	if ((host->caps & USE_HISI_MPHY_TC)) {
+		if (IS_V200_MPHY(hba)) {
+			if (hba->pwr_info.pwr_rx == FAST_MODE || hba->pwr_info.pwr_rx == FASTAUTO_MODE){
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0050, 0x0),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0050, 0x1),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0051, 0x0),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0051, 0x1),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0052, 0x0),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0052, 0x1),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0056, 0x0),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0056, 0x1),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0057, 0x0),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0057, 0x1),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0058, 0x0),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0058, 0x1),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00a1, 0x0),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00a1, 0x1),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00a4, 0x0),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00a4, 0x1),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00a2, 0x0),
+			       0x0b);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00a2, 0x1),
+			       0x0b);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00a5, 0x0),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00a5, 0x1),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00a3, 0x0),
+			       0x1f);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00a3, 0x1),
+			       0x1f);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00a6, 0x0),
+			       0x9);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00a6, 0x1),
+			       0x9);
+                }
+			else {
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0050, 0x0),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0050, 0x1),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0051, 0x0),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0051, 0x1),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0052, 0x0),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0052, 0x1),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0056, 0x0),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0056, 0x1),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0057, 0x0),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0057, 0x1),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0058, 0x0),
+			       0xf);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x0058, 0x1),
+			       0xf);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00a1, 0x0),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00a1, 0x1),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00a4, 0x0),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00a4, 0x1),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00a2, 0x0),
+			       0x0b);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00a2, 0x1),
+			       0x0b);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00a5, 0x0),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00a5, 0x1),
+			       0x0);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00a3, 0x0),
+			       0x1f);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00a3, 0x1),
+			       0x1f);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00a6, 0x0),
+			       0x1f);
+				ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x00a6, 0x1),
+			       0x1f);
+			}
+		}
+	}
 	return;
 }
 /*lint +e648 +e845*/

@@ -76,6 +76,20 @@ struct thp_mt_wrapper_ioctl_touch_data {
 	int down_num;
 };
 
+#define KEY_F26 196
+
+enum input_mt_wrapper_keyevent {
+	INPUT_MT_WRAPPER_KEYEVENT_NULL    = 0,
+	INPUT_MT_WRAPPER_KEYEVENT_ESD    = 1 << 0,
+	INPUT_MT_WRAPPER_KEYEVENT_APPROACH = 1 << 1,
+	INPUT_MT_WRAPPER_KEYEVENT_AWAY = 1 << 2,
+};
+
+#define PROX_VALUE_LEN          3
+#define PROX_EVENT_LEN          12
+#define APPROCH_EVENT_VALUE     0
+#define AWAY_EVENT_VALUE        1
+
 /* commands */
 #define INPUT_MT_WRAPPER_IO_TYPE  (0xB9)
 #define INPUT_MT_WRAPPER_IOCTL_CMD_SET_COORDINATES \
@@ -91,12 +105,14 @@ struct thp_mt_wrapper_ioctl_touch_data {
 	_IOR(INPUT_MT_WRAPPER_IO_TYPE, 0x05, uint32_t)
 #define INPUT_MT_WRAPPER_IOCTL_CMD_GET_EVENTS \
 	_IOR(INPUT_MT_WRAPPER_IO_TYPE, 0x06, uint32_t)
-#define INPUT_MT_WRAPPER_IOCTL_GET_WINDOW_INFO \
-	_IOR(INPUT_MT_WRAPPER_IO_TYPE, 0x07, struct thp_window_info)
+#define INPUT_MT_WRAPPER_IOCTL_CMD_REPORT_KEYEVENT \
+	_IOR(INPUT_MT_WRAPPER_IO_TYPE,	0x07, u32)
 #define INPUT_MT_WRAPPER_IOCTL_GET_PROJECT_ID \
 	_IOR(INPUT_MT_WRAPPER_IO_TYPE, 0x08, uint32_t)
 #define INPUT_MT_WRAPPER_IOCTL_SET_ROI_DATA \
 	_IOW(INPUT_MT_WRAPPER_IO_TYPE, 0x09, uint32_t)
+#define INPUT_MT_WRAPPER_IOCTL_GET_WINDOW_INFO \
+	_IOR(INPUT_MT_WRAPPER_IO_TYPE, 0x0a, struct thp_window_info)
 
 int thp_mt_wrapper_init(void);
 void thp_mt_wrapper_exit(void);

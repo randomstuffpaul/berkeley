@@ -65,7 +65,9 @@
 
 #include <linux/fb.h>
 #include <huawei_platform/usb/hw_usb.h>
-
+#ifdef CONFIG_HUAWEI_HISHOW
+#include <huawei_platform/usb/hw_hishow.h>
+#endif
 #ifdef CONFIG_CONTEXTHUB_PD
 #define PD_DPM_WAIT_COMBPHY_CONFIGDONE() \
 		wait_for_completion_timeout(&pd_dpm_combphy_configdone_completion, msecs_to_jiffies(11500)); \
@@ -73,6 +75,10 @@
 #endif
 struct pd_dpm_info *g_pd_di = NULL;
 static bool g_pd_cc_orientation = false;
+#ifdef CONFIG_TYPEC_CAP_CUSTOM_SRC2
+static bool g_pd_smart_holder = false;
+int support_smart_holder = 0;
+#endif
 static struct class *typec_class = NULL;
 static struct device *typec_dev = NULL;
 static struct mutex dpm_sink_vbus_lock;
@@ -95,6 +101,9 @@ static bool ignore_bc12_event_when_vbuson = false;
 static bool ignore_bc12_event_when_vbusoff = false;
 static enum pd_dpm_cc_voltage_type remote_rp_level = PD_DPM_CC_VOLT_OPEN;
 static struct pd_dpm_ops *g_ops;
+#ifdef CONFIG_TYPEC_CAP_CUSTOM_SRC2
+static struct cable_vdo_ops *g_cable_vdo_ops = NULL;
+#endif
 static void *g_client;
 #ifdef CONFIG_CONTEXTHUB_PD
 static bool g_last_hpd_status = false;
@@ -110,12 +119,6 @@ int support_analog_audio = 1;
 static struct console g_con;
 struct mutex typec_state_lock;
 struct mutex typec_wait_lock;
-
-#ifdef CONFIG_CC_ANTI_CORROSION
-#include <huawei_platform/usb/hw_cc_anti_corrosion.h>
-extern struct cc_anti_corrosion_dev *cc_corrosion_dev_p;
-#define CORROSION_DELAY 10
-#endif
 
 void reinit_typec_completion(void);
 void typec_complete(enum pd_wait_typec_complete typec_completion);
@@ -175,10 +178,12 @@ static void init_fb_notification(void)
         fb_register_client(&pd_dpm_handle_fb_notifier);
 }
 
+#if 0
 static void deinit_fb_notification(void)
 {
         fb_unregister_client(&pd_dpm_handle_fb_notifier);
 }
+#endif
 static void pd_dpm_set_source_sink_state(enum charger_event_type type)
 {
 	sink_source_type = type;
@@ -201,6 +206,25 @@ int pd_dpm_ops_register(struct pd_dpm_ops *ops, void *client)
 	}
 	return ret;
 }
+
+#ifdef CONFIG_TYPEC_CAP_CUSTOM_SRC2
+int pd_dpm_cable_vdo_ops_register(struct cable_vdo_ops *ops)
+{
+	int ret = 0;
+	if (ops != NULL)
+	{
+		g_cable_vdo_ops = ops;
+	}
+	else
+	{
+		hwlog_err("cable_vdo_ops ops register fail!\n");
+		ret = -EPERM;
+	}
+	return ret;
+
+}
+#endif
+
 void pd_dpm_hard_reset(void)
 {
 	hwlog_err("%s++!\n", __func__);
@@ -482,6 +506,13 @@ static void pd_dpm_set_cc_orientation(bool cc_orientation)
 	g_pd_cc_orientation = cc_orientation;
 }
 
+#ifdef CONFIG_TYPEC_CAP_CUSTOM_SRC2
+static bool pd_dpm_is_smart_holder(void)
+{
+	return g_pd_smart_holder;
+}
+#endif
+
 void pd_dpm_get_typec_state(int *typec_state)
 {
 	hwlog_info("%s pd_dpm_get_typec_state  = %d\n", __func__, pd_dpm_typec_state);
@@ -520,12 +551,33 @@ static ssize_t pd_dpm_pd_state_show(struct device *dev, struct device_attribute 
 	return scnprintf(buf, PAGE_SIZE, "%s\n", pd_dpm_get_pd_finish_flag()? "0" : "1");
 }
 
+#ifdef CONFIG_TYPEC_CAP_CUSTOM_SRC2
+static ssize_t pd_dpm_smart_holder_show(struct device *dev, struct device_attribute *attr,
+                char *buf)
+{
+	hwlog_info("%s  = %d\n", __func__, pd_dpm_is_smart_holder());
+	return scnprintf(buf, PAGE_SIZE, "%s\n", pd_dpm_is_smart_holder()? "1" : "0");
+}
+#endif
+static ssize_t pd_dpm_cc_state_show(struct device *dev, struct device_attribute *attr,
+                char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%d\n", pd_dpm_get_cc_state_type());
+}
+
 static DEVICE_ATTR(cc_orientation, S_IRUGO, pd_dpm_cc_orientation_show, NULL);
 static DEVICE_ATTR(pd_state, S_IRUGO, pd_dpm_pd_state_show, NULL);
-
+#ifdef CONFIG_TYPEC_CAP_CUSTOM_SRC2
+static DEVICE_ATTR(smart_holder, S_IRUGO, pd_dpm_smart_holder_show, NULL);
+#endif
+static DEVICE_ATTR(cc_state, S_IRUGO, pd_dpm_cc_state_show, NULL);
 static struct attribute *pd_dpm_ctrl_attributes[] = {
 	&dev_attr_cc_orientation.attr,
 	&dev_attr_pd_state.attr,
+#ifdef CONFIG_TYPEC_CAP_CUSTOM_SRC2
+	&dev_attr_smart_holder.attr,
+#endif
+	&dev_attr_cc_state.attr,
 	NULL,
 };
 
@@ -573,6 +625,26 @@ bool pd_dpm_get_pd_source_vbus(void)
 		return g_pd_di->pd_source_vbus;
 	else
 		return false;
+}
+
+
+/*******************************************************
+  Function:       pd_dpm_get_cc_state_type
+  Description:   pd_dpm_get_cc_state_type
+  Input:           NA
+  Output:         NA
+  Return:
+  		open    56k    22k    10k
+	cc1    00       01     10     11
+	cc2    00       01     10     11
+*******************************************************/
+int pd_dpm_get_cc_state_type(void)
+{
+	if (NULL == g_ops || NULL == g_ops->pd_dpm_get_cc_state){
+		return -1;
+	}
+
+	return g_ops->pd_dpm_get_cc_state();
 }
 
 void pd_dpm_report_pd_source_vconn(void *data)
@@ -874,10 +946,13 @@ EXPORT_SYMBOL(unregister_pd_dpm_portstatus_notifier);
 
 static inline void pd_dpm_report_device_attach(void)
 {
+#ifdef CONFIG_CONTEXTHUB_PD
+	struct pd_dpm_combphy_event event;
+#endif
+
 	hwlog_info("%s \r\n",__func__);
 
 #ifdef CONFIG_CONTEXTHUB_PD
-	struct pd_dpm_combphy_event event;
 	event.dev_type = TCA_CHARGER_CONNECT_EVENT;
 	event.irq_type = TCA_IRQ_HPD_IN;
 	event.mode_type = TCPC_USB31_CONNECTED;
@@ -886,28 +961,25 @@ static inline void pd_dpm_report_device_attach(void)
 #else
 	hisi_usb_otg_event(CHARGER_CONNECT_EVENT);
 #endif
-
-#ifdef CONFIG_CC_ANTI_CORROSION
-	if (cc_corrosion_dev_p) {
-		pr_info("%s schedule delayed work\n",__func__);
-		schedule_delayed_work(&cc_corrosion_dev_p->update_nv_work, msecs_to_jiffies(CORROSION_DELAY));
-	}
-#endif
 }
 
 static inline void pd_dpm_report_host_attach(void)
 {
 	struct console *con;
+#ifdef CONFIG_CONTEXTHUB_PD
+	struct pd_dpm_combphy_event event;
+#endif
+
 	hwlog_info("%s \r\n",__func__);
+
 #ifdef CONFIG_SWITCH_FSA9685
 	if (switch_manual_enable) {
-		fsa9685_dcd_timeout_enable(true);
-		fsa9685_manual_sw(FSA9685_USB1_ID_TO_IDBYPASS);
+		usbswitch_common_dcd_timeout_enable(true);
+		usbswitch_common_manual_sw(FSA9685_USB1_ID_TO_IDBYPASS);
 	}
 #endif
 
 #ifdef CONFIG_CONTEXTHUB_PD
-	struct pd_dpm_combphy_event event;
 	event.dev_type = TCA_ID_FALL_EVENT;
 	event.irq_type = TCA_IRQ_HPD_IN;
 	event.mode_type = TCPC_USB31_CONNECTED;
@@ -936,13 +1008,17 @@ static inline void pd_dpm_report_device_detach(void)
 
 static inline void pd_dpm_report_host_detach(void)
 {
+#ifdef CONFIG_CONTEXTHUB_PD
+	struct pd_dpm_combphy_event event;
+#endif
+
 	hwlog_info("%s \r\n",__func__);
+
 #ifdef CONFIG_SWITCH_FSA9685
-	fsa9685_dcd_timeout_enable(false);
+	usbswitch_common_dcd_timeout_enable(false);
 #endif
 
 #ifdef CONFIG_CONTEXTHUB_PD
-	struct pd_dpm_combphy_event event;
 	event.typec_orien = pd_dpm_get_cc_orientation();
 	event.mode_type = pd_dpm_get_combphy_status();
 	if (true == pd_dpm_get_last_hpd_status())
@@ -1054,11 +1130,10 @@ void pd_dpm_handle_abnomal_change(int event)
 
 	int* change_counter = &abnomal_change[event].change_counter;
 	int change_counter_threshold = PD_DPM_CC_CHANGE_COUNTER_THRESHOLD;
-	ts64_interval.tv_sec = 0;
-	ts64_interval.tv_nsec = abnormal_cc_interval * NSEC_PER_MSEC;
-
 	int* dmd_counter = &abnomal_change[event].dmd_counter;
 	int dmd_counter_threshold = PD_DPM_CC_DMD_COUNTER_THRESHOLD;
+	ts64_interval.tv_sec = 0;
+	ts64_interval.tv_nsec = abnormal_cc_interval * NSEC_PER_MSEC;
 	ts64_dmd_interval.tv_sec = PD_DPM_CC_DMD_INTERVAL;
 	ts64_dmd_interval.tv_nsec = 0;
 
@@ -1193,7 +1268,15 @@ int pd_dpm_handle_pe_event(unsigned long event, void *data)
 					}
 					hwlog_info("%s UNATTACHED\r\n", __func__);
 				}
-
+#ifdef CONFIG_TYPEC_CAP_CUSTOM_SRC2
+				if(support_smart_holder){
+					if(g_pd_smart_holder)
+					{
+						hishow_notify_android_uevent(HISHOW_DEVICE_OFFLINE,HISHOW_USB_DEVICE);
+					}
+					g_pd_smart_holder = false;
+				}
+#endif
 				reinit_typec_completion();
 				break;
 
@@ -1213,6 +1296,23 @@ int pd_dpm_handle_pe_event(unsigned long event, void *data)
 				hwlog_info("%s ATTACHED_CUSTOM_SRC\r\n", __func__);
 				typec_complete(COMPLETE_FROM_TYPEC_CHANGE);
 				break;
+#ifdef CONFIG_TYPEC_CAP_CUSTOM_SRC2
+			case PD_DPM_TYPEC_ATTACHED_CUSTOM_SRC2:
+				if(support_smart_holder) {
+					usb_event = PD_DPM_USB_TYPEC_DEVICE_ATTACHED;
+					hwlog_info("%s ATTACHED_CUSTOM_SRC2\r\n", __func__);
+					if(g_cable_vdo_ops && g_cable_vdo_ops->is_cust_src2_cable())
+					{
+						if(!g_pd_smart_holder)
+						{
+							hishow_notify_android_uevent(HISHOW_DEVICE_ONLINE,HISHOW_USB_DEVICE);
+						}
+						g_pd_smart_holder = true;
+					}
+					typec_complete(COMPLETE_FROM_TYPEC_CHANGE);
+				}
+				break;
+#endif
 			case PD_DPM_TYPEC_ATTACHED_DEBUG:
 				pd_dpm_set_cc_voltage(PD_DPM_CC_VOLT_SNK_DFT);
 				break;
@@ -1385,12 +1485,17 @@ static int pd_dpm_parse_dt(struct pd_dpm_info *info,
 	}
 	hwlog_info("moisture_detection_by_cc_enable = %d!\n", moisture_detection_by_cc_enable);
 
+#ifdef CONFIG_TYPEC_CAP_CUSTOM_SRC2
+	if (of_property_read_u32(np,"support_smart_holder", &support_smart_holder)) {
+			hwlog_err("get support_smart_holder fail!\n");
+	}
+	hwlog_info("support_smart_holder = %d!\n", support_smart_holder);
+#endif
 	if (of_property_read_u32(np, "support_analog_audio", &support_analog_audio)) {
 		hwlog_err("get support_analog_audio fail!\n");
 		support_analog_audio = 1;
 	}
 	hwlog_info("support_analog_audio = %d!\n", support_analog_audio);
-
 	return 0;
 }
 
@@ -1538,8 +1643,9 @@ static bool pd_dpm_combphy_notify_event_compare(struct pd_dpm_combphy_event even
 }
 int pd_dpm_handle_combphy_event(struct pd_dpm_combphy_event event)
 {
-	hwlog_info("%s +\n", __func__);
 	int ret = 0;
+
+	hwlog_info("%s +\n", __func__);
 	mutex_lock(&g_pd_di->pd_combphy_notify_lock);
 	if (g_pd_di->last_combphy_notify_event.dev_type == TCA_DP_IN || g_pd_di->last_combphy_notify_event.dev_type == TCA_DP_OUT || g_pd_di->last_combphy_notify_event.dev_type == TCA_ID_FALL_EVENT) {
 		if ((event.dev_type == TCA_CHARGER_CONNECT_EVENT) || event.dev_type == TCA_CHARGER_DISCONNECT_EVENT) {
@@ -1579,11 +1685,10 @@ static int pd_dpm_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct pd_dpm_info *di;
-	enum hisi_charger_type type;
-	hwlog_info("%s +\n", __func__);
-
 	struct dual_role_phy_desc *desc;
 	struct dual_role_phy_instance *dual_role;
+	enum hisi_charger_type type;
+	hwlog_info("%s +\n", __func__);
 #ifdef CONFIG_CONTEXTHUB_PD
 	pd_dpm_init_combphy_notify_event_buffer();
 #endif

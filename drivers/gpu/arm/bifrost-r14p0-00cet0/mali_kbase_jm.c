@@ -74,7 +74,7 @@ u32 kbase_jm_kick(struct kbase_device *kbdev, u32 js_mask)
 		if (kbase_jm_next_job(kbdev, js, nr_jobs_to_submit))
 			ret_mask |= (1 << js);
 
-		js_mask &= ~(1 << js);
+		js_mask &= ~(1 << js);//lint !e502
 	}
 
 	return ret_mask;

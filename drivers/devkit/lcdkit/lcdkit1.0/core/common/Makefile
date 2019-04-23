@@ -1,3 +1,8 @@
+
+ifneq ($(TARGET_BUILD_VARIANT),user)
+EXTRA_CFLAGS += -DLCDKIT_DEBUG_ENABLE
+endif
+
 obj-$(CONFIG_LCDKIT_DRIVER)	+= lcdkit_panel.o
 obj-$(CONFIG_LCDKIT_DRIVER)	+= lcdkit_fb_util.o
 obj-$(CONFIG_LCDKIT_DRIVER)	+= lcdkit_debug.o

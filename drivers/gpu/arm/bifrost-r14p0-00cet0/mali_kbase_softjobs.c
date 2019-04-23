@@ -605,7 +605,7 @@ static void kbase_debug_copy_finish(struct kbase_jd_atom *katom)
 
 	katom->softjob_data = NULL;
 }
-
+/*lint -e578*/
 static int kbase_debug_copy_prepare(struct kbase_jd_atom *katom)
 {
 	struct kbase_debug_copy_buffer *buffers;
@@ -691,8 +691,8 @@ static int kbase_debug_copy_prepare(struct kbase_jd_atom *katom)
 				katom->kctx, user_extres.ext_resource &
 				~BASE_EXT_RES_ACCESS_EXCLUSIVE);
 
-		if (NULL == reg || NULL == reg->gpu_alloc ||
-				(reg->flags & KBASE_REG_FREE)) {
+		if (kbase_is_region_invalid_or_free(reg) ||
+			reg->gpu_alloc == NULL) {
 			ret = -EINVAL;
 			goto out_unlock;
 		}
@@ -747,11 +747,12 @@ out_cleanup:
 	/* Frees allocated memory for kbase_debug_copy_job struct, including
 	 * members, and sets jc to 0 */
 	kbase_debug_copy_finish(katom);
-	kfree(user_buffers);
+	kfree(user_buffers);//lint !e668
 
 	return ret;
 }
-
+/*lint +e578*/
+/*lint -e1058*/
 static void kbase_mem_copy_from_extres_page(struct kbase_context *kctx,
 		void *extres_page, struct page **pages, unsigned int nr_pages,
 		unsigned int *target_page_nr, size_t offset, size_t *to_copy)
@@ -793,7 +794,9 @@ static void kbase_mem_copy_from_extres_page(struct kbase_context *kctx,
 
 	kunmap(pages[*target_page_nr]);
 }
-
+/*lint +e1058*/
+/*lint -e574*/
+/*lint -e527*/
 static int kbase_mem_copy_from_extres(struct kbase_context *kctx,
 		struct kbase_debug_copy_buffer *buf_data)
 {
@@ -887,7 +890,7 @@ out_unlock:
 	return ret;
 
 }
-
+/*lint +e574*/
 static int kbase_debug_copy(struct kbase_jd_atom *katom)
 {
 	struct kbase_debug_copy_buffer *buffers = katom->softjob_data;
@@ -905,7 +908,8 @@ static int kbase_debug_copy(struct kbase_jd_atom *katom)
 
 	return 0;
 }
-
+/*lint +e527*/
+/*lint -e574*/
 static int kbase_jit_allocate_prepare(struct kbase_jd_atom *katom)
 {
 	__user void *data = (__user void *)(uintptr_t) katom->jc;
@@ -1010,7 +1014,7 @@ free_info:
 fail:
 	return ret;
 }
-
+/*lint +e574*/
 static u8 *kbase_jit_free_get_ids(struct kbase_jd_atom *katom)
 {
 	if (WARN_ON((katom->core_req & BASE_JD_REQ_SOFT_JOB_TYPE) !=
@@ -1379,12 +1383,12 @@ static int kbase_ext_res_prepare(struct kbase_jd_atom *katom)
 		ret = -ENOMEM;
 		goto fail;
 	}
-
+/*lint -e426*/
 	if (copy_from_user(ext_res, user_ext_res, copy_size) != 0) {
 		ret = -EINVAL;
 		goto free_info;
 	}
-
+/*lint +e426*/
 	/*
 	 * Overwrite the count with the first value incase it was changed
 	 * after the fact.
@@ -1412,7 +1416,7 @@ static void kbase_ext_res_process(struct kbase_jd_atom *katom, bool map)
 		goto failed_jc;
 
 	kbase_gpu_vm_lock(katom->kctx);
-
+/*lint -e574*/
 	for (i = 0; i < ext_res->count; i++) {
 		u64 gpu_addr;
 
@@ -1427,7 +1431,7 @@ static void kbase_ext_res_process(struct kbase_jd_atom *katom, bool map)
 					gpu_addr))
 				failed = true;
 	}
-
+/*lint +e574*/
 	/*
 	 * In the case of unmap we continue unmapping other resources in the
 	 * case of failure but will always report failure if _any_ unmap
@@ -1470,7 +1474,7 @@ static void kbase_ext_res_finish(struct kbase_jd_atom *katom)
 
 int kbase_process_soft_job(struct kbase_jd_atom *katom)
 {
-	KBASE_TLSTREAM_TL_EVENT_ATOM_SOFTJOB_START(katom);
+	KBASE_TLSTREAM_TL_EVENT_ATOM_SOFTJOB_START(katom);//lint !e648
 
 	switch (katom->core_req & BASE_JD_REQ_SOFT_JOB_TYPE) {
 	case BASE_JD_REQ_SOFT_DUMP_CPU_GPU_TIME:
@@ -1654,7 +1658,7 @@ int kbase_prepare_soft_job(struct kbase_jd_atom *katom)
 
 void kbase_finish_soft_job(struct kbase_jd_atom *katom)
 {
-	KBASE_TLSTREAM_TL_EVENT_ATOM_SOFTJOB_END(katom);
+	KBASE_TLSTREAM_TL_EVENT_ATOM_SOFTJOB_END(katom);//lint !e648
 	switch (katom->core_req & BASE_JD_REQ_SOFT_JOB_TYPE) {
 	case BASE_JD_REQ_SOFT_DUMP_CPU_GPU_TIME:
 		/* Nothing to do */
@@ -1732,7 +1736,7 @@ void kbase_resume_suspended_soft_jobs(struct kbase_device *kbdev)
 
 		if (kbase_process_soft_job(katom_iter) == 0) {
 			kbase_finish_soft_job(katom_iter);
-			resched |= jd_done_nolock(katom_iter, NULL);
+			resched |= jd_done_nolock(katom_iter, NULL);//lint !e514
 		} else {
 			KBASE_DEBUG_ASSERT((katom_iter->core_req &
 					BASE_JD_REQ_SOFT_JOB_TYPE)

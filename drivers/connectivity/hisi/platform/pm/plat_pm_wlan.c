@@ -1434,12 +1434,14 @@ restart_timer:
 
 }
 
+
 void wlan_pm_deepsleep_delay_timeout_02(struct wlan_pm_s *pm_data)
 {
     oal_wake_unlock(&pm_data->st_deepsleep_wakelock);
 
     OAL_IO_PRINT("wlan_pm_deepsleep_delay_timeout release wakelock....%lu", pm_data->st_deepsleep_wakelock.lock_count);
 }
+
 
 int32 wlan_pm_stop_deepsleep_delay_timer_02(struct wlan_pm_s *pm_data)
 {

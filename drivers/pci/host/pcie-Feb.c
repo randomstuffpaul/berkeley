@@ -728,9 +728,10 @@ static int kirin_pcie_turn_off(struct pcie_port *pp, enum rc_power_status on_fla
 
 	if (!atomic_read(&(pcie->is_power_on))) {
 		PCIE_PR_INFO("PCIe%d already power off", pcie->rc_id);
-		ret = 0;
 		goto MUTEX_UNLOCK;
 	}
+
+	atomic_set(&(pcie->is_power_on), 0);
 
 	if (kirin_pcie_noc_power(pcie, ENABLE)) {
 		ret = -1;
@@ -753,8 +754,7 @@ static int kirin_pcie_turn_off(struct pcie_port *pp, enum rc_power_status on_fla
 	if (pcie->dtsinfo.chip_type == CHIP_TYPE_CS) {
 		kirin_pcie_iso_ctrl(pcie, ENABLE);
 	}
-	atomic_set(&(pcie->is_power_on), 0);
-	ret = 0;
+
 	PCIE_PR_DEBUG("-- OFF --");
 
 MUTEX_UNLOCK:

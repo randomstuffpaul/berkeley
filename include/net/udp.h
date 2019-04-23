@@ -36,7 +36,7 @@
 #endif /* CONFIG_HW_NETWORK_MEASUREMENT */
 
 #ifdef CONFIG_HUAWEI_BASTET
-#include <huawei_platform/power/bastet/bastet.h>
+#include <huawei_platform/net/bastet/bastet.h>
 #endif
 /**
  *	struct udp_skb_cb  -  UDP(-Lite) private variables

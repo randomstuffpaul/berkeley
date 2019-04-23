@@ -57,11 +57,6 @@ void tusb422_clr_timer_func(void);
 int tusb422_start_timer(unsigned int timeout_ms);
 int tusb422_stop_timer(void);
 
-#ifdef CONFIG_CC_ANTI_CORROSION
-void tusb422_set_cc_mode(int mode);
-int tusb422_get_cc_mode(void);
-#endif
-
 #ifdef CONFIG_WAKELOCK
 void tusb422_wake_lock_attach(void);
 void tusb422_wake_lock_detach(void);

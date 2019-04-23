@@ -256,6 +256,7 @@ typedef struct smartpakit_priv {
 	// support pa number(now, max == SMARTPAKIT_PA_ID_MAX)
 	unsigned int pa_num;
 	unsigned int i2c_num; // load successful i2c module
+	unsigned int two_in_one;
 
 	int gpio_of_hw_reset[SMARTPAKIT_PA_ID_MAX];
 	int gpio_of_irq[SMARTPAKIT_PA_ID_MAX];
@@ -270,6 +271,7 @@ typedef struct smartpakit_priv {
 	bool resume_sequence_permission_enable;
 	smartpakit_pa_ctl_sequence_t resume_sequence;
 	smartpakit_pa_ctl_sequence_t poweron_sequence[SMARTPAKIT_PA_ID_MAX];
+	bool force_refresh_chip;
 
 	// misc device r/w settings
 	bool misc_rw_permission_enable;

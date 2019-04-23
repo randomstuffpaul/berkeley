@@ -160,8 +160,9 @@ SECTIONS
 	}
 	_etext = .;			/* End of text section */
 
-	RO_DATA(PAGE_SIZE)		/* everything from this point to     */
-	EXCEPTION_TABLE(8)		/* __init_begin will be marked RO NX */
+	RO_AFTER_INIT_SECTION(PAGE_SIZE)	/* everything from this point */
+	RO_DATA(PAGE_SIZE)			/* to __init_begin will be    */
+	EXCEPTION_TABLE(8)			/* marked RO NX		      */
 	NOTES
 	.cfc.data : {
 		CFC_DATA

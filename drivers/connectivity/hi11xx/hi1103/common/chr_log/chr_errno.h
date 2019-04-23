@@ -147,8 +147,8 @@ typedef enum
     CHR_WIFI_DRV_ERROR_POWER_ON_NON_BUS           = 0x06,   /*新增*/
     CHR_WIFI_DRV_ERROR_POWER_ON_SDIO_NO_READY     = 0x07,   /*新增*/
     CHR_WIFI_DRV_ERROR_POWER_ON_NO_CUSTOM_CALL    = 0x08,   /*新增*/
-    CHR_WIFI_DRV_ERROR_POWER_ON_CALL_TIMEOUT      = 0x08,   /*新增*/
-    CHR_WIFI_DRV_ERROR_POWER_ON_DEVICE_MEM_CHECK  = 0x09,   /*新增*/
+    CHR_WIFI_DRV_ERROR_POWER_ON_CALL_TIMEOUT      = 0x09,   /*新增*/
+    CHR_WIFI_DRV_ERROR_POWER_ON_DEVICE_MEM_CHECK  = 0x0A,   /*新增*/
 
     /* CHR_WIFI_DRV_EVENT_SCAN */
     CHR_WIFI_DRV_ERROR_SCAN_REFUSED            = 0x01,
@@ -365,7 +365,10 @@ typedef enum
 
     CHR_PLAT_DRV_ERROR_SLEEP_FORBID                = 0x22,  /*新增*/
 
-
+    CHR_PLAT_DRV_ERROR_WIFI_SUBSYS_DFR_SUCC        = 0x23,
+    CHR_PLAT_DRV_ERROR_WIFI_SYSTEM_DFR_SUCC        = 0x24,
+    CHR_PLAT_DRV_ERROR_BFGX_SUBSYS_DFR_SUCC        = 0x25,
+    CHR_PLAT_DRV_ERROR_BFGX_SYSTEM_DFR_SUCC        = 0x26,
 }CHR_PLAT_ERROR_ENUM;
 
 /************************ CHR ERRNO 错误码各位段组装 *************************/

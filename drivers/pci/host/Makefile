@@ -37,6 +37,7 @@ obj-$(CONFIG_PCIE_KIRIN) += pcie-kirin.o
 obj-$(CONFIG_PCIE_KIRIN) += pcie-kirin-common.o
 obj-$(CONFIG_PCIE_KIRIN_MNTN) += pcie-mntn.o
 obj-$(CONFIG_KIRIN_PCIE_TEST) += pcie-kirin-test.o
+obj-$(CONFIG_KIRIN_PCIE_TEST) += pcie_debugfs.o
 obj-$(CONFIG_PCIE_KIRIN_SLT) += pcie-slt.o
 obj-$(CONFIG_KIRIN_PCIE_JAN) += pcie-Jan.o
 obj-$(CONFIG_KIRIN_PCIE_FEB) += pcie-Feb.o

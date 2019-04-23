@@ -3,6 +3,7 @@ CFLAGS_trace.o				:= -I$(src)
 
 ccflags-$(CONFIG_USB_DWC3_FEB)	+= -DDWC3_OTG_FORCE_RESET_GCTL
 ccflags-$(CONFIG_USB_DWC3_MAR)	+= -DDWC3_USB_HOST_IN_IMMRETRY_EN -DDWC3_DEV_P4_PG_EN -DDWC3_RX_TRES_CFG_DIS -DDWC3_OTG_FORCE_RESET_GCTL
+ccflags-$(CONFIG_USB_DWC3_APR)	+= -DDWC3_OTG_FORCE_RESET_GCTL
 
 ifneq ($(TARGET_BUILD_VARIANT),user)
 EXTRA_CFLAGS += -DHISI_PLUGUSB_TEST
@@ -64,10 +65,11 @@ ifeq ($(CONFIG_USB_DWC3_VBUS_SPMI),y)
 endif
 
 obj-$(CONFIG_USB_DWC3_NOV)		+= dwc3-nov.o hisi_usb2_bc.o
-obj-$(CONFIG_USB_DWC3_OCT)		+= dwc3-oct.o hisi_usb2_bc.o hisi_usb3_misctrl.o
-obj-$(CONFIG_USB_DWC3_APR)		+= dwc3-apr.o hisi_usb3_bc.o hisi_usb3_misctrl.o  hisi_usb3_31phy.o
-obj-$(CONFIG_USB_DWC3_MAR)		+= dwc3-mar.o hisi_usb3_bc.o hisi_usb3_misctrl.o  hisi_usb3_31phy.o
-obj-$(CONFIG_USB_DWC3_FEB)		+= dwc3-feb.o hisi_usb3_bc.o hisi_usb3_misctrl.o  hisi_usb3_31phy.o
+obj-$(CONFIG_USB_DWC3_OCT)		+= dwc3-oct.o hisi_usb2_bc.o
+# hisi_usb3_31phy must before dwc3-plat(e.g mar,apr), module_init called base on the order in Makefile
+obj-$(CONFIG_USB_DWC3_APR)		+= hisi_usb3_31phy_v2.o dwc3-apr.o hisi_usb3_bc.o hisi_usb3_misctrl.o
+obj-$(CONFIG_USB_DWC3_MAR)		+= hisi_usb3_31phy.o dwc3-mar.o hisi_usb3_bc.o hisi_usb3_misctrl.o
+obj-$(CONFIG_USB_DWC3_FEB)		+= hisi_usb3_31phy.o dwc3-feb.o hisi_usb3_bc.o hisi_usb3_misctrl.o
 obj-$(CONFIG_USB_DWC3_JAN)		+= dwc3-jan.o hisi_usb3_bc.o
 obj-$(CONFIG_USB_DWC3_HISI)		+= dwc3-hisi.o usb-vbus.o
 
@@ -81,7 +83,7 @@ EXTRA_CFLAGS += -I$(srctree)/drivers/hisi/hifi_mailbox/ipcm
 EXTRA_CFLAGS += -I$(srctree)/drivers/hisi/hifi_dsp
 endif
 
-ifeq ($(CONFIG_USB_DWC3_MAR), y)
+ifneq ($(filter y,$(CONFIG_USB_DWC3_MAR) $(CONFIG_USB_DWC3_APR)),)
 EXTRA_CFLAGS += -DCOMBOPHY_VERSION_1_1
 EXTRA_CFLAGS += -DCOMBOPHY_FW_UPDATE
 endif

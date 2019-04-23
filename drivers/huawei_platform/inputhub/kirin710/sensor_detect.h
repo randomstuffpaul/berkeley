@@ -59,6 +59,11 @@
 #define BH1726_MAX_ThRESHOLD_NUM    14
 #define BH1726_MIN_ThRESHOLD_NUM    15
 
+#define APDS9308_MAX_THD_NUM    12
+#define APDS9308_MIN_THD_NUM    13
+
+extern int g_apds9308Flag;
+
 typedef uint16_t GPIO_NUM_TYPE;
 
 typedef enum {
@@ -192,6 +197,7 @@ struct als_platform_data {
 	s16 COE_D;
 	uint8_t als_phone_type;
 	uint8_t als_phone_version;
+	uint8_t als_gain_dynamic;
 	uint8_t als_phone_tp_colour;
 	uint8_t als_extend_data[SENSOR_PLATFORM_EXTEND_ALS_DATA_SIZE];
 };
@@ -219,6 +225,8 @@ struct ps_platform_data {
 	uint8_t pulse_len;
 	uint8_t pgain;
 	uint8_t led_current;
+	uint8_t led_limited_curr;
+	uint8_t pd_current;
 	uint8_t prox_avg;/* ps  Filtrate control*/
 	uint8_t offset_max;
 	uint8_t offset_min;

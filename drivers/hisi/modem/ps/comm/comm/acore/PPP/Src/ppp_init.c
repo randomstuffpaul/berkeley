@@ -68,9 +68,9 @@
 /*****************************************************************************
     协议栈打印打点方式下的.C文件宏定义
 *****************************************************************************/
-/*lint -e767  修改人: z57034; 检视人: g45205 原因简述: 打点日志文件宏ID定义 */
+/*lint -e767  原因简述: 打点日志文件宏ID定义 */
 #define    THIS_FILE_ID        PS_FILE_ID_PPP_INIT_C
-/*lint +e767  修改人: z57034; 检视人: g45205 */
+/*lint +e767  */
 
 /******************************************************************************
    PPP任务优先级高于modem_send高，比modem_recv任务低
@@ -81,9 +81,7 @@ extern VOS_VOID PPP_ProcDataNotify(VOS_VOID);
 extern VOS_UINT32  PPP_Snd1stDataNotify(VOS_VOID);
 extern VOS_VOID PPP_ProcAsFrmDataInd(struct MsgCB * pMsg);
 
-/*Add by y45445 for PS FUSION PC ST*/
 
-/*Add by y45445 for PS FUSION PC ST*/
 
 /******************************************************************************
    3 私有定义
@@ -513,8 +511,6 @@ VOS_UINT32    APP_PPP_PidInit(enum VOS_INIT_PHASE_DEFINE InitPhase )
 {
     VOS_INT32               i;
 
-    /*Add by y45445 for PS FUSION PC ST*/
-    /*Add by y45445 for PS FUSION PC ST*/
 
     switch( InitPhase )
     {
@@ -568,8 +564,6 @@ VOS_UINT32    APP_PPP_PidInit(enum VOS_INIT_PHASE_DEFINE InitPhase )
             PPP_EntInit();
 
 
-            /*Add by y45445 for PS FUSION PC ST*/
-            /*Add by y45445 for PS FUSION PC ST*/
             break;
 
     case   VOS_IP_FARMALLOC:

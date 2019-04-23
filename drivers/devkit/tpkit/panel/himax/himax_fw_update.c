@@ -44,6 +44,21 @@ enum IREFTABLE_TYPE{
 #define BOOT_UPDATE_FIRMWARE_FLAG_FILENAME	"/system/etc/tp_test_parameters/boot_update_firmware.flag"
 #define BOOT_UPDATE_FIRMWARE_FLAG "boot_update_firmware_flag:"
 
+#define HX_POLYNOMIAL 0x82F63B78
+#define HX_SW_CRC_MASK 0x7FFFFFFF
+#define HX_LAST_CRC_MASK 0xFFFFFFFF
+#define HX_SHIFT_4	4
+#define HX_4BYTE_LEN	32
+#define HX_SHIFT_8	8
+#define HX_SHIFT_16	16
+#define HX_SHIFT_24	24
+#define HX_FW_STARTING  0x00
+#define HX_1B_MASK	2
+#define HX_1SHFT	1
+#define HX_SHIFT_1BUF	1
+#define HX_SHIFT_2BUF	2
+#define HX_SHIFT_3BUF	3
+
 //used in firmware upgrade
 //1uA
 static unsigned char E_IrefTable_1[16][2] = { {0x20,0x0F},{0x20,0x1F},{0x20,0x2F},{0x20,0x3F},
@@ -102,7 +117,51 @@ uint8_t (*himax_calculateChecksum)(bool change_iref);
 int (*fts_ctpm_fw_upgrade_with_fs)(const unsigned char *fw, int len, bool change_iref);
 void (*himax_set_app_info)(struct himax_ts_data *ts);
 
+/*
+	parameter :
+		(1) fw file
+		(2) start address
+		(3) size of calculating
+	return :
+		(1) value = 0 => caclutae pass
+		(2) value != 0 => caclutae fail
+*/
+int hx_sw_calc_crc(const struct firmware *fw, uint32_t start_addr, int length)
+{
+	int i = 0, j = 0;
+	uint32_t fw_data = 0;
+	uint32_t fw_data_2 = 0;
+	uint32_t last_crc = HX_LAST_CRC_MASK;
+	uint32_t CRC = last_crc;
 
+	TS_LOG_INFO("%s: Entering!\n", __func__);
+
+	for (i = start_addr; i < start_addr + length; i+=HX_SHIFT_4) {
+		fw_data = fw->data[i];
+
+		fw_data_2 = fw->data[i + HX_SHIFT_1BUF];
+		fw_data += (fw_data_2) << HX_SHIFT_8;
+
+		fw_data_2 = fw->data[i + HX_SHIFT_2BUF];
+		fw_data += (fw_data_2) << HX_SHIFT_16;
+
+		fw_data_2 = fw->data[i + HX_SHIFT_3BUF];
+		fw_data += (fw_data_2) << HX_SHIFT_24;
+
+		CRC = fw_data ^ CRC;
+
+		for (j = 0; j < HX_4BYTE_LEN; j++)
+		{
+			if ((CRC % HX_1B_MASK) != 0)
+				CRC = ((CRC >> HX_1SHFT) & HX_SW_CRC_MASK) ^ HX_POLYNOMIAL;
+			else
+				CRC = ((CRC >> HX_1SHFT) & HX_SW_CRC_MASK);
+		}
+	}
+
+	TS_LOG_INFO("%s: End!\n", __func__);
+	return CRC;
+}
 
 static int himax_ManualMode(int enter)
 {
@@ -421,7 +480,7 @@ static void hx852xf_changeIref(int selected_iref){
 	}
 
 	//Register 0x59
-	if( i2c_himax_read(0x59, cmd, 4, sizeof(cmd), 3) < DEFAULT_RETRY_CNT){
+	if( i2c_himax_read(0x59, cmd, 4, sizeof(cmd), DEFAULT_RETRY_CNT) < 0){
 		TS_LOG_ERR("%s: i2c access fail!\n", __func__);
 		return ;
 	}
@@ -436,6 +495,7 @@ static void hx852xf_changeIref(int selected_iref){
 		TS_LOG_INFO("%s: IREF Pass",__func__);
 	}
 
+	return;
 }
 #define SELECTED_IREF_ROW 16
 #define SELECTED_IREF_COL 2
@@ -1060,9 +1120,11 @@ int hx852xes_fts_ctpm_fw_upgrade_with_fs(const unsigned char *fw, int len, bool 
 {
 	unsigned char* ImageBuffer = fw;
 	int fullFileLength = len;
-	int i;
-	uint8_t cmd[5], last_byte, prePage;
-	int FileLength;
+	int i = 0;
+	uint8_t cmd[5] = {0};
+	uint8_t last_byte = 0;
+	uint8_t prePage = 0;
+	int FileLength = 0;
 	uint8_t checksumResult = 0;
 
 	FileLength = fullFileLength;
@@ -1229,11 +1291,21 @@ static int check_firmware_version(const struct firmware *fw)
 	TS_LOG_INFO("himax curr FW_VER=%x,%x.\n", g_himax_ts_data->vendor_fw_ver_H, g_himax_ts_data->vendor_fw_ver_L);
 	TS_LOG_INFO("himax curr CFG_VER=%x.\n", g_himax_ts_data->vendor_config_ver);
 
+	if(IC_TYPE == HX_85XX_ES_SERIES_PWON) {
+		TS_LOG_INFO("Now bin file=%d\n", (int)fw->size);
+		if(hx_sw_calc_crc(fw, HX_FW_STARTING, (int)fw->size)) {
+			TS_LOG_ERR("The bin file is wrong, plz check it again!\n");
+			return FW_NO_NEED_TO_UPDATE;
+		} else {
+			TS_LOG_INFO("Bin File check OK, ready to check fw version!\n");
+		}
+	}
+
 	if(fw_update_boot_sd_flag == FW_UPDATE_BOOT)
 	{
 		if (( g_himax_ts_data->vendor_fw_ver_H < fw->data[FW_VER_MAJ_FLASH_ADDR] )
 			|| ( g_himax_ts_data->vendor_fw_ver_L < fw->data[FW_VER_MIN_FLASH_ADDR] )
-			|| ( g_himax_ts_data->vendor_config_ver < fw->data[FW_CFG_VER_FLASH_ADDR]))
+			|| ( g_himax_ts_data->vendor_config_ver != fw->data[FW_CFG_VER_FLASH_ADDR]))
 		{
 			TS_LOG_INFO("firmware is lower, must upgrade.\n");
 			return FW_NEED_TO_UPDATE;
@@ -1330,6 +1402,10 @@ static void  firmware_update(const struct firmware *fw)
 				TS_LOG_INFO("himax upgraded IMAGE FW_VER=%x,%x.\n",fw->data[FW_VER_MAJ_FLASH_ADDR],fw->data[FW_VER_MIN_FLASH_ADDR]);
 				TS_LOG_INFO("himax upgraded IMAGE CFG_VER=%x.\n",fw->data[FW_CFG_VER_FLASH_ADDR]);
 #endif
+				snprintf(g_himax_ts_data->tskit_himax_data->version_name, MAX_STR_LEN,"%x.%x.%x",
+						g_himax_ts_data->vendor_fw_ver_H,
+						g_himax_ts_data->vendor_fw_ver_L,
+						g_himax_ts_data->vendor_config_ver);
 			}
 			TS_LOG_INFO("himax flash write end");
 

@@ -35,13 +35,8 @@ static const struct partition partition_table_emmc[] =
   {PART_DFX,                        335*1024,          16*1024,        EMMC_USER_PART},/* dfx              16M   p24*/
   {PART_RRECORD,                    351*1024,          16*1024,        EMMC_USER_PART},/* rrecord          16M   p25*/
   {PART_CACHE,                      367*1024,         104*1024,        EMMC_USER_PART},/* cache           104M   p26*/
-#ifdef CONFIG_GCOV_LPMCU
   {PART_FW_LPM3_A,                  471*1024,             1024,        EMMC_USER_PART},/* fw_lpm3_a       256K   p27*/
   {PART_RESERVED3_A,                472*1024,           7*1024,        EMMC_USER_PART},/* reserved3A     7936K   p28*/
-#else
-  {PART_FW_LPM3_A,                  471*1024,              256,        EMMC_USER_PART},/* fw_lpm3_a       256K   p27*/
-  {PART_RESERVED3_A,                  482560,             7936,        EMMC_USER_PART},/* reserved3A     7936K   p28*/
-#endif
   {PART_IVP,                        479*1024,           2*1024,        EMMC_USER_PART},/* ivp               2M   p29*/
   {PART_HDCP_A,                     481*1024,           1*1024,        EMMC_USER_PART},/* PART_HDCP_A       1M   p30*/
   {PART_HISEE_IMG_A,                482*1024,           4*1024,        EMMC_USER_PART},/* part_hisee_img_a  4M   p31*/
@@ -82,10 +77,10 @@ static const struct partition partition_table_emmc[] =
   {PART_MODEMNVM_UPDATE_A,          864*1024,          16*1024,        EMMC_USER_PART},/* modemnvm_update_a 16M    p59*/
   {PART_MODEMNVM_CUST_A,            880*1024,          16*1024,        EMMC_USER_PART},/* modemnvm_cust_a   16M    p60*/
   {PART_PATCH_A,                    896*1024,          32*1024,        EMMC_USER_PART},/* patch             32M    p61*/
+#ifdef CONFIG_FACTORY_MODE
   {PART_VENDOR_A,                   928*1024,        1232*1024,        EMMC_USER_PART},/* vendor           760M    p62*/
   {PART_ODM_A,                     2160*1024,         192*1024,        EMMC_USER_PART},/* odm              192M    p63*/
   {PART_CUST_A,                    2352*1024,         192*1024,        EMMC_USER_PART},/* cust             192M    p64*/
-  #ifdef CONFIG_FACTORY_MODE
   {PART_SYSTEM_A,                  2544*1024,        5848*1024,        EMMC_USER_PART},/* system          5848M    p65*/
   {PART_PRODUCT_A,                 8392*1024,        1328*1024,        EMMC_USER_PART},/* product         1328M    p66*/
   {PART_VERSION_A,                 9720*1024,         576*1024,        EMMC_USER_PART},/* version          576M    p67*/
@@ -95,20 +90,42 @@ static const struct partition partition_table_emmc[] =
   {PART_FLASH_AGEING,             12080*1024,         512*1024,        EMMC_USER_PART},/* FLASH_AGEING     512M    p71*/
   {PART_USERDATA,                 12592*1024,  (4UL)*1024*1024,        EMMC_USER_PART},/* userdata           4G    p72*/
 #else
+#ifdef CONFIG_USE_EROFS
+  {PART_VENDOR_A,                   928*1024,         864*1024,        EMMC_USER_PART},/* vendor           864M    p62*/
+  {PART_ODM_A,                     1792*1024,         136*1024,        EMMC_USER_PART},/* odm              136M    p63*/
+  {PART_CUST_A,                    1928*1024,         136*1024,        EMMC_USER_PART},/* cust             136M    p64*/
 #ifdef CONFIG_MARKET_INTERNAL
-  {PART_SYSTEM_A,                 2544*1024,        4784*1024,         EMMC_USER_PART},/* system          4784M    p65*/
-  {PART_PRODUCT_A,                7328*1024,        1472*1024,         EMMC_USER_PART},/* product         1472M    p66*/
-  {PART_VERSION_A,                8800*1024,         576*1024,         EMMC_USER_PART},/* version          576M    p67*/
-  {PART_PRELOAD_A,                9376*1024,        1144*1024,         EMMC_USER_PART},/* preload_a       1144M    p68*/
-  {PART_USERDATA,                10520*1024,  (4UL)*1024*1024,         EMMC_USER_PART},/* userdata           4G    p69*/
+  {PART_SYSTEM_A,                  2064*1024,        3352*1024,        EMMC_USER_PART},/* system          3352M    p65*/
+  {PART_PRODUCT_A,                 5416*1024,        1472*1024,        EMMC_USER_PART},/* product         1472M    p66*/
+  {PART_VERSION_A,                 6888*1024,         576*1024,        EMMC_USER_PART},/* version          576M    p67*/
+  {PART_PRELOAD_A,                 7464*1024,        1144*1024,        EMMC_USER_PART},/* preload_a       1144M    p68*/
+  {PART_USERDATA,                  8608*1024,  (4UL)*1024*1024,        EMMC_USER_PART},/* userdata           4G    p69*/
 #else
-  {PART_SYSTEM_A,                 2544*1024,        5848*1024,         EMMC_USER_PART},/* system          5848M    p65*/
-  {PART_PRODUCT_A,                8392*1024,        1328*1024,         EMMC_USER_PART},/* product         1328M    p66*/
-  {PART_VERSION_A,                9720*1024,         576*1024,         EMMC_USER_PART},/* version          576M    p67*/
-  {PART_PRELOAD_A,               10296*1024,        1144*1024,         EMMC_USER_PART},/* preload_a       1144M    p68*/
-  {PART_USERDATA,                11440*1024,  (4UL)*1024*1024,         EMMC_USER_PART},/* userdata           4G    p69*/
+  {PART_SYSTEM_A,                  2064*1024,        4096*1024,        EMMC_USER_PART},/* system          4096M    p65*/
+  {PART_PRODUCT_A,                 6160*1024,        1328*1024,        EMMC_USER_PART},/* product         1328M    p66*/
+  {PART_VERSION_A,                 7488*1024,         576*1024,        EMMC_USER_PART},/* version          576M    p67*/
+  {PART_PRELOAD_A,                 8064*1024,        1144*1024,        EMMC_USER_PART},/* preload_a       1144M    p68*/
+  {PART_USERDATA,                  9208*1024,  (4UL)*1024*1024,        EMMC_USER_PART},/* userdata           4G    p69*/
 #endif
-  #endif
+#else
+  {PART_VENDOR_A,                   928*1024,        1232*1024,        EMMC_USER_PART},/* vendor           760M    p62*/
+  {PART_ODM_A,                     2160*1024,         192*1024,        EMMC_USER_PART},/* odm              192M    p63*/
+  {PART_CUST_A,                    2352*1024,         192*1024,        EMMC_USER_PART},/* cust             192M    p64*/
+#ifdef CONFIG_MARKET_INTERNAL
+  {PART_SYSTEM_A,                  2544*1024,        4784*1024,        EMMC_USER_PART},/* system          4784M    p65*/
+  {PART_PRODUCT_A,                 7328*1024,        1472*1024,        EMMC_USER_PART},/* product         1472M    p66*/
+  {PART_VERSION_A,                 8800*1024,         576*1024,        EMMC_USER_PART},/* version          576M    p67*/
+  {PART_PRELOAD_A,                 9376*1024,        1144*1024,        EMMC_USER_PART},/* preload_a       1144M    p68*/
+  {PART_USERDATA,                 10520*1024,  (4UL)*1024*1024,        EMMC_USER_PART},/* userdata           4G    p69*/
+#else
+  {PART_SYSTEM_A,                  2544*1024,        5848*1024,        EMMC_USER_PART},/* system          5848M    p65*/
+  {PART_PRODUCT_A,                 8392*1024,        1328*1024,        EMMC_USER_PART},/* product         1328M    p66*/
+  {PART_VERSION_A,                 9720*1024,         576*1024,        EMMC_USER_PART},/* version          576M    p67*/
+  {PART_PRELOAD_A,                10296*1024,        1144*1024,        EMMC_USER_PART},/* preload_a       1144M    p68*/
+  {PART_USERDATA,                 11440*1024,  (4UL)*1024*1024,        EMMC_USER_PART},/* userdata           4G    p69*/
+#endif
+#endif
+#endif
   {"0", 0, 0, 0},                                        /* total 11848M*/
 };
 #ifdef CONFIG_HISI_STORAGE_UFS_PARTITION
@@ -143,13 +160,8 @@ static const struct partition partition_table_ufs[] =
   {PART_DFX,                        327*1024,       16*1024,        UFS_PART_3},/* dfx                        16M    p20*/
   {PART_RRECORD,                    343*1024,       16*1024,        UFS_PART_3},/* rrecord                    16M    p21*/
   {PART_CACHE,                      359*1024,      104*1024,        UFS_PART_3},/* cache                     104M    p22*/
-#ifdef CONFIG_GCOV_LPMCU
   {PART_FW_LPM3_A,                  463*1024,          1024,        UFS_PART_3},/* fw_lpm3_a                 256K    p23*/
   {PART_RESERVED3_A,                464*1024,        7*1024,        UFS_PART_3},/* reserved3A               7936K    p24*/
-#else
-  {PART_FW_LPM3_A,                  463*1024,           256,        UFS_PART_3},/* fw_lpm3_a                 256K    p23*/
-  {PART_RESERVED3_A,                  474368,          7936,        UFS_PART_3},/* reserved3A               7936K    p24*/
-#endif
   {PART_IVP,                        471*1024,        2*1024,        UFS_PART_3},/* ivp                         2M    p25*/
   {PART_HDCP_A,                     473*1024,        1*1024,        UFS_PART_3},/* PART_HDCP_A                 1M    p26*/
   {PART_HISEE_IMG_A,                474*1024,        4*1024,        UFS_PART_3},/* part_hisee_img_a            4M    p27*/
@@ -190,10 +202,10 @@ static const struct partition partition_table_ufs[] =
   {PART_MODEMNVM_UPDATE_A,              856*1024,       16*1024,        UFS_PART_3},/* modemnvm_update_a          16M    p55*/
   {PART_MODEMNVM_CUST_A,                872*1024,       16*1024,        UFS_PART_3},/* modemnvm_cust_a            16M    p56*/
   {PART_PATCH_A,                        888*1024,       32*1024,        UFS_PART_3},/* patch                      32M    p57*/
-  {PART_VENDOR_A,                       920*1024,     1232*1024,        UFS_PART_3},/* vendor                   1232M    p58*/
-  {PART_ODM_A,                         2152*1024,      192*1024,        UFS_PART_3},/* odm                       192M    p59*/
-  {PART_CUST_A,                        2344*1024,      192*1024,        UFS_PART_3},/* cust                      192M    p60*/
 #ifdef CONFIG_FACTORY_MODE
+  {PART_VENDOR_A,                       920*1024,        1232*1024,        UFS_PART_3},/* vendor               1232M    p58*/
+  {PART_ODM_A,                         2152*1024,         192*1024,        UFS_PART_3},/* odm                   192M    p59*/
+  {PART_CUST_A,                        2344*1024,         192*1024,        UFS_PART_3},/* cust                  192M    p60*/
   {PART_SYSTEM_A,                      2536*1024,        5848*1024,        UFS_PART_3},/* system               5848M    p61*/
   {PART_PRODUCT_A,                     8384*1024,        1328*1024,        UFS_PART_3},/* product              1328M    p62*/
   {PART_VERSION_A,                     9712*1024,         576*1024,        UFS_PART_3},/* version               576M    p63*/
@@ -203,6 +215,27 @@ static const struct partition partition_table_ufs[] =
   {PART_FLASH_AGEING,                 12072*1024,         512*1024,        UFS_PART_3},/* FLASH_AGEING          512M    p67*/
   {PART_USERDATA,                     12584*1024,  (4UL)*1024*1024,        UFS_PART_3},/* userdata                4G    p68*/
 #else
+#ifdef CONFIG_USE_EROFS
+  {PART_VENDOR_A,                       920*1024,         864*1024,        UFS_PART_3},/* vendor                864M    p58*/
+  {PART_ODM_A,                         1784*1024,         136*1024,        UFS_PART_3},/* odm                   136M    p59*/
+  {PART_CUST_A,                        1920*1024,         136*1024,        UFS_PART_3},/* cust                  136M    p60*/
+#ifdef CONFIG_MARKET_INTERNAL
+  {PART_SYSTEM_A,                      2056*1024,        3352*1024,        UFS_PART_3},/* system               3352M    p61*/
+  {PART_PRODUCT_A,                     5408*1024,        1472*1024,        UFS_PART_3},/* product              1472M    p62*/
+  {PART_VERSION_A,                     6880*1024,         576*1024,        UFS_PART_3},/* version               576M    p63*/
+  {PART_PRELOAD_A,                     7456*1024,        1144*1024,        UFS_PART_3},/* preload_a            1144M    p64*/
+  {PART_USERDATA,                      8600*1024,  (4UL)*1024*1024,        UFS_PART_3},/* userdata                4G    p65*/
+#else
+  {PART_SYSTEM_A,                      2056*1024,        4096*1024,        UFS_PART_3},/* system               4096M    p61*/
+  {PART_PRODUCT_A,                     6152*1024,        1328*1024,        UFS_PART_3},/* product              1328M    p62*/
+  {PART_VERSION_A,                     7480*1024,         576*1024,        UFS_PART_3},/* version               576M    p63*/
+  {PART_PRELOAD_A,                     8056*1024,        1144*1024,        UFS_PART_3},/* preload_a            1144M    p64*/
+  {PART_USERDATA,                      9200*1024,  (4UL)*1024*1024,        UFS_PART_3},/* userdata                4G    p65*/
+#endif
+#else
+  {PART_VENDOR_A,                       920*1024,        1232*1024,        UFS_PART_3},/* vendor               1232M    p58*/
+  {PART_ODM_A,                         2152*1024,         192*1024,        UFS_PART_3},/* odm                   192M    p59*/
+  {PART_CUST_A,                        2344*1024,         192*1024,        UFS_PART_3},/* cust                  192M    p60*/
 #ifdef CONFIG_MARKET_INTERNAL
   {PART_SYSTEM_A,                      2536*1024,        4784*1024,        UFS_PART_3},/* system               4784M    p61*/
   {PART_PRODUCT_A,                     7320*1024,        1472*1024,        UFS_PART_3},/* product              1472M    p62*/
@@ -215,6 +248,7 @@ static const struct partition partition_table_ufs[] =
   {PART_VERSION_A,                     9712*1024,         576*1024,        UFS_PART_3},/* version               576M    p63*/
   {PART_PRELOAD_A,                    10288*1024,        1144*1024,        UFS_PART_3},/* preload_a            1144M    p64*/
   {PART_USERDATA,                     11432*1024,  (4UL)*1024*1024,        UFS_PART_3},/* userdata                4G    p65*/
+#endif
 #endif
 #endif
   {"0", 0, 0, 0},

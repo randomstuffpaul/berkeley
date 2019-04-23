@@ -39,6 +39,7 @@
 #define TOUCH_REPORT_CONFIG_SIZE 128
 #define APP_STATUS_POLL_TIMEOUT_MS 1000
 #define APP_STATUS_POLL_MS 100
+#define SYNA_FW_SUPPORT_ESD		true
 
 enum touch_status {
 	LIFT = 0,
@@ -79,6 +80,7 @@ enum touch_report_code {
 	TOUCH_TUNING_0D_BUTTONS_VARIANCE,
 	TOUCH_ROI_DATA = 0xCA,
 	TOUCH_GRIP_DATA = 0xCB,
+	TOUCH_ESD_DETECT = 0xCC,
 };
 
 struct object_data {
@@ -217,6 +219,7 @@ static int touch_parse_report(void)
 	unsigned char bits_m = 0;
 	unsigned char bits_l = 0;
 	unsigned char *touch_report = tcm_hcd->report.buffer.buf;
+	tcm_hcd->device_status_check = false;
 
 	touch_data = &touch_hcd->touch_data;
 	object_data = touch_hcd->touch_data.object_data;
@@ -511,6 +514,18 @@ static int touch_parse_report(void)
 			object_data[obj].grip_data = data;
 			offset += bits;
 			break;
+		case TOUCH_ESD_DETECT:
+			bits = config_data[idx++];
+			tcm_hcd->device_status_check = SYNA_FW_SUPPORT_ESD;
+			retval = touch_get_report_data(offset, bits, &data);
+			if (retval < 0) {
+				TS_LOG_INFO("Failed to get grip data\n");
+				return retval;
+			}
+			tcm_hcd->device_status= data;
+			TS_LOG_DEBUG("device_status = 0%2x\n", tcm_hcd->device_status);
+			offset += bits;
+			break;
 		}
 	}
 
@@ -534,12 +549,15 @@ void touch_report(struct ts_fingers *info)
 	unsigned int wx = 0;
 	unsigned int wy = 0;
 	unsigned int temp = 0;
-	unsigned int status = 0;
+	int status = 0;
 	unsigned int touch_count = 0;
 	struct touch_data *touch_data = NULL;
 	struct object_data *object_data = NULL;
 	struct syna_tcm_hcd *tcm_hcd = NULL;
 	const struct syna_tcm_board_data *bdata = NULL;
+	unsigned char esd_report = 0;
+	unsigned char touch_report_fw = 0;
+	static int last_touch_count = 0;
 
 	if((!touch_hcd)||(!touch_hcd->tcm_hcd)||(!touch_hcd->tcm_hcd->bdata)) {
 		TS_LOG_ERR("%s, touch_hcd is _NULL\n", __func__);
@@ -565,66 +583,83 @@ void touch_report(struct ts_fingers *info)
 		goto exit;
 	}
 
-	touch_data = &touch_hcd->touch_data;
-	object_data = touch_hcd->touch_data.object_data;
-
-	touch_count = 0;
-	for (idx = 0; idx < touch_hcd->max_objects; idx++) {
-		if (touch_hcd->prev_status[idx] == LIFT &&
-				object_data[idx].status == LIFT)
-			status = NOP;
-		else
-			status = object_data[idx].status;
-		TS_LOG_DEBUG("status = %d\n", status);
-		switch (status) {
-		case LIFT:
-			break;
-		case FINGER:
-		case GLOVED_FINGER:
-			x = object_data[idx].x_pos;
-			y = object_data[idx].y_pos;
-			wx = object_data[idx].x_width;
-			wy = object_data[idx].y_width;
-			z = object_data[idx].z;
-			if (bdata->swap_axes) {
-				temp = x;
-				x = y;
-				y = temp;
-			}
-			if (bdata->x_flip)
-				x = touch_hcd->input_params.max_x - x;
-			if (bdata->y_flip)
-				y = touch_hcd->input_params.max_y - y;
-			info->fingers[idx].status = 1 << 6;
-			info->fingers[idx].x = x;
-			info->fingers[idx].y = y;
-			if (tcm_hcd->aft_wxy_enable) {
-				info->fingers[idx].wx= wx;
-				info->fingers[idx].wy = wy;
-			} else {
-				info->fingers[idx].major= wx;
-				info->fingers[idx].minor= wy;
-			}
-			info->fingers[idx].sg = 0;
-			info->fingers[idx].pressure = z;
-			info->fingers[idx].yer = (object_data[idx].grip_data >> 24) & 0xFF;
-			info->fingers[idx].xer = (object_data[idx].grip_data >> 16) & 0xFF;
-			info->fingers[idx].ewy = (object_data[idx].grip_data >> 8) & 0xFF;
-			info->fingers[idx].ewx = (object_data[idx].grip_data >> 0) & 0xFF;
-			TS_LOG_DEBUG("Finger %d: x = %d, y = %d\n", idx, x, y);
-			TS_LOG_DEBUG("Finger %d: ewx= %d, ewy= %d\n", 
-				idx, info->fingers[idx].ewx , info->fingers[idx].ewy);
-			TS_LOG_DEBUG("Finger %d: xer= %d, yer= %d\n", idx, info->fingers[idx].xer, info->fingers[idx].yer);
-			touch_count++;
-			break;
-		default:
-			break;
-		}
-		touch_hcd->prev_status[idx] = object_data[idx].status;
+	if (SYNA_FW_SUPPORT_ESD == tcm_hcd->device_status_check) {
+		touch_report_fw = (unsigned char)(tcm_hcd->device_status & 0xff); /* If the INT is TOUCH, the value is 0x01, otherwise is 0x00. */
+		esd_report = (unsigned char)(tcm_hcd->device_status >> 8); /* If the INT is ESD, the value is 0x01, otherwise is 0x00.  */
+		TS_LOG_DEBUG("touch_report = %x, esd_report = %x\n", touch_report_fw, esd_report);
 	}
+	/************************************************************************************************/
+	/* if not goto ESD case(firmware not support ESD report), 'device_status_check' value is false.	*/
+	/* if goto ESD case(firmware support), 'device_status_check' value is true.						*/
+	/*		if this INT is TOUCH, neet to report touch.												*/
+	/*		if this INT is ESD, not neet to report touch,report ESD event.							*/
+	/************************************************************************************************/
+	if ((NEED_REPORT == touch_report_fw && SYNA_FW_SUPPORT_ESD == tcm_hcd->device_status_check) || (!tcm_hcd->device_status_check)) {
+		touch_data = &touch_hcd->touch_data;
+		object_data = touch_hcd->touch_data.object_data;
 
-	info->cur_finger_number = touch_count;
+		touch_count = 0;
+		for (idx = 0; idx < touch_hcd->max_objects; idx++) {
+			if (touch_hcd->prev_status[idx] == LIFT &&
+					object_data[idx].status == LIFT)
+				status = NOP;
+			else
+				status = object_data[idx].status;
+			TS_LOG_DEBUG("status = %d\n", status);
+			switch (status) {
+			case LIFT:
+				break;
+			case FINGER:
+			case GLOVED_FINGER:
+				x = object_data[idx].x_pos;
+				y = object_data[idx].y_pos;
+				wx = object_data[idx].x_width;
+				wy = object_data[idx].y_width;
+				z = object_data[idx].z;
+				if (bdata->swap_axes) {
+					temp = x;
+					x = y;
+					y = temp;
+				}
+				if (bdata->x_flip)
+					x = touch_hcd->input_params.max_x - x;
+				if (bdata->y_flip)
+					y = touch_hcd->input_params.max_y - y;
+				info->fingers[idx].status = 1 << 6;
+				info->fingers[idx].x = x;
+				info->fingers[idx].y = y;
+				if (tcm_hcd->aft_wxy_enable) {
+					info->fingers[idx].wx= wx;
+					info->fingers[idx].wy = wy;
+				} else {
+					info->fingers[idx].major= wx;
+					info->fingers[idx].minor= wy;
+				}
+				info->fingers[idx].sg = 0;
+				info->fingers[idx].pressure = z;
+				info->fingers[idx].yer = (object_data[idx].grip_data >> 24) & 0xFF;
+				info->fingers[idx].xer = (object_data[idx].grip_data >> 16) & 0xFF;
+				info->fingers[idx].ewy = (object_data[idx].grip_data >> 8) & 0xFF;
+				info->fingers[idx].ewx = (object_data[idx].grip_data >> 0) & 0xFF;
+				TS_LOG_DEBUG("Finger %d: ewx= %d, ewy= %d\n",
+					idx, info->fingers[idx].ewx , info->fingers[idx].ewy);
+				TS_LOG_DEBUG("Finger %d: xer= %d, yer= %d\n", idx, info->fingers[idx].xer, info->fingers[idx].yer);
+				touch_count++;
+				break;
+			default:
+				break;
+			}
+			touch_hcd->prev_status[idx] = object_data[idx].status;
+		}
 
+		info->cur_finger_number = touch_count;
+		last_touch_count = touch_count;
+	}
+	tcm_hcd->esd_report_status = NOT_NEED_REPORT;
+	/* firmware support ESD repoert and this INT is ESD */
+	if (!last_touch_count && !touch_count && NEED_REPORT == esd_report && SYNA_FW_SUPPORT_ESD == tcm_hcd->device_status_check) {
+		tcm_hcd->esd_report_status = NEED_REPORT;
+	}
 exit:
 	return;
 }
@@ -658,6 +693,9 @@ static int touch_get_input_params(void)
 	}
 
 	report_config = kzalloc(TOUCH_REPORT_CONFIG_SIZE + 4, GFP_KERNEL);
+	if (!report_config) {
+		TS_LOG_ERR("%s: kzalloc fail\n", __func__);
+	}
 
 	LOCK_BUFFER(tcm_hcd->config);
 	retval = syna_tcm_alloc_mem(tcm_hcd,

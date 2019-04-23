@@ -290,6 +290,9 @@
 #define CSMI_FIFO_DELAY_TIMEOUT								   5000
 #define CSMI_FIFO_WAIT_TIMEOUT								   5500
 
+#define CSMI_FIFO_CLEAR_MASK								   0x40404040
+
+
 /* Get/Set Message fields Macros */
 
 /**
@@ -1002,9 +1005,7 @@ static uint32_t CSMI_FifoTransmit(CSMI_Instance *instance, uint8_t *txFifoData, 
 		CSMI_WriteReg(MESSAGE_FIFOS.MC_FIFO[i], *txFifoData32b);
 	}
 
-	reg = CSMI_ReadReg(COMMAND_STATUS.COMMAND);
-	COMMAND_STATUS__COMMAND__TX_PUSH__SET(reg);
-	CSMI_WriteReg(COMMAND_STATUS.COMMAND, reg);
+	CSMI_WriteReg(COMMAND_STATUS.COMMAND, BIT(COMMAND_STATUS__COMMAND__TX_PUSH__SHIFT));
 
 	do { //If TX_PUSH command is still in progress, wait until it's finished
 		reg = CSMI_ReadReg(COMMAND_STATUS.STATE);
@@ -1044,7 +1045,6 @@ static uint32_t CSMI_FifoReceive(CSMI_Instance *instance, uint8_t *rxFifoData, u
 	uint8_t regsToRead = 0;
 	uint8_t result = 0;
 	uint32_t *rxFifoData32b = (uint32_t *) rxFifoData;
-	uint32_t reg;
 	rxFifoFlag = CSMI_ReadReg(MESSAGE_FIFOS.MC_FIFO[CSMI_RX_FIFO_FLAG_OFFSET]);
 
 	if (rxFifoFlag & (1 << CSMI_RX_FIFO_FLAG_RX_OVERFLOW)) { //Message Overflow
@@ -1066,9 +1066,7 @@ static uint32_t CSMI_FifoReceive(CSMI_Instance *instance, uint8_t *rxFifoData, u
 	result = rxFifoMsgSize;
 
 rxFifoEnd:
-	reg = CSMI_ReadReg(COMMAND_STATUS.COMMAND);
-	COMMAND_STATUS__COMMAND__RX_PULL__SET(reg);
-	CSMI_WriteReg(COMMAND_STATUS.COMMAND, reg);
+	CSMI_WriteReg(COMMAND_STATUS.COMMAND, BIT(COMMAND_STATUS__COMMAND__RX_PULL__SHIFT));
 	return result;
 }
 
@@ -1464,9 +1462,7 @@ static void CSMI_CfgStrobeSet(CSMI_Instance *instance, bool force) {
 			return;
 	}
 
-	reg = CSMI_ReadReg(COMMAND_STATUS.COMMAND);
-	COMMAND_STATUS__COMMAND__CFG_STROBE__SET(reg);
-	CSMI_WriteReg(COMMAND_STATUS.COMMAND, reg);
+	CSMI_WriteReg(COMMAND_STATUS.COMMAND, BIT(COMMAND_STATUS__COMMAND__CFG_STROBE__SHIFT));
 }
 
 /*
@@ -1629,7 +1625,7 @@ static uint32_t CSMI_Isr(void* pD) {
 	if (dataPortInterrupt != 0) {
 
 		for (i = 0; i < 16; i++) {
-			reg = CSMI_ReadReg(PORT_INTERRUPTS.P_INT[i]);
+			reg = CSMI_ReadReg(PORT_INTERRUPTS.P_INT[i]) & (~CSMI_FIFO_CLEAR_MASK);
 
 			if (reg == 0) //If all bits in the register are low, then there is no interrupt
 				continue;
@@ -1932,7 +1928,7 @@ static uint32_t CSMI_ClearDataPortFifo(void* pD, uint8_t portNumber) {
 	portAddress = portNumber / 4;
 	//There are 4 Port registers per 1 32 bit P_INT_EN register
 
-	reg = CSMI_ReadReg(PORT_INTERRUPTS.P_INT_EN[portAddress]);
+	reg = CSMI_ReadReg(PORT_INTERRUPTS.P_INT_EN[portAddress]) & (~CSMI_FIFO_CLEAR_MASK);
 
 	switch (portNumber % 4) {
 	case 0:
@@ -1972,7 +1968,7 @@ static uint32_t CSMI_SetPresenceRateGeneration(void* pD, uint8_t portNumber, boo
 	portAddress = portNumber / 4;
 	//There are 4 Port registers per 1 32 bit P_INT_EN register
 
-	reg = CSMI_ReadReg(PORT_INTERRUPTS.P_INT_EN[portAddress]);
+	reg = CSMI_ReadReg(PORT_INTERRUPTS.P_INT_EN[portAddress]) & (~CSMI_FIFO_CLEAR_MASK);
 
 	switch (portNumber % 4) {
 	case 0:
@@ -2583,7 +2579,6 @@ static uint32_t CSMI_GetDataPortStatus(void* pD, uint8_t portNumber, CSMI_DataPo
 
 static uint32_t CSMI_Unfreeze(void* pD) {
 	CSMI_Instance* instance;
-	uint32_t reg;
 
 	uint32_t result = CSMI_UnfreezeSanity(pD);
 	if (result) {
@@ -2592,9 +2587,7 @@ static uint32_t CSMI_Unfreeze(void* pD) {
 	}
 
 	instance = (CSMI_Instance*) pD;
-	reg = CSMI_ReadReg(COMMAND_STATUS.COMMAND);
-	COMMAND_STATUS__COMMAND__UNFREEZE__SET(reg);
-	CSMI_WriteReg(COMMAND_STATUS.COMMAND, reg);
+	CSMI_WriteReg(COMMAND_STATUS.COMMAND, BIT(COMMAND_STATUS__COMMAND__UNFREEZE__SHIFT));
 
 	return 0;
 }
@@ -2602,7 +2595,6 @@ static uint32_t CSMI_Unfreeze(void* pD) {
 
 static uint32_t CSMI_CancelConfiguration(void* pD) {
 	CSMI_Instance* instance;
-	uint32_t reg = 0;
 
 	uint32_t result = CSMI_CancelConfigurationSanity(pD);
 	if (result) {
@@ -2611,10 +2603,7 @@ static uint32_t CSMI_CancelConfiguration(void* pD) {
 	}
 
 	instance = (CSMI_Instance*) pD;
-	reg = CSMI_ReadReg(COMMAND_STATUS.COMMAND);
-	COMMAND_STATUS__COMMAND__CFG_STROBE__CLR(reg);
-	COMMAND_STATUS__COMMAND__CFG_STROBE_CLR__SET(reg);
-	CSMI_WriteReg(COMMAND_STATUS.COMMAND, reg);
+	CSMI_WriteReg(COMMAND_STATUS.COMMAND, BIT(COMMAND_STATUS__COMMAND__CFG_STROBE_CLR__SHIFT));
 
 	return 0;
 }

@@ -165,6 +165,21 @@ enum fcp_check_stage_type fcp_get_stage_status(void)
 }
 
 /**********************************************************
+*  Function:       charge_get_charger_type
+*  Description:    get the charger type
+*  Parameters:     NULL
+*  return value:   NULL
+**********************************************************/
+enum usb_charger_type charge_get_charger_type(void)
+{
+	if (NULL == g_extra_ops || NULL == g_extra_ops->get_charger_type) {
+		hwlog_err("g_extra_ops->get_charger_type is NULL.\n");
+		return CHARGER_REMOVED;
+	}
+	return g_extra_ops->get_charger_type();
+}
+
+/**********************************************************
 *  Function:       charge_set_charge_state
 *  Description:    set charge stop or enable
 *  Parameters:     state:0 stop 1 enable

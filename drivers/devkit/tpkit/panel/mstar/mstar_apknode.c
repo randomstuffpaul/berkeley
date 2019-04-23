@@ -2436,6 +2436,11 @@ static ssize_t mstar_apknode_jni_msgtool_write(struct file *pFile, const char __
             mstar_erase_emem(EMEM_MAIN);
             TS_LOG_INFO("end Erase Flash\n");
         }
+        else if (strcmp(buffer, "reset") == 0) {
+            TS_LOG_INFO("start reset\n");
+            mstar_dev_hw_reset();
+            TS_LOG_INFO("end reset\n");
+        }
     }
 out:
     return nCount;

@@ -38,7 +38,7 @@
 #include <linux/hisi/hisi_mailbox_dev.h>
 #include <linux/hisi/hisi_rproc.h>
 #include <linux/hisi/rdr_pub.h>
-#include <soc_wdtv100_interface.h>
+#include <soc_rtctimerwdt_interface.h>
 #include <linux/../../kernel/sched/sched.h>
 #include <linux/../../kernel/workqueue_internal.h>
 #include <linux/hisi/rdr_hisi_platform.h>
@@ -56,18 +56,18 @@
 
 
 /* watchdog register offsets and masks */
-#define WDTLOAD         SOC_WDTV100_WDLOAD_ADDR(0)
+#define WDTLOAD         SOC_RTCTIMERWDT_WDLOAD_ADDR(0)
 #define LOAD_MIN    0x00000001
 #define LOAD_MAX    0xFFFFFFFF
-#define WDTVALUE        SOC_WDTV100_WDVALUE_ADDR(0)
-#define WDTCONTROL      SOC_WDTV100_WDCONTROL_ADDR(0)
+#define WDTVALUE        SOC_RTCTIMERWDT_WDVALUE_ADDR(0)
+#define WDTCONTROL      SOC_RTCTIMERWDT_WDCONTROL_ADDR(0)
     /* control register masks */
-#define INT_ENABLE  (1 << SOC_WDTV100_WDCONTROL_inten_START)
-#define RESET_ENABLE    (1 << SOC_WDTV100_WDCONTROL_resen_START)
-#define WDTINTCLR       SOC_WDTV100_WDINTCLR_ADDR(0)
-#define WDTRIS          SOC_WDTV100_WDRIS_ADDR(0)
-#define INT_MASK    (1 << SOC_WDTV100_WDRIS_wdogris_START)
-#define WDTLOCK         SOC_WDTV100_WDLOCK_ADDR(0)
+#define INT_ENABLE  (1 << SOC_RTCTIMERWDT_WDCONTROL_inten_START)
+#define RESET_ENABLE    (1 << SOC_RTCTIMERWDT_WDCONTROL_resen_START)
+#define WDTINTCLR       SOC_RTCTIMERWDT_WDINTCLR_ADDR(0)
+#define WDTRIS          SOC_RTCTIMERWDT_WDRIS_ADDR(0)
+#define INT_MASK    (1 << SOC_RTCTIMERWDT_WDRIS_wdogris_START)
+#define WDTLOCK         SOC_RTCTIMERWDT_WDLOCK_ADDR(0)
 #define UNLOCK      0x1ACCE551
 #define LOCK        0x00000001
 

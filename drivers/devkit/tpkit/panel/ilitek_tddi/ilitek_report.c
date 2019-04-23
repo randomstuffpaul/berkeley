@@ -3,6 +3,9 @@
 #include "ilitek_protocol.h"
 #include "ilitek_config.h"
 #include "ilitek_report.h"
+#if defined(CONFIG_HUAWEI_DEVKIT_QCOM)
+#include <linux/i2c/i2c-msm-v2.h>
+#endif
 
 static struct ilitek_report *g_ilitek_rpt = NULL;
 
@@ -367,12 +370,48 @@ free_all_data:
 int ilitek_report_data(struct ts_fingers *p_info)
 {
     int ret = 0;
+    int i2c_retries = I2C_RW_TRIES;
+    struct i2c_adapter* adapter = NULL;
+#if defined(CONFIG_HUAWEI_DEVKIT_QCOM)
+    struct i2c_msm_ctrl *ctrl = NULL;
+#endif
     struct ilitek_protocol *p_pro = g_ilitek_ts->pro;
     struct ts_kit_device_data *ts_dev_data = g_ilitek_ts->ts_dev_data;
+    struct ts_kit_platform_data *ts_platform_data = ts_dev_data->ts_platform_data;
+    struct ts_easy_wakeup_info *gesture_report_info = &ts_dev_data->easy_wakeup_info;
 
     if (!g_ilitek_ts->isEnableFR) {
-        return 0;
+        return -EINVAL;
     }
+
+    adapter = i2c_get_adapter(ts_platform_data->bops->bus_id);
+    if (IS_ERR_OR_NULL(adapter)) {
+        ilitek_err("i2c_get_adapter failed\n");
+        return -EIO;
+    }
+
+#if defined(CONFIG_HUAWEI_DEVKIT_QCOM)
+    ctrl = (struct i2c_msm_ctrl *)adapter->dev.driver_data;
+
+    /*if the easy_wakeup_flag is false,status not in gesture;switch_value is false,gesture is no supported*/
+    if ((true == ts_platform_data->feature_info.wakeup_gesture_enable_info.switch_value) &&
+        (true == gesture_report_info->easy_wakeup_flag)){
+        do {
+            if (ctrl->pwr_state == I2C_MSM_PM_SYS_SUSPENDED) {
+                ilitek_info("gesture mode, waiting for i2c bus resume\n");
+                msleep(I2C_WAIT_TIME);
+            } else { /*I2C_MSM_PM_RT_SUSPENDED or I2C_MSM_PM_RT_ACTIVE*/
+                ilitek_info("i2c bus resuming or resumed\n");
+                break;
+            }
+        } while (i2c_retries--);
+
+        if (ctrl->pwr_state == I2C_MSM_PM_SYS_SUSPENDED) {
+            ilitek_info("trigger gesture irq in system suspending,i2c bus can't resume, so ignore irq\n");
+            return -EINVAL;
+        }
+    }
+#endif
 
     g_ilitek_ts->debug_len = 0;
     g_ilitek_ts->i2cuart_len = 0;

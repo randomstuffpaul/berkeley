@@ -437,68 +437,7 @@ VOS_UINT32 VOS_MemDumpCheck(VOS_VOID)
  *****************************************************************************/
 VOS_VOID VOS_DumpVosMem(VOS_MEM_HEAD_BLOCK *pstHeadBlock, VOS_UINT_PTR ulUsrAddr, VOS_UINT32 ulErrNo, VOS_UINT32 ulFileID, VOS_INT32 usLineNo)
 {
-
-    VOS_UINT8           *pucDumpBuffer;
-    VOS_MEM_HEAD_BLOCK  *pstTmpMemHead = pstHeadBlock;
-    VOS_CHAR            *pucUserAddr = (VOS_CHAR *)ulUsrAddr;
-    VOS_MEM_HEAD_BLOCK   astMemHead[VOS_DUMP_MEM_HEAD_TOTAL_NUM];
-
-    if ( VOS_NULL_PTR == VOS_MemSet_s(astMemHead, sizeof(astMemHead), 0, sizeof(astMemHead)) )
-    {
-        mdrv_om_system_error(VOS_REBOOT_MEMSET_MEM, 0, (VOS_INT)((THIS_FILE_ID << 16) | __LINE__), 0, 0);
-    }
-
-    /* 借用空间保存部分信息 */
-    astMemHead[0].ulMemCtrlAddress = (VOS_UINT_PTR)pstHeadBlock;
-    astMemHead[0].ulMemAddress = ulUsrAddr;
-    astMemHead[0].ulMemUsedFlag = ulErrNo;
-
-    /* 保存出错的控制块前后个一个，总共3个控制块 */
-    if ( VOS_NULL_PTR != pstHeadBlock )
-    {
-        pstTmpMemHead--;
-
-        if ( VOS_NULL_PTR == VOS_MemCpy_s((VOS_CHAR *)(&(astMemHead[1])), VOS_DUMP_MEM_HEAD_NUM*sizeof(VOS_MEM_HEAD_BLOCK), (VOS_CHAR *)pstTmpMemHead, VOS_DUMP_MEM_HEAD_NUM*sizeof(VOS_MEM_HEAD_BLOCK)) )
-        {
-            mdrv_om_system_error(VOS_REBOOT_MEMCPY_MEM, 0, (VOS_INT)((THIS_FILE_ID << 16) | __LINE__), 0, 0);
-        }
-    }
-
-    if (VOS_FALSE == VOS_MemDumpCheck())
-    {
-        LogPrint("VOS_DumpVosMem not need dump\r\n");
-
-        return;
-    }
-
-    pucDumpBuffer = (VOS_UINT8 *)VOS_EXCH_MEM_MALLOC;
-
-    if (VOS_NULL_PTR == pucDumpBuffer)
-    {
-        VOS_ProtectionReboot(OSA_CHECK_MEM_ERROR, (VOS_INT)ulFileID, (VOS_INT)usLineNo, (VOS_CHAR *)astMemHead, sizeof(astMemHead));
-
-        return;
-    }
-
-    (VOS_VOID)VOS_TaskLock();
-
-    if ( VOS_NULL_PTR == VOS_MemSet_s((VOS_VOID *)pucDumpBuffer, VOS_DUMP_MEM_TOTAL_SIZE, 0, VOS_DUMP_MEM_TOTAL_SIZE) )
-    {
-        mdrv_om_system_error(VOS_REBOOT_MEMSET_MEM, 0, (VOS_INT)((THIS_FILE_ID << 16) | __LINE__), 0, 0);
-    }
-
-    /* 保存出错的地址前后各一半的空间 */
-    pucUserAddr -= (VOS_DUMP_MEM_TOTAL_SIZE >>1);
-
-    if ( VOS_NULL_PTR == VOS_MemCpy_s((VOS_CHAR *)pucDumpBuffer, VOS_DUMP_MEM_TOTAL_SIZE, pucUserAddr, VOS_DUMP_MEM_TOTAL_SIZE) )
-    {
-        mdrv_om_system_error(VOS_REBOOT_MEMCPY_MEM, 0, (VOS_INT)((THIS_FILE_ID << 16) | __LINE__), 0, 0);
-    }
-
-    VOS_ProtectionReboot(OSA_CHECK_MEM_ERROR, (VOS_INT)ulFileID, (VOS_INT)usLineNo, (VOS_CHAR *)astMemHead, sizeof(astMemHead));
-
-    (VOS_VOID)VOS_TaskUnlock();
-
+    VOS_ProtectionReboot(OSA_CHECK_MEM_ERROR, (VOS_INT)ulFileID, (VOS_INT)usLineNo, 0, 0);
     return;
 }
 
@@ -519,8 +458,6 @@ VOS_VOID* VOS_MemCtrlBlkMalloc( VOS_MEM_CTRL_BLOCK *VOS_MemCtrlBlock,
     VOS_UINT_PTR         *pulTemp;
     VOS_UINT_PTR          ulBlockAddr;
     VOS_UINT32            ulCrcTag;
-    VOS_UINT_PTR          ulRebootAddress1;
-    VOS_UINT_PTR          ulRebootAddress2;
 
     /*intLockLevel = VOS_SplIMP();*/
     VOS_SpinLockIntLock(&g_stVosMemSpinLock, ulLockLevel);
@@ -536,40 +473,9 @@ VOS_VOID* VOS_MemCtrlBlkMalloc( VOS_MEM_CTRL_BLOCK *VOS_MemCtrlBlock,
     {
         VOS_MemCtrlBlock->IdleBlockNumber--;
 
-        if (VOS_NULL_PTR != VOS_MemCtrlBlock->Blocks)
-        {
-            if ((VOS_UINT_PTR)(VOS_MemCtrlBlock->Blocks) < g_ulVosMemCtrlSpaceStart
-                || (VOS_UINT_PTR)(VOS_MemCtrlBlock->Blocks) >= g_ulVosMemCtrlSpaceEnd)
-            {
-                ulRebootAddress1 = (VOS_UINT_PTR)VOS_MemCtrlBlock;
-                ulRebootAddress2 = (VOS_UINT_PTR)VOS_MemCtrlBlock->Blocks;
-
-                VOS_ProtectionReboot(VOS_MEMCTRL_ADDR_ERROR1,
-                                     (VOS_INT)ulRebootAddress1,
-                                     (VOS_INT)ulRebootAddress2,
-                                     (VOS_CHAR *)VOS_MemCtrlBlock,
-                                     (VOS_INT)sizeof(VOS_MEM_CTRL_BLOCK));
-            }
-        }
-
         Block = VOS_MemCtrlBlock->Blocks;
+
         Block->ulMemUsedFlag = VOS_USED;
-
-        if (VOS_NULL_PTR != Block->pstNext)
-        {
-            if ((VOS_UINT_PTR)(Block->pstNext) < g_ulVosMemCtrlSpaceStart
-                || (VOS_UINT_PTR)(Block->pstNext) >= g_ulVosMemCtrlSpaceEnd)
-            {
-                ulRebootAddress1 = (VOS_UINT_PTR)VOS_MemCtrlBlock;
-                ulRebootAddress2 = (VOS_UINT_PTR)Block->pstNext;
-
-                VOS_ProtectionReboot(VOS_MEMCTRL_ADDR_ERROR2,
-                                     (VOS_INT)ulRebootAddress1,
-                                     (VOS_INT)ulRebootAddress2,
-                                     (VOS_CHAR *)Block,
-                                     (VOS_INT)sizeof(VOS_MEM_HEAD_BLOCK));
-            }
-        }
 
         VOS_MemCtrlBlock->Blocks = Block->pstNext;
     }
@@ -668,8 +574,6 @@ VOS_UINT32 VOS_MemCtrlBlkFree( VOS_MEM_CTRL_BLOCK *VOS_MemCtrlBlock,
 {
     VOS_ULONG             ulLockLevel;
     VOS_MEM_CTRL_BLOCK   *pstTemp;
-    VOS_UINT_PTR          ulRebootAddress1;
-    VOS_UINT_PTR          ulRebootAddress2;
 
     /*intLockLevel = VOS_SplIMP();*/
     VOS_SpinLockIntLock(&g_stVosMemSpinLock, ulLockLevel);
@@ -713,22 +617,6 @@ VOS_UINT32 VOS_MemCtrlBlkFree( VOS_MEM_CTRL_BLOCK *VOS_MemCtrlBlock,
     Block->ulMemUsedFlag = VOS_NOT_USED;
 
     Block->pstNext = VOS_MemCtrlBlock->Blocks;
-
-    if (VOS_NULL_PTR != Block)
-    {
-        if ((VOS_UINT_PTR)Block < g_ulVosMemCtrlSpaceStart
-            || (VOS_UINT_PTR)Block >= g_ulVosMemCtrlSpaceEnd)
-        {
-            ulRebootAddress1 = (VOS_UINT_PTR)VOS_MemCtrlBlock;
-            ulRebootAddress2 = (VOS_UINT_PTR)Block;
-
-            VOS_ProtectionReboot(VOS_MEMCTRL_ADDR_ERROR3,
-                                 (VOS_INT)ulRebootAddress1,
-                                 (VOS_INT)ulRebootAddress2,
-                                 (VOS_CHAR *)Block,
-                                 (VOS_INT)sizeof(VOS_MEM_HEAD_BLOCK));
-        }
-    }
 
     VOS_MemCtrlBlock->Blocks = Block;/*[false alarm]:屏蔽Fortify的Redundant Null Check告警*/
 

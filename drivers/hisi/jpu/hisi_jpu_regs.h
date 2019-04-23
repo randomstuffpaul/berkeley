@@ -234,6 +234,7 @@ typedef enum {
 	HISI_KIRIN_970 = 1,
 	HISI_DSS_V500,
 	HISI_DSS_V501,
+	HISI_DSS_V510,
 	UNSUPPORT_PLATFORM,
 }jpeg_dec_platform;
 

@@ -28,6 +28,7 @@
 typedef enum smartpakit_soc_platform {
 	SMARTPAKIT_SOC_PLATFORM_HISI = 0, // hisi chip
 	SMARTPAKIT_SOC_PLATFORM_QCOM,     // qcom chip
+	SMARTPAKIT_SOC_PLATFORM_MTK,
 
 	SMARTPAKIT_SOC_PLATFORM_MAX,
 } smartpakit_soc_platform_t;
@@ -81,7 +82,8 @@ typedef enum smartpakit_chip_vendor {
 	SMARTPAKIT_CHIP_VENDOR_MAXIM = 0,    // max98925
 	SMARTPAKIT_CHIP_VENDOR_NXP,          // tfa9872, tfa9895
 	SMARTPAKIT_CHIP_VENDOR_TI,           // tas2560
-	SMARTPAKIT_CHIP_VENDOR_OTHER,        // other vendor
+	SMARTPAKIT_CHIP_VENDOR_CS,           // cs
+	SMARTPAKIT_CHIP_VENDOR_OTHER = SMARTPAKIT_CHIP_VENDOR_CS,  //other
 	SMARTPAKIT_CHIP_VENDOR_CUSTOMIZE,    // huawei customize
 
 	SMARTPAKIT_CHIP_VENDOR_MAX,
@@ -93,6 +95,7 @@ typedef struct smartpakit_info {
 	unsigned int  algo_in;
 	unsigned int  out_device;
 	unsigned int  pa_num;
+	unsigned int  two_in_one;
 
 	// smartpa chip info
 	unsigned int  algo_delay_time;

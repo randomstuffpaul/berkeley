@@ -3,18 +3,51 @@
 
 #include <linux/hisi/usb/hisi_usb_interface.h>
 
-#define COMBOPHY_MODE_MASK              0x3
+struct hisi_usb_combophy {
+	void (*reset_phy)(struct hisi_usb_combophy *combophy);
+	void (*reset_misc_ctrl)(struct hisi_usb_combophy *combophy);
+	void (*unreset_misc_ctrl)(struct hisi_usb_combophy *combophy);
+	bool (*is_misc_ctrl_reset)(struct hisi_usb_combophy *combophy);
+	bool (*is_misc_ctrl_unreset)(struct hisi_usb_combophy *combophy);
+	bool (*is_misc_ctrl_clk_enable)(struct hisi_usb_combophy *combophy);
+	void (*isodis)(struct hisi_usb_combophy *combophy);
+	void (*exit_testpowerdown)(struct hisi_usb_combophy *combophy);
+#ifdef COMBOPHY_FW_UPDATE
+	void (*firmware_update_prepare)(struct hisi_usb_combophy *combophy);
+	void (*firmware_update)(struct hisi_usb_combophy *combophy);
+#endif
+};
 
-void usb3_reset_misc_ctrl(void);
-void usb3_unreset_misc_ctrl(void);
+#define COMBOPHY_OPS_VOID(func) \
+	static inline void combophy_##func(struct hisi_usb_combophy *combophy) \
+	{ \
+		if (combophy && combophy->func) \
+			combophy->func(combophy); \
+	}
 
-int dwc3_misc_ctrl_get(enum misc_ctrl_type type);
-void dwc3_misc_ctrl_put(enum misc_ctrl_type type);
-int usb31phy_cr_write(u32 addr, u16 value);
-u16 usb31phy_cr_read(u32 addr);
-void usb31phy_cr_32clk(void);
+#define COMBOPHY_OPS_BOOL(func) \
+	static inline int combophy_##func(struct hisi_usb_combophy *combophy) \
+	{ \
+		if (combophy && combophy->func) \
+			return combophy->func(combophy); \
+		return false;\
+	}
 
-int dwc3_is_highspeed_only(void);
-int dwc3_is_usb_only(void);
+COMBOPHY_OPS_VOID(reset_phy);
+COMBOPHY_OPS_VOID(reset_misc_ctrl);
+COMBOPHY_OPS_VOID(unreset_misc_ctrl);
+COMBOPHY_OPS_BOOL(is_misc_ctrl_reset);
+COMBOPHY_OPS_BOOL(is_misc_ctrl_unreset);
+COMBOPHY_OPS_BOOL(is_misc_ctrl_clk_enable);
+COMBOPHY_OPS_VOID(isodis);
+COMBOPHY_OPS_VOID(exit_testpowerdown);
+#ifdef COMBOPHY_FW_UPDATE
+COMBOPHY_OPS_VOID(firmware_update_prepare);
+COMBOPHY_OPS_VOID(firmware_update);
+#endif
+
+struct hisi_usb_combophy *usb3_get_combophy_phandle(void);
+int usb31phy_cr_write(u32 addr, u32 value);
+u32 usb31phy_cr_read(u32 addr);
 
 #endif /* _DWC3_HISI_USB3_31PHY__H */

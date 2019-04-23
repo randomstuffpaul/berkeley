@@ -40,8 +40,8 @@ static struct base_jd_udata kbase_event_process(struct kbase_context *kctx, stru
 
 	KBASE_TIMELINE_ATOMS_IN_FLIGHT(kctx, atomic_sub_return(1, &kctx->timeline.jd_atoms_in_flight));
 
-	KBASE_TLSTREAM_TL_NRET_ATOM_CTX(katom, kctx);
-	KBASE_TLSTREAM_TL_DEL_ATOM(katom);
+	KBASE_TLSTREAM_TL_NRET_ATOM_CTX(katom, kctx);//lint !e648
+	KBASE_TLSTREAM_TL_DEL_ATOM(katom);//lint !e648
 
 	katom->status = KBASE_JD_ATOM_STATE_UNUSED;
 

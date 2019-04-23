@@ -527,6 +527,16 @@ static enum fcp_check_stage_type fcp_get_stage(void)
 }
 /*lint -restore*/
 
+
+static enum usb_charger_type huawei_get_charger_type(void)
+{
+	if (NULL == pConfigOnDDr) {
+		hwlog_err("[%s]pConfigOnDDr is not init!\n", __func__);
+		return CHARGER_REMOVED;
+	}
+	return pConfigOnDDr->g_di.charger_type;
+}
+
 /**********************************************************
 *  Function:       set_charge_state
 *  Description:    set charge stop or enable
@@ -1548,6 +1558,7 @@ static struct charge_extra_ops huawei_charge_extra_ops = {
 	.check_ts = charge_check_ts,
 	.check_otg_state = charge_check_otg_state,
 	.get_stage = fcp_get_stage,
+	.get_charger_type = huawei_get_charger_type,
 	.set_state = set_charge_state,
 	.get_charge_current = huawei_get_charge_current_max,
 };
